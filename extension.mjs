@@ -1,6 +1,8 @@
 // server/extension.ts
 import path3 from "node:path";
 import { fileURLToPath } from "node:url";
+import { existsSync, cpSync } from "node:fs";
+import { homedir } from "node:os";
 import { joinSession, createCanvas } from "@github/copilot-sdk/extension";
 
 // server/db.ts
@@ -253,6 +255,9 @@ var ArgusStore = class _ArgusStore {
     this.#ensureColumn("prs", "my_comments", "INTEGER");
     this.#ensureColumn("prs", "approvals_json", "TEXT");
     this.#ensureColumn("prs", "author_meta_json", "TEXT");
+    this.#ensureColumn("prs", "merge_commit", "TEXT");
+    this.#ensureColumn("prs", "deploy_json", "TEXT");
+    this.#ensureColumn("prs", "deploy_resolved_at", "TEXT");
     this.#db.exec(`
       UPDATE prs SET reviewed_at = (
         SELECT MAX(e.ts) FROM pr_events e
@@ -582,6 +587,93 @@ var ArgusStore = class _ArgusStore {
   }
   setMyComments(canonical, count) {
     this.#prep("UPDATE prs SET my_comments = ? WHERE canonical = ?").run(count, canonical);
+  }
+  // --- Deploy tracking (where a merged PR shipped) ---
+  // The merge commit is captured on close (poller) so we can pin the exact build.
+  setMergeCommit(canonical, sha) {
+    this.#prep("UPDATE prs SET merge_commit = ? WHERE canonical = ?").run(sha, canonical);
+  }
+  // ISO cutoff for the deploy window: PRs merged on/after this are in scope.
+  #deployCutoff(windowDays) {
+    return new Date(Date.now() - windowDays * 864e5).toISOString();
+  }
+  // Merged-in-window PRs whose merge commit we haven't captured yet (e.g. closed
+  // before the deploy feature existed). Scoped to repos with a configured pipeline
+  // — no point backfilling for repos we can't map to a build. Bounded per cycle.
+  prsNeedingMergeCommit(windowDays, repos, limit = 30) {
+    if (repos.length === 0) return [];
+    const ph = repos.map(() => "?").join(",");
+    return this.#prep(`
+      SELECT p.canonical, p.number
+      FROM prs p
+      WHERE p.state = 'closed' AND p.merge_commit IS NULL AND p.repo IN (${ph})
+        AND EXISTS (
+          SELECT 1 FROM pr_events e
+          WHERE e.canonical = p.canonical AND e.type = 'closed'
+            AND json_extract(e.payload, '$.reason') = 'completed' AND e.ts >= ?
+        )
+      LIMIT ?
+    `).all(...repos, this.#deployCutoff(windowDays), limit);
+  }
+  // Merged-in-window PRs (configured repos) with a known merge commit whose deploy
+  // state is unresolved or not yet terminal (still rolling out) — refreshed by the
+  // poller until prod finishes.
+  prsNeedingDeploy(windowDays, repos, limit = 20) {
+    if (repos.length === 0) return [];
+    const ph = repos.map(() => "?").join(",");
+    return this.#prep(`
+      SELECT p.canonical, p.repo, p.project, p.merge_commit AS mergeCommit
+      FROM prs p
+      WHERE p.merge_commit IS NOT NULL AND p.repo IN (${ph})
+        AND (p.deploy_json IS NULL OR json_extract(p.deploy_json, '$.terminal') IS NOT 1)
+        AND EXISTS (
+          SELECT 1 FROM pr_events e
+          WHERE e.canonical = p.canonical AND e.type = 'closed'
+            AND json_extract(e.payload, '$.reason') = 'completed' AND e.ts >= ?
+        )
+      LIMIT ?
+    `).all(...repos, this.#deployCutoff(windowDays), limit);
+  }
+  setDeploy(canonical, deploy) {
+    this.#prep("UPDATE prs SET deploy_json = ?, deploy_resolved_at = ? WHERE canonical = ?").run(
+      JSON.stringify(deploy),
+      now(),
+      canonical
+    );
+  }
+  // The deploy timeline: PRs merged within the window, newest first, each with its
+  // resolved deploy state (or an unresolved placeholder if the poller hasn't gotten
+  // to it yet). Drives the Deploys view and the detail-page "Shipped" line.
+  deployTimeline(windowDays, repos) {
+    if (repos.length === 0) return [];
+    const ph = repos.map(() => "?").join(",");
+    const rows = this.#prep(`
+      SELECT p.canonical, p.repo, p.number, p.title, p.deploy_json AS deployJson,
+             (SELECT MIN(e.ts) FROM pr_events e
+              WHERE e.canonical = p.canonical AND e.type = 'closed'
+                AND json_extract(e.payload, '$.reason') = 'completed') AS mergedAt
+      FROM prs p
+      WHERE p.state = 'closed' AND p.repo IN (${ph})
+        AND EXISTS (
+          SELECT 1 FROM pr_events e
+          WHERE e.canonical = p.canonical AND e.type = 'closed'
+            AND json_extract(e.payload, '$.reason') = 'completed' AND e.ts >= ?
+        )
+      ORDER BY mergedAt DESC
+    `).all(...repos, this.#deployCutoff(windowDays));
+    const pending = { found: false, buildId: null, buildNumber: null, buildUrl: null, dev: null, ppe: null, prod: null, terminal: false };
+    return rows.map((r) => ({
+      canonical: r.canonical,
+      repo: r.repo,
+      number: r.number,
+      title: r.title,
+      mergedAt: r.mergedAt,
+      deploy: r.deployJson ? JSON.parse(r.deployJson) : pending
+    }));
+  }
+  getDeploy(canonical) {
+    const row = this.#prep("SELECT deploy_json AS j FROM prs WHERE canonical = ?").get(canonical);
+    return row?.j ? JSON.parse(row.j) : null;
   }
   // --- Insights: aggregate analytics computed on demand from events + PRs ---
   // Per-day breakdown for the Load & capacity drill-down: which PRs arrived,
@@ -1180,10 +1272,10 @@ var ArgusStore = class _ArgusStore {
     if (prev && prev.s !== reviewState) {
       this.appendEvent(canonical, "review_state", { from: prev.s, to: reviewState });
     }
-    if (reviewState === "covered" || reviewState === "approved") {
-      const row = this.#prep("SELECT snooze_mode AS m FROM prs WHERE canonical = ?").get(canonical);
-      if (row?.m === "fte") {
-        const by = otherVotes.find((v) => v.vote >= 5 && !isVendorName(v.name))?.name ?? null;
+    const row = this.#prep("SELECT snooze_mode AS m FROM prs WHERE canonical = ?").get(canonical);
+    if (row?.m === "fte") {
+      const by = otherVotes.find((v) => v.vote >= 5 && !isVendorName(v.name))?.name ?? null;
+      if (by || reviewState === "covered" || reviewState === "approved") {
         this.appendEvent(canonical, "fte_woke", { by });
         this.setSnooze(canonical, null, null);
       }
@@ -1359,6 +1451,15 @@ var ArgusStore = class _ArgusStore {
     this.#prep(
       "INSERT INTO settings (key, value) VALUES ('config', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value"
     ).run(JSON.stringify(overrides));
+  }
+  // First-run gate: true once the user has confirmed org/project/team setup.
+  // Until then the UI shows the setup screen instead of an empty, mis-configured
+  // board (the shipped defaults are one team's, so ownership is wrong otherwise).
+  isSetupComplete() {
+    return this.#getSetting("setup_complete") === "1";
+  }
+  markSetupComplete() {
+    this.#setSetting("setup_complete", "1");
   }
   #getSetting(key) {
     const row = this.#prep("SELECT value FROM settings WHERE key = ?").get(key);
@@ -1673,7 +1774,7 @@ var INGEST = "http://127.0.0.1:48100/api/pr/record-review";
 function recordCmd(canonical) {
   return `Invoke-RestMethod -Method Post -Uri ${INGEST} -ContentType application/json -Body '{"canonical":"${canonical}","verdict":"<approved|suggestions|waiting|rejected>"}'`;
 }
-function reviewPrompt(pr) {
+function reviewPrompt(pr, skillName) {
   const ref = `**${pr.repo} #${pr.number}** \u2014 ${pr.title}
 ${pr.canonical}`;
   if (pr.reviewSessionId) {
@@ -1681,14 +1782,14 @@ ${pr.canonical}`;
       `Argus: time for a **re-review** of ${ref}`,
       ``,
       `The prior review ran in session \`${pr.reviewSessionId}\`. Send that session a message:`,
-      `"Time for a re-review: check for new commits/updates on the PR and where things stand, review with Dade, then record the updated verdict yourself by running this in the session's terminal (no canvas needed): \`${recordCmd(pr.canonical)}\`. Do not report back here."`
+      `"Time for a re-review: check for new commits/updates on the PR and where things stand, review it with the user, then record the updated verdict yourself by running this in the session's terminal (no canvas needed): \`${recordCmd(pr.canonical)}\`. Do not report back here."`
     ].join("\n");
   }
   return [
     `Argus: please **review** ${ref}`,
     `Lane: ${pr.lane === "quick" ? "quick" : "review"}`,
     ``,
-    `Spawn a child session named concisely from the PR's subject with its number (3-5 words + " #${pr.number}", dropping filler like "add"/"update" and NOT prefixing "Review" \u2014 it's implied; e.g. "Add feature flags for Probadge" (#${pr.number}) \u2192 "Probadge Feature Flags #${pr.number}"), and run the pr-review skill on it. In the child session's kickoff prompt, include the line \`Lane: ${pr.lane === "quick" ? "quick" : "review"}\` so the pr-review skill branches into ${pr.lane === "quick" ? "quick" : "full"} mode automatically. Spawn it decoupled (\`coordinate_with_creator: false\`) so it does not report back into this chat.`,
+    `Spawn a child session named concisely from the PR's subject with its number (3-5 words + " #${pr.number}", dropping filler like "add"/"update" and NOT prefixing "Review" \u2014 it's implied; e.g. "Add feature flags for Probadge" (#${pr.number}) \u2192 "Probadge Feature Flags #${pr.number}"), and run the ${skillName} skill on it. In the child session's kickoff prompt, include the line \`Lane: ${pr.lane === "quick" ? "quick" : "review"}\` so the ${skillName} skill branches into ${pr.lane === "quick" ? "quick" : "full"} mode automatically. Spawn it decoupled (\`coordinate_with_creator: false\`) so it does not report back into this chat.`,
     ``,
     `As soon as the session exists, invoke the Argus \`linkReviewSession\` action with \`{ "canonical": "${pr.canonical}", "sessionId": "<child session id>" }\`. You do NOT need to wait for or relay the outcome: when the review concludes, the review session records its own verdict headlessly by running \`${recordCmd(pr.canonical)}\` in its terminal \u2014 no canvas required. If that POST fails (Argus not running), it should surface the verdict to Dade so he can record it manually.`
   ].join("\n");
@@ -1709,7 +1810,8 @@ async function handleApi(req, res, ctx) {
       boot_at: ctx.bootAt,
       store: ctx.store.counts(),
       migrated: ctx.migrated,
-      poller: ctx.pollerStatus()
+      poller: ctx.pollerStatus(),
+      setup_complete: ctx.store.isSetupComplete()
     });
     return true;
   }
@@ -1720,7 +1822,12 @@ async function handleApi(req, res, ctx) {
   if (route === "/api/pr") {
     const canonical = url.searchParams.get("canonical");
     if (!canonical) sendJson(res, 400, { error: "canonical required" });
-    else sendJson(res, 200, { pr: ctx.store.getPr(canonical), events: ctx.store.listEvents(canonical) });
+    else sendJson(res, 200, { pr: ctx.store.getPr(canonical), events: ctx.store.listEvents(canonical), deploy: ctx.store.getDeploy(canonical) });
+    return true;
+  }
+  if (route === "/api/deploys") {
+    const cfg = ctx.getConfig();
+    sendJson(res, 200, { window: cfg.deployWindowDays, timeline: ctx.store.deployTimeline(cfg.deployWindowDays, Object.keys(cfg.repoPipelines)) });
     return true;
   }
   if (route === "/api/pr/find") {
@@ -1772,7 +1879,7 @@ async function handleApi(req, res, ctx) {
     const pr = body.canonical ? ctx.store.getPr(body.canonical) : null;
     if (!pr) sendJson(res, 400, { error: "canonical required / not found" });
     else {
-      await ctx.dispatch(reviewPrompt(pr));
+      await ctx.dispatch(reviewPrompt(pr, ctx.getConfig().reviewSkillName));
       sendJson(res, 200, { ok: true, reReview: !!pr.reviewSessionId });
     }
     return true;
@@ -1826,6 +1933,15 @@ async function handleApi(req, res, ctx) {
   if (route === "/api/config") {
     if (req.method === "POST") sendJson(res, 200, { config: ctx.saveConfig(await readJsonBody(req)) });
     else sendJson(res, 200, { config: ctx.getConfig() });
+    return true;
+  }
+  if (route === "/api/setup" && req.method === "POST") {
+    const body = await readJsonBody(req);
+    const { installPrReviewSkill, ...overrides } = body;
+    const config = ctx.saveConfig(overrides);
+    ctx.markSetupComplete();
+    const skill = installPrReviewSkill ? ctx.installBaselineSkill() : { installed: false, reason: "skipped" };
+    sendJson(res, 200, { config, setup_complete: true, skill });
     return true;
   }
   if (route === "/api/load/day") {
@@ -2075,6 +2191,18 @@ function defaultConfig() {
       "[TEAM FOUNDATION]\\MCAPS E&O WWL LPT - Content Lifecycle Engg": "content FTE"
     },
     periods: [],
+    reviewSkillName: process.env.ARGUS_REVIEW_SKILL ?? "pr-review",
+    deployWindowDays: Number(process.env.ARGUS_DEPLOY_WINDOW_DAYS ?? 14),
+    // Seeded repo -> Official build-pipeline definition id, for deploy tracking.
+    // Update when a tracked repo gains or loses a deploy pipeline. LPE-specific.
+    repoPipelines: {
+      "LPE.UI": 4573,
+      "LPE.Starfleet.ContentService": 4686,
+      "LPE.AdminConsole": 4553,
+      "LPE.AdminService": 4544,
+      "LPE.Starfleet.ContentRecommendations": 4652,
+      "LPE.FeatureFlags": 4594
+    },
     recencyDays: Number(process.env.ARGUS_RECENCY_DAYS ?? 7),
     retentionDays: Number(process.env.ARGUS_LOG_RETENTION_DAYS ?? 2),
     workStartHour: startHour,
@@ -2184,6 +2312,80 @@ async function fetchAuthorMeta(pr, orgUrl) {
   } catch {
   }
   return meta;
+}
+
+// server/ado/pipelines.ts
+var FETCH_TIMEOUT_MS = 2e4;
+async function adoGet(url) {
+  const token = await adoAccessToken();
+  const ctrl = new AbortController();
+  const timer2 = setTimeout(() => ctrl.abort(), FETCH_TIMEOUT_MS);
+  try {
+    const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` }, signal: ctrl.signal });
+    if (!res.ok) throw new Error(`ADO GET ${res.status} ${res.statusText} for ${url}`);
+    return await res.json();
+  } finally {
+    clearTimeout(timer2);
+  }
+}
+function orgBase(orgSlug, project) {
+  return `https://dev.azure.com/${orgSlug}/${encodeURIComponent(project)}/_apis`;
+}
+var ENV_MATCHERS = {
+  dev: { include: ["dev"], require: ["deploy", "release"], exclude: ["pre-deploy", "validation", "apply tag", "tag", "buddy"] },
+  ppe: { include: ["ppe"], require: ["deploy", "release"], exclude: ["pre-deploy", "validation", "apply tag", "tag"] },
+  prod: { include: ["prod"], require: ["deploy", "release"], exclude: ["pre-deploy", "validation", "apply tag", "tag"] }
+};
+function matchEnvStage(name, m) {
+  const n = (name || "").toLowerCase();
+  if (!m.include.some((k) => n.includes(k))) return false;
+  if (m.require.length && !m.require.some((k) => n.includes(k))) return false;
+  if (m.exclude.some((k) => n.includes(k))) return false;
+  return true;
+}
+var SUCCESSISH = /* @__PURE__ */ new Set(["succeeded", "succeededwithissues", "partiallysucceeded"]);
+async function buildForCommit(orgSlug, project, defId, commit) {
+  const params = new URLSearchParams({
+    "api-version": "7.1",
+    definitions: String(defId),
+    maxBuildsPerDefinition: "50",
+    queryOrder: "queueTimeDescending"
+  });
+  const { value } = await adoGet(`${orgBase(orgSlug, project)}/build/builds?${params}`);
+  return (value ?? []).find((b2) => b2.sourceVersion === commit) ?? null;
+}
+async function stagesFor(orgSlug, project, buildId) {
+  const { records } = await adoGet(
+    `${orgBase(orgSlug, project)}/build/builds/${buildId}/timeline?api-version=7.1`
+  );
+  return (records ?? []).filter((r) => r.type === "Stage");
+}
+function envState(stages, env) {
+  const st = stages.find((s) => matchEnvStage(s.name ?? "", ENV_MATCHERS[env]));
+  if (!st) return null;
+  return { state: st.state ?? null, result: st.result ?? null, finishedAt: st.finishTime ?? null };
+}
+async function resolveDeploy(orgSlug, project, repoPipelines, repo, mergeCommit) {
+  const empty = { found: false, buildId: null, buildNumber: null, buildUrl: null, dev: null, ppe: null, prod: null, terminal: false };
+  const defId = repoPipelines[repo];
+  if (!defId) return { ...empty, terminal: true };
+  const build = await buildForCommit(orgSlug, project, defId, mergeCommit);
+  if (!build) return empty;
+  const stages = await stagesFor(orgSlug, project, build.id);
+  const dev = envState(stages, "dev");
+  const ppe = envState(stages, "ppe");
+  const prod = envState(stages, "prod");
+  const prodDone = !!prod && (prod.state === "completed" || SUCCESSISH.has((prod.result ?? "").toLowerCase()));
+  return {
+    found: true,
+    buildId: build.id,
+    buildNumber: build.buildNumber ?? null,
+    buildUrl: `https://dev.azure.com/${orgSlug}/${encodeURIComponent(project)}/_build/results?buildId=${build.id}&view=results`,
+    dev,
+    ppe,
+    prod,
+    terminal: prodDone
+  };
 }
 
 // server/ado/reconcile.ts
@@ -2376,6 +2578,23 @@ async function runReconcile(ctx) {
     note("info", "checking for merged/abandoned PRs\u2026");
     const { closed } = await closeDeparted(ctx.store, cfg.orgUrl, mine.map((m) => m.canonical), snapshots, runId);
     note("info", closed ? `closed ${closed} departed PR(s)` : "no departed PRs closed");
+    const deployRepos = Object.keys(cfg.repoPipelines);
+    const needMerge = ctx.store.prsNeedingMergeCommit(cfg.deployWindowDays, deployRepos);
+    for (const p of needMerge) {
+      const raw2 = await showPr(p.number, cfg.orgUrl);
+      if (raw2?.lastMergeCommit?.commitId) ctx.store.setMergeCommit(p.canonical, raw2.lastMergeCommit.commitId);
+    }
+    const needDeploy = ctx.store.prsNeedingDeploy(cfg.deployWindowDays, deployRepos);
+    if (needDeploy.length) {
+      note("info", `resolving deploys for ${needDeploy.length} merged PR(s)`);
+      for (const p of needDeploy) {
+        try {
+          const deploy = await resolveDeploy(cfg.orgSlug, p.project, cfg.repoPipelines, p.repo, p.mergeCommit);
+          ctx.store.setDeploy(p.canonical, deploy);
+        } catch {
+        }
+      }
+    }
     const tracked = ctx.store.countTracked();
     note("info", `queue now ${tracked} tracked`);
     lastSummary = { mine: mine.length, tracked, ...applied, closed };
@@ -2409,6 +2628,9 @@ async function closeDeparted(store2, orgUrl, mineCanonicals, snapshots, runId) {
     if (pr && (pr.status === "completed" || pr.status === "abandoned")) {
       const rec = store2.getPr(canonical);
       store2.markClosed(canonical, pr.status, void 0, runId);
+      if (pr.status === "completed" && pr.lastMergeCommit?.commitId) {
+        store2.setMergeCommit(canonical, pr.lastMergeCommit.commitId);
+      }
       closed += 1;
       if (rec?.reviewSessionId) {
         archivable.push({ repo: rec.repo, number: rec.number, status: pr.status, sessionId: rec.reviewSessionId });
@@ -2467,8 +2689,10 @@ async function trackByNumber(ctx, id) {
   if (raw.status === "completed" || raw.status === "abandoned") return { ok: false, reason: "closed" };
   const identity = await resolveIdentity(ctx);
   const own = classifyOwnership(raw, identity, cfg.teamPatterns);
-  if (!own.role) return { ok: false, reason: "not-assigned" };
-  const norm = normalizePr(raw, cfg.orgSlug, cfg.project, own);
+  const role = own.role ?? "reviewer";
+  const reviewState = own.role === null ? own.reviewState ?? "needs" : own.reviewState;
+  const effective = { ...own, role, reviewState };
+  const norm = normalizePr(raw, cfg.orgSlug, cfg.project, effective);
   const existed = !!ctx.store.getPr(norm.canonical);
   ctx.store.upsertPr({
     canonical: norm.canonical,
@@ -2487,7 +2711,7 @@ async function trackByNumber(ctx, id) {
     lastCommitAt: norm.createdAt,
     prCreatedAt: norm.createdAt
   });
-  ctx.store.setOwnership(norm.canonical, own.role, own.teams, own.reviewState, norm.description, norm.isVendor, own.otherVotes);
+  ctx.store.setOwnership(norm.canonical, effective.role, effective.teams, effective.reviewState, norm.description, norm.isVendor, effective.otherVotes);
   ctx.store.setDescription(norm.canonical, norm.description);
   if (!existed) ctx.store.appendEvent(norm.canonical, "added", { source: "manual" });
   return { ok: true, canonical: norm.canonical };
@@ -2526,16 +2750,19 @@ var DIST_DIR = path3.join(__dirname, "dist");
 var BOOT_AT = (/* @__PURE__ */ new Date()).toISOString();
 var ONEDRIVE_ROOT = process.env.OneDriveCommercial || process.env.OneDrive;
 var DB_FILE = process.env.ARGUS_DB_FILE || (ONEDRIVE_ROOT ? path3.join(ONEDRIVE_ROOT, "Desktop", "argus.db") : path3.join(__dirname, "data", "argus.db"));
-var INVOLVEMENT_FILE = process.env.ARGUS_INVOLVEMENT_FILE || path3.join("R:\\", "Repos", "retros", "pr-tracker", "pr-involvement.jsonl");
-var LEGACY_STATE_FILE = process.env.ARGUS_LEGACY_STATE_FILE || (ONEDRIVE_ROOT ? path3.join(ONEDRIVE_ROOT, "Desktop", "pr-tracker-state.json") : "");
+var INVOLVEMENT_FILE = process.env.ARGUS_INVOLVEMENT_FILE;
+var LEGACY_STATE_FILE = process.env.ARGUS_LEGACY_STATE_FILE;
 var store = new ArgusStore(DB_FILE);
-var migrated = store.importInvolvement(INVOLVEMENT_FILE);
+var migrated = INVOLVEMENT_FILE ? store.importInvolvement(INVOLVEMENT_FILE) : { imported: 0 };
 var getConfig = () => mergeConfig(defaultConfig(), store.getConfigOverrides());
 var saveConfig = (overrides) => {
   store.saveConfigOverrides(overrides);
   return getConfig();
 };
 var legacyImported = LEGACY_STATE_FILE ? store.importLegacyState(LEGACY_STATE_FILE, getConfig().teamPatterns) : { imported: 0 };
+if (!store.isSetupComplete() && (store.counts().prs > 0 || Object.keys(store.getConfigOverrides()).length > 0)) {
+  store.markSetupComplete();
+}
 var pollerCtx = { store, getConfig };
 var instances = /* @__PURE__ */ new Map();
 var pollerRunning = false;
@@ -2555,6 +2782,19 @@ function doRecordReview(canonical, opts) {
   store.recordReview(canonical, opts);
   void countMyComments(canonical);
 }
+function installBaselineSkill() {
+  const src = path3.join(__dirname, "skills", "pr-review");
+  if (!existsSync(src)) return { installed: false, reason: "bundled skill not found" };
+  const skillsRoot = path3.join(process.env.COPILOT_HOME || path3.join(homedir(), ".copilot"), "skills");
+  const dest = path3.join(skillsRoot, "pr-review");
+  if (existsSync(dest)) return { installed: false, reason: "a pr-review skill already exists; left it untouched" };
+  try {
+    cpSync(src, dest, { recursive: true });
+    return { installed: true };
+  } catch (err) {
+    return { installed: false, reason: err.message };
+  }
+}
 var serverCtx = () => ({
   store,
   bootAt: BOOT_AT,
@@ -2567,7 +2807,9 @@ var serverCtx = () => ({
   dispatch: (message) => session2.send(message),
   pollerStatus: getPollerStatus,
   getConfig,
-  saveConfig
+  saveConfig,
+  markSetupComplete: () => store.markSetupComplete(),
+  installBaselineSkill
 });
 var session2 = await joinSession({
   canvases: [

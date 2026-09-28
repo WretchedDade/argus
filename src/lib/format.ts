@@ -53,3 +53,17 @@ export function fmtHours(h: number | null | undefined): string {
 export function shortRepo(name: string): string {
   return name.replace(/^LPE\.Starfleet\./, "").replace(/^LPE\./, "");
 }
+
+// Deterministic avatar-style hue from a string (repo/author name), so each repo
+// gets a stable, distinct accent color without a lookup table.
+export function hashHue(name: string): number {
+  let h = 0;
+  for (const ch of name) h = (h * 31 + ch.charCodeAt(0)) | 0;
+  return Math.abs(h) % 360;
+}
+
+// A stable accent color for a name (mid saturation/lightness reads on both themes).
+export function nameColor(name: string): string {
+  return `hsl(${hashHue(name)} 62% 52%)`;
+}
+

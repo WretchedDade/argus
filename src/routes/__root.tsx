@@ -3,12 +3,14 @@ import type { QueryClient } from "@tanstack/react-query";
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import { ChevronDown, Settings as SettingsIcon } from "lucide-react";
-import { configQuery, prsQuery } from "../lib/api";
+import { configQuery, healthQuery, prsQuery } from "../lib/api";
 import { needsYouCount } from "../lib/triage";
 import { BrandMark } from "../components/BrandMark";
 import { NotificationsBell } from "../components/NotificationsBell";
 import { PrSearch } from "../components/PrSearch";
+import { RefreshButton } from "../components/RefreshButton";
 import { StatusCluster } from "../components/StatusCluster";
+import { SetupGate } from "../components/SetupGate";
 import { Toaster } from "../components/Toaster";
 
 export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()({
@@ -18,11 +20,13 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
 const tabs = [
   { to: "/", label: "Board", exact: true },
   { to: "/mine", label: "My PRs", exact: false },
+  { to: "/tracked", label: "Tracked", exact: false },
 ] as const;
 
 // Secondary views grouped under one dropdown to keep the primary nav lean.
 const menuTabs = [
   { to: "/insights", label: "Insights" },
+  { to: "/deploys", label: "Deploys" },
   { to: "/recap", label: "Recap" },
   { to: "/activity", label: "Activity" },
 ] as const;
@@ -54,7 +58,7 @@ function NavMenu() {
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
-        className="inline-flex items-center gap-1 rounded-md px-2.5 py-1 text-sm transition-colors hover:text-white"
+        className="inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-md px-2.5 py-1 text-sm transition-colors hover:text-white"
         style={active ? { background: "rgba(255,255,255,0.22)", color: "#fff" } : { color: "rgba(255,255,255,0.8)" }}
       >
         {active ? active.label : "Insights"}
@@ -86,8 +90,21 @@ function NavMenu() {
 }
 
 function RootLayout() {
+  const health = useQuery(healthQuery).data;
   const prs = useQuery(prsQuery).data ?? [];
   const recencyDays = useQuery(configQuery).data?.recencyDays ?? 7;
+
+  // First-run gate: until the user confirms their org/project/reviewer groups,
+  // the board would be empty and mis-classified, so show setup instead.
+  if (health && !health.setup_complete) {
+    return (
+      <>
+        <SetupGate />
+        <Toaster />
+      </>
+    );
+  }
+
   const counts: Partial<Record<(typeof tabs)[number]["to"], { n: number; tone: "attention" | "neutral" }>> = {
     "/": { n: needsYouCount(prs, recencyDays), tone: "attention" },
     "/mine": { n: prs.filter((p) => p.role === "author").length, tone: "neutral" },
@@ -96,36 +113,43 @@ function RootLayout() {
   return (
     <div className="app-bg text-fg min-h-screen">
       <div className="app-shell">
-        <header className="app-header sticky top-0 z-30 flex items-center gap-4 px-4 py-3">
-          <div className="flex items-center gap-2.5">
-            <BrandMark size={34} />
-            <span className="text-lg font-semibold tracking-tight">Argus</span>
-          </div>
-          <nav className="flex items-center gap-1">
-            {tabs.map((t) => (
-              <Link
-                key={t.to}
-                to={t.to}
-                activeOptions={{ exact: t.exact }}
-                className="inline-flex items-center rounded-md px-2.5 py-1 text-sm text-white/80 transition-colors hover:text-white"
-                activeProps={{
-                  className: "text-white",
-                  style: { background: "rgba(255,255,255,0.22)" },
-                }}
-              >
-                {t.label}
-                {counts[t.to] && <TabCount n={counts[t.to]!.n} tone={counts[t.to]!.tone} />}
+        <header className="app-header sticky top-0 z-30 flex flex-col gap-3.5 px-4 py-2.5">
+          <div className="flex items-center gap-3">
+            <div className="flex shrink-0 items-center gap-2.5">
+              <BrandMark size={30} />
+              <span className="text-lg font-semibold tracking-tight">Argus</span>
+            </div>
+            <div className="ml-auto flex shrink-0 items-center gap-3">
+              <StatusCluster />
+              <NotificationsBell />
+              <Link to="/settings" className="text-white/80 hover:text-white" title="Settings" aria-label="Settings">
+                <SettingsIcon size={18} />
               </Link>
-            ))}
-            <NavMenu />
-          </nav>
-          <div className="ml-auto flex items-center gap-3">
-            <PrSearch />
-            <StatusCluster />
-            <NotificationsBell />
-            <Link to="/settings" className="text-white/80 hover:text-white" title="Settings" aria-label="Settings">
-              <SettingsIcon size={18} />
-            </Link>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <nav className="flex min-w-0 flex-1 flex-wrap items-center gap-1">
+              {tabs.map((t) => (
+                <Link
+                  key={t.to}
+                  to={t.to}
+                  activeOptions={{ exact: t.exact }}
+                  className="inline-flex shrink-0 items-center whitespace-nowrap rounded-md px-2.5 py-1 text-sm text-white/80 transition-colors hover:text-white"
+                  activeProps={{
+                    className: "text-white",
+                    style: { background: "rgba(255,255,255,0.22)" },
+                  }}
+                >
+                  {t.label}
+                  {counts[t.to] && <TabCount n={counts[t.to]!.n} tone={counts[t.to]!.tone} />}
+                </Link>
+              ))}
+              <NavMenu />
+            </nav>
+            <div className="flex shrink-0 items-center gap-2">
+              <PrSearch />
+              <RefreshButton />
+            </div>
           </div>
         </header>
         <main className="p-4">

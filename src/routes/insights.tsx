@@ -5,6 +5,7 @@ import { CheckCircle2, ChevronRight, GitPullRequest, Inbox, Timer, X } from "luc
 import { api, configQuery, insightsQuery, type InsightsCount, type LoadDayPr } from "../lib/api";
 import { AuthorTreemap, BalanceStrip, CoverageWaffle, DepthMeter, Donut, HBars, LatencyScatter, LoadChart, RepoScatter, ReviewCalendar, ReviewRhythm, VoteBars, VoteTurnBubbles } from "../components/Charts";
 import { fmtHours, shortRepo } from "../lib/format";
+import { SegToggle } from "../components/SegToggle";
 import { REVIEW_STATE_META } from "../lib/triage";
 import type { PrReviewState } from "../lib/api";
 
@@ -60,24 +61,6 @@ function Stat({ label, value, big }: { label: string; value: string; big?: boole
 }
 
 // Small segmented control.
-function SegToggle<T extends string>({ value, onChange, options }: { value: T; onChange: (v: T) => void; options: { v: T; label: string }[] }) {
-  return (
-    <div className="border-line inline-flex overflow-hidden rounded-md border text-xs">
-      {options.map((o) => (
-        <button
-          key={o.v}
-          type="button"
-          onClick={() => onChange(o.v)}
-          className={`px-2 py-0.5 ${value === o.v ? "text-fg" : "text-muted"}`}
-          style={value === o.v ? { background: "color-mix(in srgb, var(--color-fg) 10%, transparent)" } : undefined}
-        >
-          {o.label}
-        </button>
-      ))}
-    </div>
-  );
-}
-
 // Day / Week granularity switch for the load section.
 function GranToggle({ value, onChange }: { value: "day" | "week"; onChange: (v: "day" | "week") => void }) {
   return (

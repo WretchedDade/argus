@@ -17,6 +17,9 @@ export interface ArgusConfig {
   teamPatterns: string[];
   teamLabels: Record<string, string>; // seen team display name -> friendly label
   periods: Period[]; // named context bands for the load chart
+  reviewSkillName: string; // the skill the Review buttons tell the agent to run
+  deployWindowDays: number; // how many days of merged PRs the deploy timeline shows
+  repoPipelines: Record<string, number>; // repo name -> build definition id (for deploy tracking)
   recencyDays: number;
   retentionDays: number;
   workStartHour: number;
@@ -40,6 +43,18 @@ export function defaultConfig(): ArgusConfig {
       "[TEAM FOUNDATION]\\MCAPS E&O WWL LPT - Content Lifecycle Engg": "content FTE",
     },
     periods: [],
+    reviewSkillName: process.env.ARGUS_REVIEW_SKILL ?? "pr-review",
+    deployWindowDays: Number(process.env.ARGUS_DEPLOY_WINDOW_DAYS ?? 14),
+    // Seeded repo -> Official build-pipeline definition id, for deploy tracking.
+    // Update when a tracked repo gains or loses a deploy pipeline. LPE-specific.
+    repoPipelines: {
+      "LPE.UI": 4573,
+      "LPE.Starfleet.ContentService": 4686,
+      "LPE.AdminConsole": 4553,
+      "LPE.AdminService": 4544,
+      "LPE.Starfleet.ContentRecommendations": 4652,
+      "LPE.FeatureFlags": 4594,
+    },
     recencyDays: Number(process.env.ARGUS_RECENCY_DAYS ?? 7),
     retentionDays: Number(process.env.ARGUS_LOG_RETENTION_DAYS ?? 2),
     workStartHour: startHour,

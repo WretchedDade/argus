@@ -29,7 +29,7 @@ function LaneSection({
       </div>
       <div className="flex flex-col gap-3">
         {sorted.map((pr) =>
-          needsAction(pr) && !pr.isDraft ? (
+          needsAction(pr) || pr.isDraft ? (
             <PrCard key={pr.canonical} pr={pr} labels={labels} />
           ) : (
             <PrCard key={pr.canonical} pr={pr} labels={labels} variant="compact" />

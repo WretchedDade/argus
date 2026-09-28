@@ -303,3 +303,38 @@ export interface ActivityFeed {
   generatedAt: string;
   events: ActivityEvent[];
 }
+
+// --- Deploy tracking (where a merged PR shipped) ---
+
+// One environment's deploy state for a build: the stage's run state and result,
+// and when it finished. null = the build has no matching stage for that env.
+export interface DeployEnv {
+  state: string | null; // notStarted | inProgress | completed | ...
+  result: string | null; // succeeded | failed | canceled | ...
+  finishedAt: string | null;
+}
+
+// Where a merged PR's build has reached across dev/ppe/prod. `found` is false
+// when no build matched the merge commit (repo has no configured pipeline, or
+// the build isn't visible). `terminal` = resolved for good (prod succeeded, or
+// the PR was abandoned), so it never needs re-resolving.
+export interface PrDeploy {
+  found: boolean;
+  buildId: number | null;
+  buildNumber: string | null;
+  buildUrl: string | null;
+  dev: DeployEnv | null;
+  ppe: DeployEnv | null;
+  prod: DeployEnv | null;
+  terminal: boolean;
+}
+
+// One row in the deploy timeline: a merged PR plus where it has shipped.
+export interface DeployTimelinePr {
+  canonical: string;
+  repo: string;
+  number: number;
+  title: string;
+  mergedAt: string;
+  deploy: PrDeploy;
+}

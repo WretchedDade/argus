@@ -1,5 +1,7 @@
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { existsSync, cpSync } from "node:fs";
+import { homedir } from "node:os";
 import { joinSession, createCanvas } from "@github/copilot-sdk/extension";
 import { ArgusStore } from "./db.ts";
 import { fetchPrThreads } from "./ado/client.ts";
@@ -28,18 +30,16 @@ const DB_FILE =
     ? path.join(ONEDRIVE_ROOT, "Desktop", "argus.db")
     : path.join(__dirname, "data", "argus.db"));
 
-// Legacy pr-tracker archive, read-only input for the one-time migration only.
-const INVOLVEMENT_FILE =
-  process.env.ARGUS_INVOLVEMENT_FILE ||
-  path.join("R:\\", "Repos", "retros", "pr-tracker", "pr-involvement.jsonl");
+// Legacy pr-tracker archive: read-only input for the one-time migration, only
+// when explicitly pointed at a file. No default, so a shared install doesn't look
+// for another user's paths.
+const INVOLVEMENT_FILE = process.env.ARGUS_INVOLVEMENT_FILE;
 
-// Old pr-tracker state file, imported once so we have real (stale) PRs to work with.
-const LEGACY_STATE_FILE =
-  process.env.ARGUS_LEGACY_STATE_FILE ||
-  (ONEDRIVE_ROOT ? path.join(ONEDRIVE_ROOT, "Desktop", "pr-tracker-state.json") : "");
+// Old pr-tracker state file, imported once when explicitly provided.
+const LEGACY_STATE_FILE = process.env.ARGUS_LEGACY_STATE_FILE;
 
 const store = new ArgusStore(DB_FILE);
-const migrated = store.importInvolvement(INVOLVEMENT_FILE);
+const migrated = INVOLVEMENT_FILE ? store.importInvolvement(INVOLVEMENT_FILE) : { imported: 0 };
 
 // Effective config = env defaults + saved overrides, read fresh on every call so
 // any store write (Settings save, or the poller backfilling `me`) is reflected.
@@ -50,6 +50,12 @@ const saveConfig = (overrides: ConfigOverrides): ArgusConfig => {
 };
 
 const legacyImported = LEGACY_STATE_FILE ? store.importLegacyState(LEGACY_STATE_FILE, getConfig().teamPatterns) : { imported: 0 };
+
+// Backfill the first-run gate for installs that predate it: anyone with saved
+// config or tracked PRs has already set things up, so don't show them setup.
+if (!store.isSetupComplete() && (store.counts().prs > 0 || Object.keys(store.getConfigOverrides()).length > 0)) {
+  store.markSetupComplete();
+}
 
 const pollerCtx: PollerContext = { store, getConfig };
 
@@ -80,6 +86,23 @@ function doRecordReview(canonical: string, opts: { verdict?: string; sha?: strin
   void countMyComments(canonical);
 }
 
+// Install the bundled baseline pr-review skill into the user's skills directory,
+// so the first-run setup can offer it. Never overwrites an existing pr-review
+// skill (the user may have their own tailored one).
+function installBaselineSkill(): { installed: boolean; reason?: string } {
+  const src = path.join(__dirname, "skills", "pr-review");
+  if (!existsSync(src)) return { installed: false, reason: "bundled skill not found" };
+  const skillsRoot = path.join(process.env.COPILOT_HOME || path.join(homedir(), ".copilot"), "skills");
+  const dest = path.join(skillsRoot, "pr-review");
+  if (existsSync(dest)) return { installed: false, reason: "a pr-review skill already exists; left it untouched" };
+  try {
+    cpSync(src, dest, { recursive: true });
+    return { installed: true };
+  } catch (err) {
+    return { installed: false, reason: (err as Error).message };
+  }
+}
+
 const serverCtx = (): ServerContext => ({
   store,
   bootAt: BOOT_AT,
@@ -93,6 +116,8 @@ const serverCtx = (): ServerContext => ({
   pollerStatus: getPollerStatus,
   getConfig,
   saveConfig,
+  markSetupComplete: () => store.markSetupComplete(),
+  installBaselineSkill,
 });
 
 const session = await joinSession({

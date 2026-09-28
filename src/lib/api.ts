@@ -198,6 +198,7 @@ export interface Health {
   boot_at: string;
   store: { prs: number; events: number };
   poller: PollerStatus;
+  setup_complete: boolean;
 }
 
 export interface ActivityEntry {
@@ -365,9 +366,36 @@ export interface PrEvent {
   payload: Record<string, unknown> | null;
 }
 
+export interface DeployEnv {
+  state: string | null;
+  result: string | null;
+  finishedAt: string | null;
+}
+
+export interface PrDeploy {
+  found: boolean;
+  buildId: number | null;
+  buildNumber: string | null;
+  buildUrl: string | null;
+  dev: DeployEnv | null;
+  ppe: DeployEnv | null;
+  prod: DeployEnv | null;
+  terminal: boolean;
+}
+
+export interface DeployTimelinePr {
+  canonical: string;
+  repo: string;
+  number: number;
+  title: string;
+  mergedAt: string;
+  deploy: PrDeploy;
+}
+
 export interface PrDetail {
   pr: Pr | null;
   events: PrEvent[];
+  deploy: PrDeploy | null;
 }
 
 export const prDetailQuery = (canonical: string) =>
@@ -376,6 +404,12 @@ export const prDetailQuery = (canonical: string) =>
     queryFn: () => getJson<PrDetail>(`/api/pr?canonical=${encodeURIComponent(canonical)}`),
     refetchInterval: 10_000,
   });
+
+export const deploysQuery = queryOptions({
+  queryKey: ["deploys"],
+  queryFn: () => getJson<{ window: number; timeline: DeployTimelinePr[] }>("/api/deploys"),
+  refetchInterval: 30_000,
+});
 
 export interface Period {
   label: string;
@@ -391,6 +425,9 @@ export interface ArgusConfig {
   teamPatterns: string[];
   teamLabels: Record<string, string>;
   periods: Period[];
+  reviewSkillName: string;
+  deployWindowDays: number;
+  repoPipelines: Record<string, number>;
   recencyDays: number;
   retentionDays: number;
   workStartHour: number;
@@ -410,6 +447,18 @@ export const configApi = {
     return (await res.json()).config as ArgusConfig;
   },
   teams: () => getJson<{ teams: string[] }>("/api/teams").then((r) => r.teams),
+  setup: async (
+    overrides: Partial<ArgusConfig> & { installPrReviewSkill?: boolean },
+  ): Promise<{ config: ArgusConfig; skill: { installed: boolean; reason?: string } }> => {
+    const res = await fetch("/api/setup", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(overrides),
+    });
+    if (!res.ok) throw new Error(`setup -> ${res.status}`);
+    const j = await res.json();
+    return { config: j.config as ArgusConfig, skill: j.skill };
+  },
 };
 
 export const configQuery = queryOptions({ queryKey: ["config"], queryFn: configApi.get });

@@ -44,6 +44,7 @@ function Settings() {
       teamPatterns: cfg.teamPatterns as string[],
       teamLabels: cfg.teamLabels as Record<string, string>,
       periods: (cfg.periods ?? []) as Period[],
+      reviewSkillName: cfg.reviewSkillName ?? "pr-review",
       recencyDays: cfg.recencyDays,
       retentionDays: cfg.retentionDays,
       workStartHour: cfg.workStartHour,
@@ -59,6 +60,7 @@ function Settings() {
         teamPatterns: value.teamPatterns,
         teamLabels: value.teamLabels,
         periods: value.periods.filter((p) => p.label.trim() && p.start && p.end),
+        reviewSkillName: value.reviewSkillName.trim() || "pr-review",
         recencyDays: Number(value.recencyDays),
         retentionDays: Number(value.retentionDays),
         workStartHour: Number(value.workStartHour),
@@ -141,6 +143,13 @@ function Settings() {
           {(field) => (
             <Row label="Org URL">
               <input className={inputCls} value={field.state.value} onChange={(e) => field.handleChange(e.target.value)} />
+            </Row>
+          )}
+        </form.Field>
+        <form.Field name="reviewSkillName">
+          {(field) => (
+            <Row label="Review skill" hint="The skill the Review buttons tell the agent to run. Default: pr-review.">
+              <input className={inputCls} placeholder="pr-review" value={field.state.value} onChange={(e) => field.handleChange(e.target.value)} />
             </Row>
           )}
         </form.Field>

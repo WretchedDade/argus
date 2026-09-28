@@ -24,21 +24,21 @@ const INGEST = "http://127.0.0.1:48100/api/pr/record-review";
 function recordCmd(canonical: string): string {
   return `Invoke-RestMethod -Method Post -Uri ${INGEST} -ContentType application/json -Body '{"canonical":"${canonical}","verdict":"<approved|suggestions|waiting|rejected>"}'`;
 }
-function reviewPrompt(pr: Pr): string {
+function reviewPrompt(pr: Pr, skillName: string): string {
   const ref = `**${pr.repo} #${pr.number}** — ${pr.title}\n${pr.canonical}`;
   if (pr.reviewSessionId) {
     return [
       `Argus: time for a **re-review** of ${ref}`,
       ``,
       `The prior review ran in session \`${pr.reviewSessionId}\`. Send that session a message:`,
-      `"Time for a re-review: check for new commits/updates on the PR and where things stand, review with Dade, then record the updated verdict yourself by running this in the session's terminal (no canvas needed): \`${recordCmd(pr.canonical)}\`. Do not report back here."`,
+      `"Time for a re-review: check for new commits/updates on the PR and where things stand, review it with the user, then record the updated verdict yourself by running this in the session's terminal (no canvas needed): \`${recordCmd(pr.canonical)}\`. Do not report back here."`,
     ].join("\n");
   }
   return [
     `Argus: please **review** ${ref}`,
     `Lane: ${pr.lane === "quick" ? "quick" : "review"}`,
     ``,
-    `Spawn a child session named concisely from the PR's subject with its number (3-5 words + " #${pr.number}", dropping filler like "add"/"update" and NOT prefixing "Review" — it's implied; e.g. "Add feature flags for Probadge" (#${pr.number}) → "Probadge Feature Flags #${pr.number}"), and run the pr-review skill on it. In the child session's kickoff prompt, include the line \`Lane: ${pr.lane === "quick" ? "quick" : "review"}\` so the pr-review skill branches into ${pr.lane === "quick" ? "quick" : "full"} mode automatically. Spawn it decoupled (\`coordinate_with_creator: false\`) so it does not report back into this chat.`,
+    `Spawn a child session named concisely from the PR's subject with its number (3-5 words + " #${pr.number}", dropping filler like "add"/"update" and NOT prefixing "Review" — it's implied; e.g. "Add feature flags for Probadge" (#${pr.number}) → "Probadge Feature Flags #${pr.number}"), and run the ${skillName} skill on it. In the child session's kickoff prompt, include the line \`Lane: ${pr.lane === "quick" ? "quick" : "review"}\` so the ${skillName} skill branches into ${pr.lane === "quick" ? "quick" : "full"} mode automatically. Spawn it decoupled (\`coordinate_with_creator: false\`) so it does not report back into this chat.`,
     ``,
     `As soon as the session exists, invoke the Argus \`linkReviewSession\` action with \`{ "canonical": "${pr.canonical}", "sessionId": "<child session id>" }\`. You do NOT need to wait for or relay the outcome: when the review concludes, the review session records its own verdict headlessly by running \`${recordCmd(pr.canonical)}\` in its terminal — no canvas required. If that POST fails (Argus not running), it should surface the verdict to Dade so he can record it manually.`,
   ].join("\n");
@@ -56,6 +56,8 @@ export interface ApiContext {
   pollerStatus: () => PollerStatus;
   getConfig: () => ArgusConfig;
   saveConfig: (overrides: ConfigOverrides) => ArgusConfig;
+  markSetupComplete: () => void;
+  installBaselineSkill: () => { installed: boolean; reason?: string };
 }
 
 async function readJsonBody(req: IncomingMessage): Promise<ConfigOverrides> {
@@ -83,6 +85,7 @@ export async function handleApi(
       store: ctx.store.counts(),
       migrated: ctx.migrated,
       poller: ctx.pollerStatus(),
+      setup_complete: ctx.store.isSetupComplete(),
     });
     return true;
   }
@@ -95,7 +98,13 @@ export async function handleApi(
   if (route === "/api/pr") {
     const canonical = url.searchParams.get("canonical");
     if (!canonical) sendJson(res, 400, { error: "canonical required" });
-    else sendJson(res, 200, { pr: ctx.store.getPr(canonical), events: ctx.store.listEvents(canonical) });
+    else sendJson(res, 200, { pr: ctx.store.getPr(canonical), events: ctx.store.listEvents(canonical), deploy: ctx.store.getDeploy(canonical) });
+    return true;
+  }
+
+  if (route === "/api/deploys") {
+    const cfg = ctx.getConfig();
+    sendJson(res, 200, { window: cfg.deployWindowDays, timeline: ctx.store.deployTimeline(cfg.deployWindowDays, Object.keys(cfg.repoPipelines)) });
     return true;
   }
 
@@ -153,7 +162,7 @@ export async function handleApi(
     const pr = body.canonical ? ctx.store.getPr(body.canonical) : null;
     if (!pr) sendJson(res, 400, { error: "canonical required / not found" });
     else {
-      await ctx.dispatch(reviewPrompt(pr));
+      await ctx.dispatch(reviewPrompt(pr, ctx.getConfig().reviewSkillName));
       sendJson(res, 200, { ok: true, reReview: !!pr.reviewSessionId });
     }
     return true;
@@ -213,6 +222,19 @@ export async function handleApi(
   if (route === "/api/config") {
     if (req.method === "POST") sendJson(res, 200, { config: ctx.saveConfig(await readJsonBody(req)) });
     else sendJson(res, 200, { config: ctx.getConfig() });
+    return true;
+  }
+
+  // First-run setup: save the config the user entered and mark setup done, so the
+  // UI switches from the setup gate to the board. Optionally installs the bundled
+  // baseline pr-review skill. Body is config overrides plus installPrReviewSkill.
+  if (route === "/api/setup" && req.method === "POST") {
+    const body = (await readJsonBody(req)) as ConfigOverrides & { installPrReviewSkill?: boolean };
+    const { installPrReviewSkill, ...overrides } = body;
+    const config = ctx.saveConfig(overrides);
+    ctx.markSetupComplete();
+    const skill = installPrReviewSkill ? ctx.installBaselineSkill() : { installed: false, reason: "skipped" };
+    sendJson(res, 200, { config, setup_complete: true, skill });
     return true;
   }
 

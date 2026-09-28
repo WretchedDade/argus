@@ -11,11 +11,13 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as ActivityRouteImport } from './routes/activity'
+import { Route as DeploysRouteImport } from './routes/deploys'
 import { Route as InsightsRouteImport } from './routes/insights'
 import { Route as MineRouteImport } from './routes/mine'
 import { Route as PrRouteImport } from './routes/pr'
 import { Route as RecapRouteImport } from './routes/recap'
 import { Route as SettingsRouteImport } from './routes/settings'
+import { Route as TrackedRouteImport } from './routes/tracked'
 import { Route as ActivityIndexRouteImport } from './routes/activity.index'
 import { Route as ActivityRunIdRouteImport } from './routes/activity.$runId'
 
@@ -27,6 +29,11 @@ const IndexRoute = IndexRouteImport.update({
 const ActivityRoute = ActivityRouteImport.update({
   id: '/activity',
   path: '/activity',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const DeploysRoute = DeploysRouteImport.update({
+  id: '/deploys',
+  path: '/deploys',
   getParentRoute: () => rootRouteImport,
 } as any)
 const InsightsRoute = InsightsRouteImport.update({
@@ -54,6 +61,11 @@ const SettingsRoute = SettingsRouteImport.update({
   path: '/settings',
   getParentRoute: () => rootRouteImport,
 } as any)
+const TrackedRoute = TrackedRouteImport.update({
+  id: '/tracked',
+  path: '/tracked',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ActivityIndexRoute = ActivityIndexRouteImport.update({
   id: '/',
   path: '/',
@@ -68,21 +80,25 @@ const ActivityRunIdRoute = ActivityRunIdRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/activity': typeof ActivityRouteWithChildren
+  '/deploys': typeof DeploysRoute
   '/insights': typeof InsightsRoute
   '/mine': typeof MineRoute
   '/pr': typeof PrRoute
   '/recap': typeof RecapRoute
   '/settings': typeof SettingsRoute
+  '/tracked': typeof TrackedRoute
   '/activity/$runId': typeof ActivityRunIdRoute
   '/activity/': typeof ActivityIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/deploys': typeof DeploysRoute
   '/insights': typeof InsightsRoute
   '/mine': typeof MineRoute
   '/pr': typeof PrRoute
   '/recap': typeof RecapRoute
   '/settings': typeof SettingsRoute
+  '/tracked': typeof TrackedRoute
   '/activity/$runId': typeof ActivityRunIdRoute
   '/activity': typeof ActivityIndexRoute
 }
@@ -90,11 +106,13 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/activity': typeof ActivityRouteWithChildren
+  '/deploys': typeof DeploysRoute
   '/insights': typeof InsightsRoute
   '/mine': typeof MineRoute
   '/pr': typeof PrRoute
   '/recap': typeof RecapRoute
   '/settings': typeof SettingsRoute
+  '/tracked': typeof TrackedRoute
   '/activity/$runId': typeof ActivityRunIdRoute
   '/activity/': typeof ActivityIndexRoute
 }
@@ -103,32 +121,38 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/activity'
+    | '/deploys'
     | '/insights'
     | '/mine'
     | '/pr'
     | '/recap'
     | '/settings'
+    | '/tracked'
     | '/activity/$runId'
     | '/activity/'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/deploys'
     | '/insights'
     | '/mine'
     | '/pr'
     | '/recap'
     | '/settings'
+    | '/tracked'
     | '/activity/$runId'
     | '/activity'
   id:
     | '__root__'
     | '/'
     | '/activity'
+    | '/deploys'
     | '/insights'
     | '/mine'
     | '/pr'
     | '/recap'
     | '/settings'
+    | '/tracked'
     | '/activity/$runId'
     | '/activity/'
   fileRoutesById: FileRoutesById
@@ -136,11 +160,13 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   ActivityRoute: typeof ActivityRouteWithChildren
+  DeploysRoute: typeof DeploysRoute
   InsightsRoute: typeof InsightsRoute
   MineRoute: typeof MineRoute
   PrRoute: typeof PrRoute
   RecapRoute: typeof RecapRoute
   SettingsRoute: typeof SettingsRoute
+  TrackedRoute: typeof TrackedRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -157,6 +183,13 @@ declare module '@tanstack/react-router' {
       path: '/activity'
       fullPath: '/activity'
       preLoaderRoute: typeof ActivityRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/deploys': {
+      id: '/deploys'
+      path: '/deploys'
+      fullPath: '/deploys'
+      preLoaderRoute: typeof DeploysRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/insights': {
@@ -194,6 +227,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SettingsRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/tracked': {
+      id: '/tracked'
+      path: '/tracked'
+      fullPath: '/tracked'
+      preLoaderRoute: typeof TrackedRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/activity/': {
       id: '/activity/'
       path: '/'
@@ -228,11 +268,13 @@ const ActivityRouteWithChildren = ActivityRoute._addFileChildren(
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   ActivityRoute: ActivityRouteWithChildren,
+  DeploysRoute: DeploysRoute,
   InsightsRoute: InsightsRoute,
   MineRoute: MineRoute,
   PrRoute: PrRoute,
   RecapRoute: RecapRoute,
   SettingsRoute: SettingsRoute,
+  TrackedRoute: TrackedRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

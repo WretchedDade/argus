@@ -494,7 +494,7 @@ export function PrCard({
 
   return (
     <div
-      className="pr-card border-line group relative flex min-h-[150px] flex-col justify-between gap-3 rounded-xl border pl-4 pr-3.5 pt-4 pb-4 shadow-sm transition-[transform,box-shadow] hover:-translate-y-px hover:shadow-md"
+      className={`pr-card border-line group relative flex min-h-[150px] flex-col justify-between gap-3 rounded-xl border pl-4 pr-3.5 pt-4 pb-4 shadow-sm transition-[transform,box-shadow] hover:-translate-y-px hover:shadow-md${pr.isDraft ? " opacity-65 hover:opacity-100" : ""}`}
     >
       <Link
         to="/pr"

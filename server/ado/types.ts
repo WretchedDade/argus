@@ -21,6 +21,7 @@ export interface AdoRawPr {
   repository?: { name?: string; id?: string };
   mergeStatus?: string;
   lastMergeSourceCommit?: { commitId?: string };
+  lastMergeCommit?: { commitId?: string };
   targetRefName?: string;
   sourceRefName?: string;
 }

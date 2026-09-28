@@ -5,6 +5,7 @@ import { AlarmClock, ArrowLeft, Ban, ExternalLink } from "lucide-react";
 import { api, configQuery, prDetailQuery, type Pr, type PrEvent, type PrReviewState } from "../lib/api";
 import { MarkdownPreview } from "../components/MarkdownPreview";
 import { ActionBar, VoteChips } from "../components/PrCard";
+import { DeployChips } from "../components/DeployChips";
 import { resolveTeamLabel, timeAgo } from "../lib/format";
 import { teamBadgeStyle } from "../lib/teamColor";
 import { REVIEW_STATE_META } from "../lib/triage";
@@ -144,6 +145,7 @@ function PrDetailPage() {
   }, [c, qc]);
 
   const pr = q.data?.pr;
+  const deploy = q.data?.deploy ?? null;
   // Show individual reviewer votes (now recorded with a name); hide the legacy
   // nameless/container vote rows and internal refresh events.
   const HIDDEN = new Set(["refreshed"]);
@@ -222,6 +224,13 @@ function PrDetailPage() {
               <div className="border-line border-t pt-3">
                 <div className="text-muted mb-1 text-xs font-semibold uppercase tracking-wide">Reviewer votes</div>
                 <VoteChips votes={pr.otherVotes} />
+              </div>
+            )}
+
+            {deploy && (deploy.found || pr.state === "closed") && (
+              <div className="border-line border-t pt-3">
+                <div className="text-muted mb-2 text-xs font-semibold uppercase tracking-wide">Shipped</div>
+                <DeployChips deploy={deploy} />
               </div>
             )}
 

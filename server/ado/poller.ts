@@ -1,10 +1,11 @@
 import { ArgusStore } from "../db.ts";
 import type { ArgusConfig } from "../config.ts";
-import type { ArchivableSession } from "../types.ts";
+import type { ArchivableSession, PrRole } from "../types.ts";
 import { listActivePrs, showPr, whoami, AdoError, fetchPrThreads } from "./client.ts";
 import { classifyOwnership } from "./ownership.ts";
 import { normalizePr } from "./normalize.ts";
 import { fetchAuthorMeta } from "./authorMeta.ts";
+import { resolveDeploy } from "./pipelines.ts";
 import { reconcile } from "./reconcile.ts";
 import type { CurrentPr } from "./types.ts";
 
@@ -156,6 +157,28 @@ async function runReconcile(ctx: PollerContext): Promise<ReconcileSummary | null
     // Archivable sessions are computed directly from store state (closed PR +
     // linked session) in getArchivable(), so nothing to record here.
 
+    // Deploy tracking: backfill merge commits for merged-in-window PRs that predate
+    // the feature, then resolve where merged PRs have shipped (bounded per cycle;
+    // terminal results are cached, non-terminal re-resolve until prod finishes).
+    const deployRepos = Object.keys(cfg.repoPipelines);
+    const needMerge = ctx.store.prsNeedingMergeCommit(cfg.deployWindowDays, deployRepos);
+    for (const p of needMerge) {
+      const raw = await showPr(p.number, cfg.orgUrl);
+      if (raw?.lastMergeCommit?.commitId) ctx.store.setMergeCommit(p.canonical, raw.lastMergeCommit.commitId);
+    }
+    const needDeploy = ctx.store.prsNeedingDeploy(cfg.deployWindowDays, deployRepos);
+    if (needDeploy.length) {
+      note("info", `resolving deploys for ${needDeploy.length} merged PR(s)`);
+      for (const p of needDeploy) {
+        try {
+          const deploy = await resolveDeploy(cfg.orgSlug, p.project, cfg.repoPipelines, p.repo, p.mergeCommit);
+          ctx.store.setDeploy(p.canonical, deploy);
+        } catch {
+          /* retry next cycle */
+        }
+      }
+    }
+
     const tracked = ctx.store.countTracked();
     note("info", `queue now ${tracked} tracked`);
     lastSummary = { mine: mine.length, tracked, ...applied, closed };
@@ -200,6 +223,10 @@ async function closeDeparted(
     if (pr && (pr.status === "completed" || pr.status === "abandoned")) {
       const rec = store.getPr(canonical);
       store.markClosed(canonical, pr.status, undefined, runId);
+      // Capture the merge commit so the deploy tracker can pin the exact build.
+      if (pr.status === "completed" && pr.lastMergeCommit?.commitId) {
+        store.setMergeCommit(canonical, pr.lastMergeCommit.commitId);
+      }
       closed += 1;
       if (rec?.reviewSessionId) {
         archivable.push({ repo: rec.repo, number: rec.number, status: pr.status, sessionId: rec.reviewSessionId });
@@ -275,8 +302,14 @@ export async function trackByNumber(
   if (raw.status === "completed" || raw.status === "abandoned") return { ok: false, reason: "closed" };
   const identity = await resolveIdentity(ctx);
   const own = classifyOwnership(raw, identity, cfg.teamPatterns);
-  if (!own.role) return { ok: false, reason: "not-assigned" };
-  const norm = normalizePr(raw, cfg.orgSlug, cfg.project, own);
+  // A manual add is an explicit decision to track this PR even when ADO doesn't
+  // list you as a reviewer yet — common for drafts (reviewers are often assigned
+  // only on publish). Fall back to a reviewer role so it lands on your board
+  // instead of being rejected as "not-assigned".
+  const role: PrRole = own.role ?? "reviewer";
+  const reviewState = own.role === null ? (own.reviewState ?? "needs") : own.reviewState;
+  const effective = { ...own, role, reviewState };
+  const norm = normalizePr(raw, cfg.orgSlug, cfg.project, effective);
   const existed = !!ctx.store.getPr(norm.canonical);
   ctx.store.upsertPr({
     canonical: norm.canonical,
@@ -295,7 +328,7 @@ export async function trackByNumber(
     lastCommitAt: norm.createdAt,
     prCreatedAt: norm.createdAt,
   });
-  ctx.store.setOwnership(norm.canonical, own.role, own.teams, own.reviewState, norm.description, norm.isVendor, own.otherVotes);
+  ctx.store.setOwnership(norm.canonical, effective.role, effective.teams, effective.reviewState, norm.description, norm.isVendor, effective.otherVotes);
   ctx.store.setDescription(norm.canonical, norm.description);
   if (!existed) ctx.store.appendEvent(norm.canonical, "added", { source: "manual" });
   return { ok: true, canonical: norm.canonical };

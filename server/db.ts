@@ -1,7 +1,7 @@
 import { DatabaseSync, type StatementSync } from "node:sqlite";
 import { mkdirSync, readFileSync } from "node:fs";
 import path from "node:path";
-import type { ActivityEvent, ActivityEventType, ActivityVerdict, ArchivableSession, AuthorMeta, Insights, InsightsCount, InsightsLoadBucket, InsightsWaiting, Lane, LoadDayPr, Pr, PrEvent, PrEventType, PrReviewState, PrRole, PrState, PrUpsert, RunEvent } from "./types.ts";
+import type { ActivityEvent, ActivityEventType, ActivityVerdict, ArchivableSession, AuthorMeta, DeployTimelinePr, Insights, InsightsCount, InsightsLoadBucket, InsightsWaiting, Lane, LoadDayPr, Pr, PrDeploy, PrEvent, PrEventType, PrReviewState, PrRole, PrState, PrUpsert, RunEvent } from "./types.ts";
 import type { Plan, Snapshot } from "./ado/reconcile.ts";
 import type { ConfigOverrides } from "./config.ts";
 import { isVendorName } from "./ado/normalize.ts";
@@ -360,6 +360,9 @@ export class ArgusStore {
     this.#ensureColumn("prs", "my_comments", "INTEGER"); // # of comments I authored on this PR; counted once after I record a verdict
     this.#ensureColumn("prs", "approvals_json", "TEXT"); // individuals who approved (name + vote), for card display
     this.#ensureColumn("prs", "author_meta_json", "TEXT"); // completability + comment counts for authored PRs
+    this.#ensureColumn("prs", "merge_commit", "TEXT"); // the merge commit sha (for deploy tracking); captured on close
+    this.#ensureColumn("prs", "deploy_json", "TEXT"); // cached PrDeploy: where this merged PR has shipped
+    this.#ensureColumn("prs", "deploy_resolved_at", "TEXT"); // when deploy_json was last resolved
     // Backfill reviewed_at (verdict time) for reviews recorded before that column
     // existed, from the latest recorded 'reviewed' verdict event.
     this.#db.exec(`
@@ -779,6 +782,103 @@ export class ArgusStore {
 
   setMyComments(canonical: string, count: number): void {
     this.#prep("UPDATE prs SET my_comments = ? WHERE canonical = ?").run(count, canonical);
+  }
+
+  // --- Deploy tracking (where a merged PR shipped) ---
+
+  // The merge commit is captured on close (poller) so we can pin the exact build.
+  setMergeCommit(canonical: string, sha: string): void {
+    this.#prep("UPDATE prs SET merge_commit = ? WHERE canonical = ?").run(sha, canonical);
+  }
+
+  // ISO cutoff for the deploy window: PRs merged on/after this are in scope.
+  #deployCutoff(windowDays: number): string {
+    return new Date(Date.now() - windowDays * 86_400_000).toISOString();
+  }
+
+  // Merged-in-window PRs whose merge commit we haven't captured yet (e.g. closed
+  // before the deploy feature existed). Scoped to repos with a configured pipeline
+  // — no point backfilling for repos we can't map to a build. Bounded per cycle.
+  prsNeedingMergeCommit(windowDays: number, repos: string[], limit = 30): { canonical: string; number: number }[] {
+    if (repos.length === 0) return [];
+    const ph = repos.map(() => "?").join(",");
+    return this.#prep(`
+      SELECT p.canonical, p.number
+      FROM prs p
+      WHERE p.state = 'closed' AND p.merge_commit IS NULL AND p.repo IN (${ph})
+        AND EXISTS (
+          SELECT 1 FROM pr_events e
+          WHERE e.canonical = p.canonical AND e.type = 'closed'
+            AND json_extract(e.payload, '$.reason') = 'completed' AND e.ts >= ?
+        )
+      LIMIT ?
+    `).all(...repos, this.#deployCutoff(windowDays), limit) as unknown as { canonical: string; number: number }[];
+  }
+
+  // Merged-in-window PRs (configured repos) with a known merge commit whose deploy
+  // state is unresolved or not yet terminal (still rolling out) — refreshed by the
+  // poller until prod finishes.
+  prsNeedingDeploy(windowDays: number, repos: string[], limit = 20): { canonical: string; repo: string; project: string; mergeCommit: string }[] {
+    if (repos.length === 0) return [];
+    const ph = repos.map(() => "?").join(",");
+    return this.#prep(`
+      SELECT p.canonical, p.repo, p.project, p.merge_commit AS mergeCommit
+      FROM prs p
+      WHERE p.merge_commit IS NOT NULL AND p.repo IN (${ph})
+        AND (p.deploy_json IS NULL OR json_extract(p.deploy_json, '$.terminal') IS NOT 1)
+        AND EXISTS (
+          SELECT 1 FROM pr_events e
+          WHERE e.canonical = p.canonical AND e.type = 'closed'
+            AND json_extract(e.payload, '$.reason') = 'completed' AND e.ts >= ?
+        )
+      LIMIT ?
+    `).all(...repos, this.#deployCutoff(windowDays), limit) as unknown as { canonical: string; repo: string; project: string; mergeCommit: string }[];
+  }
+
+  setDeploy(canonical: string, deploy: PrDeploy): void {
+    this.#prep("UPDATE prs SET deploy_json = ?, deploy_resolved_at = ? WHERE canonical = ?").run(
+      JSON.stringify(deploy),
+      now(),
+      canonical,
+    );
+  }
+
+  // The deploy timeline: PRs merged within the window, newest first, each with its
+  // resolved deploy state (or an unresolved placeholder if the poller hasn't gotten
+  // to it yet). Drives the Deploys view and the detail-page "Shipped" line.
+  deployTimeline(windowDays: number, repos: string[]): DeployTimelinePr[] {
+    if (repos.length === 0) return [];
+    const ph = repos.map(() => "?").join(",");
+    const rows = this.#prep(`
+      SELECT p.canonical, p.repo, p.number, p.title, p.deploy_json AS deployJson,
+             (SELECT MIN(e.ts) FROM pr_events e
+              WHERE e.canonical = p.canonical AND e.type = 'closed'
+                AND json_extract(e.payload, '$.reason') = 'completed') AS mergedAt
+      FROM prs p
+      WHERE p.state = 'closed' AND p.repo IN (${ph})
+        AND EXISTS (
+          SELECT 1 FROM pr_events e
+          WHERE e.canonical = p.canonical AND e.type = 'closed'
+            AND json_extract(e.payload, '$.reason') = 'completed' AND e.ts >= ?
+        )
+      ORDER BY mergedAt DESC
+    `).all(...repos, this.#deployCutoff(windowDays)) as unknown as {
+      canonical: string; repo: string; number: number; title: string; deployJson: string | null; mergedAt: string;
+    }[];
+    const pending: PrDeploy = { found: false, buildId: null, buildNumber: null, buildUrl: null, dev: null, ppe: null, prod: null, terminal: false };
+    return rows.map((r) => ({
+      canonical: r.canonical,
+      repo: r.repo,
+      number: r.number,
+      title: r.title,
+      mergedAt: r.mergedAt,
+      deploy: r.deployJson ? (JSON.parse(r.deployJson) as PrDeploy) : pending,
+    }));
+  }
+
+  getDeploy(canonical: string): PrDeploy | null {
+    const row = this.#prep("SELECT deploy_json AS j FROM prs WHERE canonical = ?").get(canonical) as { j: string | null } | undefined;
+    return row?.j ? (JSON.parse(row.j) as PrDeploy) : null;
   }
 
   // --- Insights: aggregate analytics computed on demand from events + PRs ---
@@ -1559,15 +1659,18 @@ export class ArgusStore {
     // Wake an "until FTE approves" snooze once a teammate/FTE has approved, and
     // emit a distinct signal (with the approver's name) so the bell can surface
     // "an FTE cleared this for you" unambiguously — separate from a manual clear.
-    if (reviewState === "covered" || reviewState === "approved") {
-      const row = this.#prep("SELECT snooze_mode AS m FROM prs WHERE canonical = ?").get(canonical) as
-        | { m: string | null }
-        | undefined;
-      if (row?.m === "fte") {
-        // Attribute the wake to a non-vendor (FTE) approver only — never a vendor,
-        // whose approval doesn't cover the team's review. If the coverage came
-        // from the team container with no individual FTE approver, stay generic.
-        const by = otherVotes.find((v) => v.vote >= 5 && !isVendorName(v.name))?.name ?? null;
+    // The snooze means "hide until someone on my team has vetted this," so a
+    // non-vendor (FTE) approving vote wakes it directly — NOT only the stricter
+    // team "covered" state, which never applies when ADO lists me as an
+    // individual reviewer (role=reviewer) so my own reviewState stays "needs".
+    const row = this.#prep("SELECT snooze_mode AS m FROM prs WHERE canonical = ?").get(canonical) as
+      | { m: string | null }
+      | undefined;
+    if (row?.m === "fte") {
+      // Attribute the wake to a non-vendor (FTE) approver — a vendor approval
+      // doesn't cover the team's review, so it never wakes an fte-snooze.
+      const by = otherVotes.find((v) => v.vote >= 5 && !isVendorName(v.name))?.name ?? null;
+      if (by || reviewState === "covered" || reviewState === "approved") {
         this.appendEvent(canonical, "fte_woke", { by });
         this.setSnooze(canonical, null, null);
       }
@@ -1781,6 +1884,17 @@ export class ArgusStore {
     this.#prep(
       "INSERT INTO settings (key, value) VALUES ('config', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
     ).run(JSON.stringify(overrides));
+  }
+
+  // First-run gate: true once the user has confirmed org/project/team setup.
+  // Until then the UI shows the setup screen instead of an empty, mis-configured
+  // board (the shipped defaults are one team's, so ownership is wrong otherwise).
+  isSetupComplete(): boolean {
+    return this.#getSetting("setup_complete") === "1";
+  }
+
+  markSetupComplete(): void {
+    this.#setSetting("setup_complete", "1");
   }
 
   #getSetting(key: string): string | null {
