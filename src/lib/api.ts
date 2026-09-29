@@ -135,7 +135,7 @@ export interface Insights {
     }[];
   };
   reviewRhythm: {
-    items: { at: string; repo: string; team: string | null; number: number; title: string; verdict: string | null }[];
+    items: { at: string; repo: string; team: string | null; number: number; title: string; verdict: string | null; author: string | null; isVendor: boolean }[];
   };
   balance: {
     days: { key: string; inflow: number; throughput: number; level: number }[];
@@ -171,6 +171,7 @@ export interface Pr {
   snoozeMode: "time" | "fte" | null;
   reviewSessionId: string | null;
   reviewedSha: string | null;
+  changedFiles: number | null;
   authorMeta: AuthorMeta | null;
   prCreatedAt: string | null;
   updatedAt: string;
@@ -374,6 +375,7 @@ export interface DeployEnv {
 
 export interface PrDeploy {
   found: boolean;
+  reason: "no-pipeline" | "no-build" | null;
   buildId: number | null;
   buildNumber: string | null;
   buildUrl: string | null;
@@ -388,6 +390,8 @@ export interface DeployTimelinePr {
   repo: string;
   number: number;
   title: string;
+  author: string | null;
+  mine: boolean;
   mergedAt: string;
   deploy: PrDeploy;
 }
@@ -419,6 +423,7 @@ export interface Period {
 
 export interface ArgusConfig {
   me: string | null;
+  avatarUrl: string;
   orgUrl: string;
   orgSlug: string;
   project: string;

@@ -158,6 +158,8 @@ function toUpsert(c: CurrentPr): PrUpsert {
     lastCommitSha: c.sha,
     lastCommitAt: c.createdAt, // proxy; the bulk list carries no commit time
     prCreatedAt: c.createdAt,
+    sourceBranch: c.sourceBranch,
+    targetBranch: c.targetBranch,
   };
 }
 

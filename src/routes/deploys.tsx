@@ -2,8 +2,9 @@ import { useMemo, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { ChevronDown, ChevronRight } from "lucide-react";
-import { deploysQuery, type DeployTimelinePr } from "../lib/api";
+import { configQuery, deploysQuery, type DeployTimelinePr } from "../lib/api";
 import { DeployChips, isProdLive } from "../components/DeployChips";
+import { Avatar } from "../components/Avatar";
 import { nameColor, shortAge, shortRepo } from "../lib/format";
 
 export const Route = createFileRoute("/deploys")({
@@ -11,18 +12,20 @@ export const Route = createFileRoute("/deploys")({
   component: DeploysPage,
 });
 
-function DeployRow({ item }: { item: DeployTimelinePr }) {
+function DeployRow({ item, avatarUrl }: { item: DeployTimelinePr; avatarUrl?: string }) {
   return (
     <a
       href={item.canonical}
       target="_blank"
       rel="noreferrer"
       className="hover:bg-surface flex items-center gap-3 px-4 py-2.5"
+      style={item.mine ? { background: "color-mix(in srgb, var(--peacock-teal) 8%, transparent)" } : undefined}
     >
+      <Avatar name={item.author} imageUrl={item.mine ? avatarUrl : null} ring={item.mine} />
       <div className="min-w-0 flex-1">
         <div className="text-fg truncate text-sm">{item.title}</div>
         <div className="text-muted truncate text-xs">
-          #{item.number} · merged {shortAge(item.mergedAt)} ago
+          #{item.number} · {item.mine ? "you" : (item.author ?? "unknown")} · merged {shortAge(item.mergedAt)} ago
         </div>
       </div>
       <div className="shrink-0">
@@ -32,7 +35,7 @@ function DeployRow({ item }: { item: DeployTimelinePr }) {
   );
 }
 
-function RepoGroup({ repo, items }: { repo: string; items: DeployTimelinePr[] }) {
+function RepoGroup({ repo, items, avatarUrl }: { repo: string; items: DeployTimelinePr[]; avatarUrl?: string }) {
   const [open, setOpen] = useState(true);
   const live = items.filter((i) => isProdLive(i.deploy)).length;
   const color = nameColor(repo);
@@ -59,7 +62,7 @@ function RepoGroup({ repo, items }: { repo: string; items: DeployTimelinePr[] })
           style={{ background: `color-mix(in srgb, ${color} 13%, var(--card-bg))` }}
         >
           {items.map((item) => (
-            <DeployRow key={item.canonical} item={item} />
+            <DeployRow key={item.canonical} item={item} avatarUrl={avatarUrl} />
           ))}
         </div>
       )}
@@ -69,6 +72,7 @@ function RepoGroup({ repo, items }: { repo: string; items: DeployTimelinePr[] })
 
 function DeploysPage() {
   const data = useQuery(deploysQuery).data;
+  const avatarUrl = useQuery(configQuery).data?.avatarUrl || undefined;
   const timeline = data?.timeline ?? [];
 
   // Group by repo, most-active first; rows stay newest-merged first from the server.
@@ -92,7 +96,7 @@ function DeploysPage() {
       ) : (
         <div className="flex flex-col gap-3">
           {groups.map(([repo, items]) => (
-            <RepoGroup key={repo} repo={repo} items={items} />
+            <RepoGroup key={repo} repo={repo} items={items} avatarUrl={avatarUrl} />
           ))}
         </div>
       )}

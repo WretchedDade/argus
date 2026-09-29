@@ -275,6 +275,7 @@ interface PrRow {
   added_at: string;
   updated_at: string;
   review_session_id: string | null;
+  changed_files: number | null;
 }
 
 function rowToPr(r: PrRow): Pr {
@@ -308,6 +309,7 @@ function rowToPr(r: PrRow): Pr {
     updatedAt: r.updated_at,
     reviewSessionId: r.review_session_id,
     reviewedSha: r.reviewed_sha,
+    changedFiles: r.changed_files ?? null,
     authorMeta: r.author_meta_json ? (JSON.parse(r.author_meta_json) as AuthorMeta) : null,
   };
 }
@@ -361,8 +363,26 @@ export class ArgusStore {
     this.#ensureColumn("prs", "approvals_json", "TEXT"); // individuals who approved (name + vote), for card display
     this.#ensureColumn("prs", "author_meta_json", "TEXT"); // completability + comment counts for authored PRs
     this.#ensureColumn("prs", "merge_commit", "TEXT"); // the merge commit sha (for deploy tracking); captured on close
+    this.#ensureColumn("prs", "merged_at", "TEXT"); // ADO's real closedDate (merge time), for build time-bounding
     this.#ensureColumn("prs", "deploy_json", "TEXT"); // cached PrDeploy: where this merged PR has shipped
     this.#ensureColumn("prs", "deploy_resolved_at", "TEXT"); // when deploy_json was last resolved
+    this.#ensureColumn("prs", "source_branch", "TEXT"); // PR source branch (for the diff/file-count call)
+    this.#ensureColumn("prs", "target_branch", "TEXT"); // PR target branch
+    this.#ensureColumn("prs", "changed_files", "INTEGER"); // # of files changed in the PR (from ADO branch diff)
+    this.#ensureColumn("prs", "changed_files_sha", "TEXT"); // the head sha the file count was computed at (staleness check)
+    // One-time: the first file-count pass used a bad query param and stored 0s;
+    // clear them so they recompute correctly.
+    if (!this.#getSetting("changed_files_reset")) {
+      this.#db.exec("UPDATE prs SET changed_files = NULL, changed_files_sha = NULL");
+      this.#setSetting("changed_files_reset", now());
+    }
+    // One-time: clear cached not-found deploy results, so they re-resolve. Covers
+    // the pre-`reason` rows and the pre-`merged_at` rows whose build search used
+    // Argus's detection time (often days after the real merge) and missed the build.
+    if (!this.#getSetting("deploy_time_migrated")) {
+      this.#db.exec("UPDATE prs SET deploy_json = NULL WHERE deploy_json IS NOT NULL AND json_extract(deploy_json, '$.found') = 0");
+      this.#setSetting("deploy_time_migrated", now());
+    }
     // Backfill reviewed_at (verdict time) for reviews recorded before that column
     // existed, from the latest recorded 'reviewed' verdict event.
     this.#db.exec(`
@@ -473,10 +493,10 @@ export class ArgusStore {
     this.#prep(`
       INSERT INTO prs (canonical, org, project, repo, number, title, description, author,
                        is_vendor, role, teams_json, is_draft, last_commit_sha,
-                       last_commit_at, pr_created_at, added_at, updated_at)
+                       last_commit_at, pr_created_at, source_branch, target_branch, added_at, updated_at)
       VALUES ($canonical, $org, $project, $repo, $number, $title, $description, $author,
               $is_vendor, $role, $teams_json, $is_draft, $last_commit_sha,
-              $last_commit_at, $pr_created_at, $ts, $ts)
+              $last_commit_at, $pr_created_at, $source_branch, $target_branch, $ts, $ts)
       ON CONFLICT(canonical) DO UPDATE SET
         org = excluded.org, project = excluded.project, repo = excluded.repo,
         number = excluded.number, title = excluded.title,
@@ -489,6 +509,8 @@ export class ArgusStore {
         last_commit_sha = excluded.last_commit_sha,
         last_commit_at = excluded.last_commit_at,
         pr_created_at = excluded.pr_created_at,
+        source_branch = excluded.source_branch,
+        target_branch = excluded.target_branch,
         updated_at = excluded.updated_at
     `).run({
       $canonical: pr.canonical,
@@ -506,6 +528,8 @@ export class ArgusStore {
       $last_commit_sha: pr.lastCommitSha,
       $last_commit_at: pr.lastCommitAt,
       $pr_created_at: pr.prCreatedAt,
+      $source_branch: pr.sourceBranch ?? null,
+      $target_branch: pr.targetBranch ?? null,
       $ts: ts,
     });
   }
@@ -786,9 +810,10 @@ export class ArgusStore {
 
   // --- Deploy tracking (where a merged PR shipped) ---
 
-  // The merge commit is captured on close (poller) so we can pin the exact build.
-  setMergeCommit(canonical: string, sha: string): void {
-    this.#prep("UPDATE prs SET merge_commit = ? WHERE canonical = ?").run(sha, canonical);
+  // Merge commit + real merge time (ADO closedDate), captured on close so we can
+  // pin the exact build and bound the build search to the actual merge moment.
+  setMergeInfo(canonical: string, sha: string, mergedAt: string | null): void {
+    this.#prep("UPDATE prs SET merge_commit = ?, merged_at = COALESCE(?, merged_at) WHERE canonical = ?").run(sha, mergedAt ?? null, canonical);
   }
 
   // ISO cutoff for the deploy window: PRs merged on/after this are in scope.
@@ -796,16 +821,15 @@ export class ArgusStore {
     return new Date(Date.now() - windowDays * 86_400_000).toISOString();
   }
 
-  // Merged-in-window PRs whose merge commit we haven't captured yet (e.g. closed
-  // before the deploy feature existed). Scoped to repos with a configured pipeline
-  // — no point backfilling for repos we can't map to a build. Bounded per cycle.
-  prsNeedingMergeCommit(windowDays: number, repos: string[], limit = 30): { canonical: string; number: number }[] {
+  // Merged-in-window PRs (configured repos) missing the merge commit or its real
+  // merge time. The poller backfills a bounded batch via `az pr show`.
+  prsNeedingMergeInfo(windowDays: number, repos: string[], limit = 30): { canonical: string; number: number }[] {
     if (repos.length === 0) return [];
     const ph = repos.map(() => "?").join(",");
     return this.#prep(`
       SELECT p.canonical, p.number
       FROM prs p
-      WHERE p.state = 'closed' AND p.merge_commit IS NULL AND p.repo IN (${ph})
+      WHERE p.state = 'closed' AND (p.merge_commit IS NULL OR p.merged_at IS NULL) AND p.repo IN (${ph})
         AND EXISTS (
           SELECT 1 FROM pr_events e
           WHERE e.canonical = p.canonical AND e.type = 'closed'
@@ -818,11 +842,14 @@ export class ArgusStore {
   // Merged-in-window PRs (configured repos) with a known merge commit whose deploy
   // state is unresolved or not yet terminal (still rolling out) — refreshed by the
   // poller until prod finishes.
-  prsNeedingDeploy(windowDays: number, repos: string[], limit = 20): { canonical: string; repo: string; project: string; mergeCommit: string }[] {
+  prsNeedingDeploy(windowDays: number, repos: string[], limit = 20): { canonical: string; repo: string; project: string; mergeCommit: string; mergedAt: string }[] {
     if (repos.length === 0) return [];
     const ph = repos.map(() => "?").join(",");
     return this.#prep(`
-      SELECT p.canonical, p.repo, p.project, p.merge_commit AS mergeCommit
+      SELECT p.canonical, p.repo, p.project, p.merge_commit AS mergeCommit,
+             COALESCE(p.merged_at, (SELECT MIN(e.ts) FROM pr_events e
+              WHERE e.canonical = p.canonical AND e.type = 'closed'
+                AND json_extract(e.payload, '$.reason') = 'completed')) AS mergedAt
       FROM prs p
       WHERE p.merge_commit IS NOT NULL AND p.repo IN (${ph})
         AND (p.deploy_json IS NULL OR json_extract(p.deploy_json, '$.terminal') IS NOT 1)
@@ -831,8 +858,9 @@ export class ArgusStore {
           WHERE e.canonical = p.canonical AND e.type = 'closed'
             AND json_extract(e.payload, '$.reason') = 'completed' AND e.ts >= ?
         )
+      ORDER BY (p.deploy_json IS NULL) DESC, mergedAt DESC
       LIMIT ?
-    `).all(...repos, this.#deployCutoff(windowDays), limit) as unknown as { canonical: string; repo: string; project: string; mergeCommit: string }[];
+    `).all(...repos, this.#deployCutoff(windowDays), limit) as unknown as { canonical: string; repo: string; project: string; mergeCommit: string; mergedAt: string }[];
   }
 
   setDeploy(canonical: string, deploy: PrDeploy): void {
@@ -850,10 +878,10 @@ export class ArgusStore {
     if (repos.length === 0) return [];
     const ph = repos.map(() => "?").join(",");
     const rows = this.#prep(`
-      SELECT p.canonical, p.repo, p.number, p.title, p.deploy_json AS deployJson,
-             (SELECT MIN(e.ts) FROM pr_events e
+      SELECT p.canonical, p.repo, p.number, p.title, p.author AS author, p.role AS role, p.deploy_json AS deployJson,
+             COALESCE(p.merged_at, (SELECT MIN(e.ts) FROM pr_events e
               WHERE e.canonical = p.canonical AND e.type = 'closed'
-                AND json_extract(e.payload, '$.reason') = 'completed') AS mergedAt
+                AND json_extract(e.payload, '$.reason') = 'completed')) AS mergedAt
       FROM prs p
       WHERE p.state = 'closed' AND p.repo IN (${ph})
         AND EXISTS (
@@ -863,14 +891,16 @@ export class ArgusStore {
         )
       ORDER BY mergedAt DESC
     `).all(...repos, this.#deployCutoff(windowDays)) as unknown as {
-      canonical: string; repo: string; number: number; title: string; deployJson: string | null; mergedAt: string;
+      canonical: string; repo: string; number: number; title: string; author: string | null; role: string | null; deployJson: string | null; mergedAt: string;
     }[];
-    const pending: PrDeploy = { found: false, buildId: null, buildNumber: null, buildUrl: null, dev: null, ppe: null, prod: null, terminal: false };
+    const pending: PrDeploy = { found: false, reason: null, buildId: null, buildNumber: null, buildUrl: null, dev: null, ppe: null, prod: null, terminal: false };
     return rows.map((r) => ({
       canonical: r.canonical,
       repo: r.repo,
       number: r.number,
       title: r.title,
+      author: r.author,
+      mine: r.role === "author",
       mergedAt: r.mergedAt,
       deploy: r.deployJson ? (JSON.parse(r.deployJson) as PrDeploy) : pending,
     }));
@@ -879,6 +909,25 @@ export class ArgusStore {
   getDeploy(canonical: string): PrDeploy | null {
     const row = this.#prep("SELECT deploy_json AS j FROM prs WHERE canonical = ?").get(canonical) as { j: string | null } | undefined;
     return row?.j ? (JSON.parse(row.j) as PrDeploy) : null;
+  }
+
+  // --- PR size (files changed) ---
+
+  // Active board PRs whose file count is missing or stale (a new commit landed
+  // since it was counted). Bounded per cycle; needs branches for the diff call.
+  prsNeedingFileCount(limit = 20): { canonical: string; repo: string; sourceBranch: string; targetBranch: string; sha: string | null }[] {
+    return this.#prep(`
+      SELECT canonical, repo, source_branch AS sourceBranch, target_branch AS targetBranch, last_commit_sha AS sha
+      FROM prs
+      WHERE state != 'closed' AND dismissed = 0
+        AND source_branch IS NOT NULL AND target_branch IS NOT NULL
+        AND (changed_files IS NULL OR changed_files_sha IS NOT last_commit_sha)
+      LIMIT ?
+    `).all(limit) as unknown as { canonical: string; repo: string; sourceBranch: string; targetBranch: string; sha: string | null }[];
+  }
+
+  setChangedFiles(canonical: string, count: number, sha: string | null): void {
+    this.#prep("UPDATE prs SET changed_files = ?, changed_files_sha = ? WHERE canonical = ?").run(count, sha, canonical);
   }
 
   // --- Insights: aggregate analytics computed on demand from events + PRs ---
@@ -1268,12 +1317,12 @@ export class ArgusStore {
     // act of stopping your own work to load someone else's PR. Emitted as a flat,
     // timestamped list (repo + team + title); the client bins into days to show
     // volume, batching (clustered vs scattered), and breadth (distinct contexts).
-    const prMeta = new Map<string, { repo: string; team: string | null; title: string; number: number }>();
+    const prMeta = new Map<string, { repo: string; team: string | null; title: string; number: number; author: string | null; isVendor: boolean }>();
     for (const p of prs) {
       const t = p.teamsJson ? (JSON.parse(p.teamsJson) as string[])[0] ?? null : null;
-      prMeta.set(p.canonical, { repo: p.repo, team: t, title: p.title, number: p.number });
+      prMeta.set(p.canonical, { repo: p.repo, team: t, title: p.title, number: p.number, author: p.author, isVendor: !!p.isVendor });
     }
-    const rhythmItems: { at: string; repo: string; team: string | null; number: number; title: string; verdict: string | null }[] = [];
+    const rhythmItems: { at: string; repo: string; team: string | null; number: number; title: string; verdict: string | null; author: string | null; isVendor: boolean }[] = [];
     for (const r of this.#db
       .prepare(
         `SELECT canonical, ts, json_extract(payload, '$.verdict') AS verdict FROM pr_events
@@ -1283,7 +1332,7 @@ export class ArgusStore {
       .all() as unknown as { canonical: string; ts: string; verdict: string | null }[]) {
       const m = prMeta.get(r.canonical);
       if (!m) continue;
-      rhythmItems.push({ at: r.ts, repo: m.repo, team: m.team, number: m.number, title: m.title, verdict: r.verdict });
+      rhythmItems.push({ at: r.ts, repo: m.repo, team: m.team, number: m.number, title: m.title, verdict: r.verdict, author: m.author, isVendor: m.isVendor });
     }
 
 

@@ -166,7 +166,7 @@ export interface Insights {
     }[];
   };
   reviewRhythm: {
-    items: { at: string; repo: string; team: string | null; number: number; title: string; verdict: string | null }[];
+    items: { at: string; repo: string; team: string | null; number: number; title: string; verdict: string | null; author: string | null; isVendor: boolean }[];
   };
   balance: {
     days: { key: string; inflow: number; throughput: number; level: number }[];
@@ -212,6 +212,7 @@ export interface Pr {
   updatedAt: string;
   reviewSessionId: string | null;
   reviewedSha: string | null;
+  changedFiles: number | null;
   authorMeta: AuthorMeta | null;
 }
 
@@ -234,6 +235,8 @@ export interface PrUpsert {
   lastCommitSha: string | null;
   lastCommitAt: string | null;
   prCreatedAt: string | null;
+  sourceBranch: string | null;
+  targetBranch: string | null;
 }
 
 export interface PrEvent {
@@ -320,6 +323,7 @@ export interface DeployEnv {
 // the PR was abandoned), so it never needs re-resolving.
 export interface PrDeploy {
   found: boolean;
+  reason: "no-pipeline" | "no-build" | null; // why found is false (else null)
   buildId: number | null;
   buildNumber: string | null;
   buildUrl: string | null;
@@ -335,6 +339,8 @@ export interface DeployTimelinePr {
   repo: string;
   number: number;
   title: string;
+  author: string | null;
+  mine: boolean;
   mergedAt: string;
   deploy: PrDeploy;
 }

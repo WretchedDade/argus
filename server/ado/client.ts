@@ -67,6 +67,28 @@ export async function adoAccessToken(): Promise<string> {
   return j.accessToken;
 }
 
+// PR size: the number of files changed, from the branch-to-branch diff. ADO's
+// `changeCounts` (Add/Edit/Delete file counts) is an exact aggregate, so this is
+// one REST call — no paging the file list, no local git. Lines changed are NOT
+// available cheaply (ADO gives no aggregate +/-), so we only return file count.
+export async function prChangedFileCount(orgUrl: string, project: string, repo: string, targetBranch: string, sourceBranch: string): Promise<number | null> {
+  const base = `${orgUrl.replace(/\/$/, "")}/${encodeURIComponent(project)}/_apis/git/repositories/${encodeURIComponent(repo)}`;
+  const params = new URLSearchParams({
+    baseVersion: targetBranch,
+    baseVersionType: "branch",
+    targetVersion: sourceBranch,
+    targetVersionType: "branch",
+    "api-version": "7.1",
+    $top: "1",
+  });
+  const token = await adoAccessToken();
+  const res = await fetch(`${base}/diffs/commits?${params}`, { headers: { Authorization: `Bearer ${token}` } });
+  if (!res.ok) throw new AdoError(`diffs/commits ${res.status} for ${repo} ${sourceBranch}`);
+  const j = (await res.json()) as { changeCounts?: Record<string, number> };
+  if (!j.changeCounts) return 0;
+  return Object.values(j.changeCounts).reduce((a, n) => a + (n || 0), 0);
+}
+
 // Targeted read for a PR that dropped off the active list (to catch merge/abandon).
 export function showPr(id: number, org: string): Promise<AdoRawPr | null> {
   return azJson<AdoRawPr>(["repos", "pr", "show", "--id", String(id), "--org", org]);

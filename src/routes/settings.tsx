@@ -38,6 +38,7 @@ function Settings() {
   const form = useForm({
     defaultValues: {
       me: cfg.me ?? "",
+      avatarUrl: cfg.avatarUrl ?? "",
       project: cfg.project,
       orgUrl: cfg.orgUrl,
       orgSlug: cfg.orgSlug,
@@ -54,6 +55,7 @@ function Settings() {
     onSubmit: async ({ value }) => {
       await configApi.save({
         me: value.me.trim() || null,
+        avatarUrl: value.avatarUrl.trim(),
         project: value.project.trim(),
         orgUrl: value.orgUrl.trim(),
         orgSlug: value.orgSlug.trim(),
@@ -89,6 +91,18 @@ function Settings() {
               <input
                 className={inputCls}
                 placeholder="auto from az"
+                value={field.state.value}
+                onChange={(e) => field.handleChange(e.target.value)}
+              />
+            </Row>
+          )}
+        </form.Field>
+        <form.Field name="avatarUrl">
+          {(field) => (
+            <Row label="Avatar image" hint="Optional image URL shown for your own PRs (e.g. a photo). Falls back to initials.">
+              <input
+                className={inputCls}
+                placeholder="https://…/me.jpg"
                 value={field.state.value}
                 onChange={(e) => field.handleChange(e.target.value)}
               />

@@ -11,6 +11,7 @@ export interface Period {
 // identity when set. `defaultConfig() + saved overrides` = the effective config.
 export interface ArgusConfig {
   me: string | null; // identity override; null = use az account
+  avatarUrl: string; // optional custom avatar image for your own PRs (else initials)
   orgUrl: string;
   orgSlug: string;
   project: string;
@@ -34,6 +35,7 @@ export function defaultConfig(): ArgusConfig {
   const [dayStart, dayEnd] = parseRange(process.env.ARGUS_WORK_DAYS, 1, 5);
   return {
     me: process.env.ARGUS_ME ?? null,
+    avatarUrl: process.env.ARGUS_AVATAR_URL ?? "",
     orgUrl: process.env.ARGUS_ORG_URL ?? "https://dev.azure.com/worldwidelearning",
     orgSlug: process.env.ARGUS_ORG_SLUG ?? "worldwidelearning",
     project: process.env.ARGUS_PROJECT ?? "LPE",

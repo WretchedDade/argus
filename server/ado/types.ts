@@ -9,6 +9,7 @@ export interface AdoRawPr {
   status: string;
   isDraft: boolean;
   creationDate: string;
+  closedDate?: string;
   createdBy?: { displayName?: string; uniqueName?: string; id?: string };
   reviewers?: {
     id?: string;

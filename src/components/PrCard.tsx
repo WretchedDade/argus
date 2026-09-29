@@ -32,6 +32,33 @@ function StatePill({ pr, small = false }: { pr: Pr; small?: boolean }) {
   );
 }
 
+// PR size from files changed, as a t-shirt bucket + count. Color goes green→red
+// with size, so a big review is obvious at a glance.
+const SIZE_BUCKETS: { max: number; label: string; anchor: string }[] = [
+  { max: 2, label: "XS", anchor: "--color-green-500" },
+  { max: 6, label: "S", anchor: "--color-teal-500" },
+  { max: 15, label: "M", anchor: "--color-amber-500" },
+  { max: 40, label: "L", anchor: "--color-orange-500" },
+  { max: Infinity, label: "XL", anchor: "--color-rose-500" },
+];
+
+function SizeChip({ files }: { files: number | null }) {
+  if (files == null) return null;
+  const b = SIZE_BUCKETS.find((x) => files <= x.max)!;
+  return (
+    <span
+      className="ml-1 inline-flex shrink-0 items-center gap-1 rounded border px-1.5 py-0 text-[10px] font-medium"
+      style={{
+        borderColor: `color-mix(in srgb, var(${b.anchor}) 40%, var(--color-line))`,
+        color: `color-mix(in srgb, var(${b.anchor}) 60%, var(--color-fg))`,
+      }}
+      title={`${files} file${files === 1 ? "" : "s"} changed`}
+    >
+      {b.label} · {files}f
+    </span>
+  );
+}
+
 function TeamDots({ teams, labels }: { teams: string[]; labels: Record<string, string> }) {
   return (
     <>
@@ -459,6 +486,7 @@ export function PrCard({
         <span className="text-muted shrink-0">
           {pr.repo} #{pr.number}
         </span>
+        <SizeChip files={pr.changedFiles} />
         <StatePill pr={pr} small />
         {pr.snoozeMode === "fte" ? (
           <span className="text-muted inline-flex shrink-0 items-center gap-1">
@@ -520,6 +548,7 @@ export function PrCard({
                 vendor
               </span>
             )}
+            <SizeChip files={pr.changedFiles} />
           </div>
         </div>
 

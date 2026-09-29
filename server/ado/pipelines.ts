@@ -58,14 +58,18 @@ interface RawTimelineRecord {
   finishTime?: string;
 }
 
-// Find the build whose sourceVersion equals the merge commit. These Official
-// pipelines are individualCI (one build per merge), so this is an exact 1:1.
-async function buildForCommit(orgSlug: string, project: string, defId: number, commit: string): Promise<RawBuild | null> {
+// Find the build whose sourceVersion equals the merge commit. Bounded by TIME
+// (builds queued from shortly before the merge), not a fixed count, so it works
+// regardless of how busy the repo is — the merge's CI build queues right at the
+// merge, so it's among the first few after `minTime`.
+async function buildForCommit(orgSlug: string, project: string, defId: number, commit: string, mergedAtMs: number): Promise<RawBuild | null> {
+  const minTime = new Date(mergedAtMs - 24 * 60 * 60 * 1000).toISOString(); // 1d buffer before the merge time
   const params = new URLSearchParams({
     "api-version": "7.1",
     definitions: String(defId),
-    maxBuildsPerDefinition: "50",
-    queryOrder: "queueTimeDescending",
+    minTime,
+    maxBuildsPerDefinition: "75",
+    queryOrder: "queueTimeAscending",
   });
   const { value } = await adoGet<{ value?: RawBuild[] }>(`${orgBase(orgSlug, project)}/build/builds?${params}`);
   return (value ?? []).find((b) => b.sourceVersion === commit) ?? null;
@@ -92,24 +96,28 @@ export async function resolveDeploy(
   repoPipelines: Record<string, number>,
   repo: string,
   mergeCommit: string,
+  mergedAtMs: number,
 ): Promise<PrDeploy> {
-  const empty: PrDeploy = { found: false, buildId: null, buildNumber: null, buildUrl: null, dev: null, ppe: null, prod: null, terminal: false };
+  const empty: PrDeploy = { found: false, reason: null, buildId: null, buildNumber: null, buildUrl: null, dev: null, ppe: null, prod: null, terminal: false };
   const defId = repoPipelines[repo];
   // No pipeline configured for this repo: terminal so we cache it and stop
-  // re-resolving. A missing build (below) stays non-terminal to retry, since a
-  // freshly merged PR's build may not exist yet.
-  if (!defId) return { ...empty, terminal: true };
-  const build = await buildForCommit(orgSlug, project, defId, mergeCommit);
-  if (!build) return empty;
+  // re-resolving.
+  if (!defId) return { ...empty, reason: "no-pipeline", terminal: true };
+  const build = await buildForCommit(orgSlug, project, defId, mergeCommit, mergedAtMs);
+  if (!build) {
+    // No build matched. If the merge is recent, the CI build may not exist yet —
+    // retry. If it's older than an hour, give up (terminal) so it stops churning.
+    const stale = Date.now() - mergedAtMs > 60 * 60 * 1000;
+    return { ...empty, reason: stale ? "no-build" : null, terminal: stale };
+  }
   const stages = await stagesFor(orgSlug, project, build.id);
   const dev = envState(stages, "dev");
   const ppe = envState(stages, "ppe");
   const prod = envState(stages, "prod");
-  // Terminal once prod has finished deploying (succeeded or hard-failed/canceled)
-  // — the outcome won't change, so it never needs re-resolving.
   const prodDone = !!prod && (prod.state === "completed" || SUCCESSISH.has((prod.result ?? "").toLowerCase()));
   return {
     found: true,
+    reason: null,
     buildId: build.id,
     buildNumber: build.buildNumber ?? null,
     buildUrl: `https://dev.azure.com/${orgSlug}/${encodeURIComponent(project)}/_build/results?buildId=${build.id}&view=results`,

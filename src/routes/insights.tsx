@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { CheckCircle2, ChevronRight, GitPullRequest, Inbox, Timer, X } from "lucide-react";
 import { api, configQuery, insightsQuery, type InsightsCount, type LoadDayPr } from "../lib/api";
-import { AuthorTreemap, BalanceStrip, CoverageWaffle, DepthMeter, Donut, HBars, LatencyScatter, LoadChart, RepoScatter, ReviewCalendar, ReviewRhythm, VoteBars, VoteTurnBubbles } from "../components/Charts";
+import { AuthorTreemap, BalanceStrip, CoverageWaffle, DepthMeter, Donut, HBars, LatencyScatter, LoadChart, RepoScatter, ReviewCalendar, ReviewRhythm, ReviewStreamChart, VoteBars, VoteTurnBubbles } from "../components/Charts";
 import { fmtHours, shortRepo } from "../lib/format";
 import { SegToggle } from "../components/SegToggle";
 import { REVIEW_STATE_META } from "../lib/triage";
@@ -306,6 +306,7 @@ function InsightsPage() {
   const [latView, setLatView] = useState<"scatter" | "distribution">("scatter");
   const [reachWin, setReachWin] = useState<"7" | "30" | "90" | "all">("30");
   const [rhythmView, setRhythmView] = useState<"day" | "calendar">("day");
+  const [streamMode, setStreamMode] = useState<"person" | "type">("person");
   const [loadDay, setLoadDay] = useState<string | null>(null);
   const [balanceWin, setBalanceWin] = useState<4 | 8 | 12>(8);
   const reachDays = reachWin === "all" ? null : Number(reachWin);
@@ -565,6 +566,29 @@ function InsightsPage() {
             {rhythmView === "day"
               ? "Each dot is a review — stopping your own work to load someone else's PR. Scattered dots are separate interruptions; clustered dots are batched. Overlaps darken, so a dense sitting reads as a deeper blob. Color = team."
               : "Each cell is a weekday, colored by how many reviews you did — a months-long view of your load. Darker stretches are sustained-heavy periods."}
+          </p>
+        </Section>
+      )}
+
+      {reviewRhythm.items.length > 0 && (
+        <Section
+          title="Whose PRs you review, over time"
+          meta={
+            <SegToggle
+              value={streamMode}
+              onChange={setStreamMode}
+              options={[
+                { v: "person", label: "By person" },
+                { v: "type", label: "FTE vs vendor" },
+              ]}
+            />
+          }
+        >
+          <ReviewStreamChart items={reviewRhythm.items} periods={cfg?.periods ?? []} mode={streamMode} />
+          <p className="text-muted mt-3 text-[11px] leading-relaxed">
+            {streamMode === "person"
+              ? "Each band is a person whose PRs you reviewed; thickness = reviews that week (top 7 + Others). Watch bands swell and fade as your attention shifts. Shaded regions are your context bands."
+              : "Your reviews split into FTE vs vendor code each week. A widening vendor band means more of your review time is going to vendor PRs. Shaded regions are your context bands."}
           </p>
         </Section>
       )}

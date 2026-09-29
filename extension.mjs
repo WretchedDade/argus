@@ -219,6 +219,7 @@ function rowToPr(r) {
     updatedAt: r.updated_at,
     reviewSessionId: r.review_session_id,
     reviewedSha: r.reviewed_sha,
+    changedFiles: r.changed_files ?? null,
     authorMeta: r.author_meta_json ? JSON.parse(r.author_meta_json) : null
   };
 }
@@ -256,8 +257,21 @@ var ArgusStore = class _ArgusStore {
     this.#ensureColumn("prs", "approvals_json", "TEXT");
     this.#ensureColumn("prs", "author_meta_json", "TEXT");
     this.#ensureColumn("prs", "merge_commit", "TEXT");
+    this.#ensureColumn("prs", "merged_at", "TEXT");
     this.#ensureColumn("prs", "deploy_json", "TEXT");
     this.#ensureColumn("prs", "deploy_resolved_at", "TEXT");
+    this.#ensureColumn("prs", "source_branch", "TEXT");
+    this.#ensureColumn("prs", "target_branch", "TEXT");
+    this.#ensureColumn("prs", "changed_files", "INTEGER");
+    this.#ensureColumn("prs", "changed_files_sha", "TEXT");
+    if (!this.#getSetting("changed_files_reset")) {
+      this.#db.exec("UPDATE prs SET changed_files = NULL, changed_files_sha = NULL");
+      this.#setSetting("changed_files_reset", now());
+    }
+    if (!this.#getSetting("deploy_time_migrated")) {
+      this.#db.exec("UPDATE prs SET deploy_json = NULL WHERE deploy_json IS NOT NULL AND json_extract(deploy_json, '$.found') = 0");
+      this.#setSetting("deploy_time_migrated", now());
+    }
     this.#db.exec(`
       UPDATE prs SET reviewed_at = (
         SELECT MAX(e.ts) FROM pr_events e
@@ -351,10 +365,10 @@ var ArgusStore = class _ArgusStore {
     this.#prep(`
       INSERT INTO prs (canonical, org, project, repo, number, title, description, author,
                        is_vendor, role, teams_json, is_draft, last_commit_sha,
-                       last_commit_at, pr_created_at, added_at, updated_at)
+                       last_commit_at, pr_created_at, source_branch, target_branch, added_at, updated_at)
       VALUES ($canonical, $org, $project, $repo, $number, $title, $description, $author,
               $is_vendor, $role, $teams_json, $is_draft, $last_commit_sha,
-              $last_commit_at, $pr_created_at, $ts, $ts)
+              $last_commit_at, $pr_created_at, $source_branch, $target_branch, $ts, $ts)
       ON CONFLICT(canonical) DO UPDATE SET
         org = excluded.org, project = excluded.project, repo = excluded.repo,
         number = excluded.number, title = excluded.title,
@@ -367,6 +381,8 @@ var ArgusStore = class _ArgusStore {
         last_commit_sha = excluded.last_commit_sha,
         last_commit_at = excluded.last_commit_at,
         pr_created_at = excluded.pr_created_at,
+        source_branch = excluded.source_branch,
+        target_branch = excluded.target_branch,
         updated_at = excluded.updated_at
     `).run({
       $canonical: pr.canonical,
@@ -384,6 +400,8 @@ var ArgusStore = class _ArgusStore {
       $last_commit_sha: pr.lastCommitSha,
       $last_commit_at: pr.lastCommitAt,
       $pr_created_at: pr.prCreatedAt,
+      $source_branch: pr.sourceBranch ?? null,
+      $target_branch: pr.targetBranch ?? null,
       $ts: ts
     });
   }
@@ -589,24 +607,24 @@ var ArgusStore = class _ArgusStore {
     this.#prep("UPDATE prs SET my_comments = ? WHERE canonical = ?").run(count, canonical);
   }
   // --- Deploy tracking (where a merged PR shipped) ---
-  // The merge commit is captured on close (poller) so we can pin the exact build.
-  setMergeCommit(canonical, sha) {
-    this.#prep("UPDATE prs SET merge_commit = ? WHERE canonical = ?").run(sha, canonical);
+  // Merge commit + real merge time (ADO closedDate), captured on close so we can
+  // pin the exact build and bound the build search to the actual merge moment.
+  setMergeInfo(canonical, sha, mergedAt) {
+    this.#prep("UPDATE prs SET merge_commit = ?, merged_at = COALESCE(?, merged_at) WHERE canonical = ?").run(sha, mergedAt ?? null, canonical);
   }
   // ISO cutoff for the deploy window: PRs merged on/after this are in scope.
   #deployCutoff(windowDays) {
     return new Date(Date.now() - windowDays * 864e5).toISOString();
   }
-  // Merged-in-window PRs whose merge commit we haven't captured yet (e.g. closed
-  // before the deploy feature existed). Scoped to repos with a configured pipeline
-  // — no point backfilling for repos we can't map to a build. Bounded per cycle.
-  prsNeedingMergeCommit(windowDays, repos, limit = 30) {
+  // Merged-in-window PRs (configured repos) missing the merge commit or its real
+  // merge time. The poller backfills a bounded batch via `az pr show`.
+  prsNeedingMergeInfo(windowDays, repos, limit = 30) {
     if (repos.length === 0) return [];
     const ph = repos.map(() => "?").join(",");
     return this.#prep(`
       SELECT p.canonical, p.number
       FROM prs p
-      WHERE p.state = 'closed' AND p.merge_commit IS NULL AND p.repo IN (${ph})
+      WHERE p.state = 'closed' AND (p.merge_commit IS NULL OR p.merged_at IS NULL) AND p.repo IN (${ph})
         AND EXISTS (
           SELECT 1 FROM pr_events e
           WHERE e.canonical = p.canonical AND e.type = 'closed'
@@ -622,7 +640,10 @@ var ArgusStore = class _ArgusStore {
     if (repos.length === 0) return [];
     const ph = repos.map(() => "?").join(",");
     return this.#prep(`
-      SELECT p.canonical, p.repo, p.project, p.merge_commit AS mergeCommit
+      SELECT p.canonical, p.repo, p.project, p.merge_commit AS mergeCommit,
+             COALESCE(p.merged_at, (SELECT MIN(e.ts) FROM pr_events e
+              WHERE e.canonical = p.canonical AND e.type = 'closed'
+                AND json_extract(e.payload, '$.reason') = 'completed')) AS mergedAt
       FROM prs p
       WHERE p.merge_commit IS NOT NULL AND p.repo IN (${ph})
         AND (p.deploy_json IS NULL OR json_extract(p.deploy_json, '$.terminal') IS NOT 1)
@@ -631,6 +652,7 @@ var ArgusStore = class _ArgusStore {
           WHERE e.canonical = p.canonical AND e.type = 'closed'
             AND json_extract(e.payload, '$.reason') = 'completed' AND e.ts >= ?
         )
+      ORDER BY (p.deploy_json IS NULL) DESC, mergedAt DESC
       LIMIT ?
     `).all(...repos, this.#deployCutoff(windowDays), limit);
   }
@@ -648,10 +670,10 @@ var ArgusStore = class _ArgusStore {
     if (repos.length === 0) return [];
     const ph = repos.map(() => "?").join(",");
     const rows = this.#prep(`
-      SELECT p.canonical, p.repo, p.number, p.title, p.deploy_json AS deployJson,
-             (SELECT MIN(e.ts) FROM pr_events e
+      SELECT p.canonical, p.repo, p.number, p.title, p.author AS author, p.role AS role, p.deploy_json AS deployJson,
+             COALESCE(p.merged_at, (SELECT MIN(e.ts) FROM pr_events e
               WHERE e.canonical = p.canonical AND e.type = 'closed'
-                AND json_extract(e.payload, '$.reason') = 'completed') AS mergedAt
+                AND json_extract(e.payload, '$.reason') = 'completed')) AS mergedAt
       FROM prs p
       WHERE p.state = 'closed' AND p.repo IN (${ph})
         AND EXISTS (
@@ -661,12 +683,14 @@ var ArgusStore = class _ArgusStore {
         )
       ORDER BY mergedAt DESC
     `).all(...repos, this.#deployCutoff(windowDays));
-    const pending = { found: false, buildId: null, buildNumber: null, buildUrl: null, dev: null, ppe: null, prod: null, terminal: false };
+    const pending = { found: false, reason: null, buildId: null, buildNumber: null, buildUrl: null, dev: null, ppe: null, prod: null, terminal: false };
     return rows.map((r) => ({
       canonical: r.canonical,
       repo: r.repo,
       number: r.number,
       title: r.title,
+      author: r.author,
+      mine: r.role === "author",
       mergedAt: r.mergedAt,
       deploy: r.deployJson ? JSON.parse(r.deployJson) : pending
     }));
@@ -674,6 +698,22 @@ var ArgusStore = class _ArgusStore {
   getDeploy(canonical) {
     const row = this.#prep("SELECT deploy_json AS j FROM prs WHERE canonical = ?").get(canonical);
     return row?.j ? JSON.parse(row.j) : null;
+  }
+  // --- PR size (files changed) ---
+  // Active board PRs whose file count is missing or stale (a new commit landed
+  // since it was counted). Bounded per cycle; needs branches for the diff call.
+  prsNeedingFileCount(limit = 20) {
+    return this.#prep(`
+      SELECT canonical, repo, source_branch AS sourceBranch, target_branch AS targetBranch, last_commit_sha AS sha
+      FROM prs
+      WHERE state != 'closed' AND dismissed = 0
+        AND source_branch IS NOT NULL AND target_branch IS NOT NULL
+        AND (changed_files IS NULL OR changed_files_sha IS NOT last_commit_sha)
+      LIMIT ?
+    `).all(limit);
+  }
+  setChangedFiles(canonical, count, sha) {
+    this.#prep("UPDATE prs SET changed_files = ?, changed_files_sha = ? WHERE canonical = ?").run(count, sha, canonical);
   }
   // --- Insights: aggregate analytics computed on demand from events + PRs ---
   // Per-day breakdown for the Load & capacity drill-down: which PRs arrived,
@@ -967,7 +1007,7 @@ var ArgusStore = class _ArgusStore {
     const prMeta = /* @__PURE__ */ new Map();
     for (const p of prs) {
       const t = p.teamsJson ? JSON.parse(p.teamsJson)[0] ?? null : null;
-      prMeta.set(p.canonical, { repo: p.repo, team: t, title: p.title, number: p.number });
+      prMeta.set(p.canonical, { repo: p.repo, team: t, title: p.title, number: p.number, author: p.author, isVendor: !!p.isVendor });
     }
     const rhythmItems = [];
     for (const r of this.#db.prepare(
@@ -977,7 +1017,7 @@ var ArgusStore = class _ArgusStore {
     ).all()) {
       const m = prMeta.get(r.canonical);
       if (!m) continue;
-      rhythmItems.push({ at: r.ts, repo: m.repo, team: m.team, number: m.number, title: m.title, verdict: r.verdict });
+      rhythmItems.push({ at: r.ts, repo: m.repo, team: m.team, number: m.number, title: m.title, verdict: r.verdict, author: m.author, isVendor: m.isVendor });
     }
     const waiting = activeReview.filter(
       (p) => !p.isDraft && !isSnoozed(p) && (p.reviewState === "needs" || p.reviewState === null) && nowMs - Date.parse(p.updatedAt) <= staleMs
@@ -1687,6 +1727,23 @@ async function adoAccessToken() {
   tokenCache = { token: j.accessToken, exp: Number.isNaN(exp) ? Date.now() + 50 * 6e4 : exp };
   return j.accessToken;
 }
+async function prChangedFileCount(orgUrl, project, repo, targetBranch, sourceBranch) {
+  const base = `${orgUrl.replace(/\/$/, "")}/${encodeURIComponent(project)}/_apis/git/repositories/${encodeURIComponent(repo)}`;
+  const params = new URLSearchParams({
+    baseVersion: targetBranch,
+    baseVersionType: "branch",
+    targetVersion: sourceBranch,
+    targetVersionType: "branch",
+    "api-version": "7.1",
+    $top: "1"
+  });
+  const token = await adoAccessToken();
+  const res = await fetch(`${base}/diffs/commits?${params}`, { headers: { Authorization: `Bearer ${token}` } });
+  if (!res.ok) throw new AdoError(`diffs/commits ${res.status} for ${repo} ${sourceBranch}`);
+  const j = await res.json();
+  if (!j.changeCounts) return 0;
+  return Object.values(j.changeCounts).reduce((a, n) => a + (n || 0), 0);
+}
 function showPr(id, org) {
   return azJson(["repos", "pr", "show", "--id", String(id), "--org", org]);
 }
@@ -2182,6 +2239,7 @@ function defaultConfig() {
   const [dayStart, dayEnd] = parseRange(process.env.ARGUS_WORK_DAYS, 1, 5);
   return {
     me: process.env.ARGUS_ME ?? null,
+    avatarUrl: process.env.ARGUS_AVATAR_URL ?? "",
     orgUrl: process.env.ARGUS_ORG_URL ?? "https://dev.azure.com/worldwidelearning",
     orgSlug: process.env.ARGUS_ORG_SLUG ?? "worldwidelearning",
     project: process.env.ARGUS_PROJECT ?? "LPE",
@@ -2344,12 +2402,14 @@ function matchEnvStage(name, m) {
   return true;
 }
 var SUCCESSISH = /* @__PURE__ */ new Set(["succeeded", "succeededwithissues", "partiallysucceeded"]);
-async function buildForCommit(orgSlug, project, defId, commit) {
+async function buildForCommit(orgSlug, project, defId, commit, mergedAtMs) {
+  const minTime = new Date(mergedAtMs - 24 * 60 * 60 * 1e3).toISOString();
   const params = new URLSearchParams({
     "api-version": "7.1",
     definitions: String(defId),
-    maxBuildsPerDefinition: "50",
-    queryOrder: "queueTimeDescending"
+    minTime,
+    maxBuildsPerDefinition: "75",
+    queryOrder: "queueTimeAscending"
   });
   const { value } = await adoGet(`${orgBase(orgSlug, project)}/build/builds?${params}`);
   return (value ?? []).find((b2) => b2.sourceVersion === commit) ?? null;
@@ -2365,12 +2425,15 @@ function envState(stages, env) {
   if (!st) return null;
   return { state: st.state ?? null, result: st.result ?? null, finishedAt: st.finishTime ?? null };
 }
-async function resolveDeploy(orgSlug, project, repoPipelines, repo, mergeCommit) {
-  const empty = { found: false, buildId: null, buildNumber: null, buildUrl: null, dev: null, ppe: null, prod: null, terminal: false };
+async function resolveDeploy(orgSlug, project, repoPipelines, repo, mergeCommit, mergedAtMs) {
+  const empty = { found: false, reason: null, buildId: null, buildNumber: null, buildUrl: null, dev: null, ppe: null, prod: null, terminal: false };
   const defId = repoPipelines[repo];
-  if (!defId) return { ...empty, terminal: true };
-  const build = await buildForCommit(orgSlug, project, defId, mergeCommit);
-  if (!build) return empty;
+  if (!defId) return { ...empty, reason: "no-pipeline", terminal: true };
+  const build = await buildForCommit(orgSlug, project, defId, mergeCommit, mergedAtMs);
+  if (!build) {
+    const stale = Date.now() - mergedAtMs > 60 * 60 * 1e3;
+    return { ...empty, reason: stale ? "no-build" : null, terminal: stale };
+  }
   const stages = await stagesFor(orgSlug, project, build.id);
   const dev = envState(stages, "dev");
   const ppe = envState(stages, "ppe");
@@ -2378,6 +2441,7 @@ async function resolveDeploy(orgSlug, project, repoPipelines, repo, mergeCommit)
   const prodDone = !!prod && (prod.state === "completed" || SUCCESSISH.has((prod.result ?? "").toLowerCase()));
   return {
     found: true,
+    reason: null,
     buildId: build.id,
     buildNumber: build.buildNumber ?? null,
     buildUrl: `https://dev.azure.com/${orgSlug}/${encodeURIComponent(project)}/_build/results?buildId=${build.id}&view=results`,
@@ -2472,7 +2536,9 @@ function toUpsert(c) {
     lastCommitSha: c.sha,
     lastCommitAt: c.createdAt,
     // proxy; the bulk list carries no commit time
-    prCreatedAt: c.createdAt
+    prCreatedAt: c.createdAt,
+    sourceBranch: c.sourceBranch,
+    targetBranch: c.targetBranch
   };
 }
 function suggestLane(_c) {
@@ -2575,21 +2641,32 @@ async function runReconcile(ctx) {
         }
       }
     }
+    const needFiles = ctx.store.prsNeedingFileCount();
+    if (needFiles.length) {
+      note("info", `sizing ${needFiles.length} PR(s)`);
+      for (const p of needFiles) {
+        try {
+          const count = await prChangedFileCount(cfg.orgUrl, cfg.project, p.repo, p.targetBranch, p.sourceBranch);
+          if (count !== null) ctx.store.setChangedFiles(p.canonical, count, p.sha);
+        } catch {
+        }
+      }
+    }
     note("info", "checking for merged/abandoned PRs\u2026");
     const { closed } = await closeDeparted(ctx.store, cfg.orgUrl, mine.map((m) => m.canonical), snapshots, runId);
     note("info", closed ? `closed ${closed} departed PR(s)` : "no departed PRs closed");
     const deployRepos = Object.keys(cfg.repoPipelines);
-    const needMerge = ctx.store.prsNeedingMergeCommit(cfg.deployWindowDays, deployRepos);
+    const needMerge = ctx.store.prsNeedingMergeInfo(cfg.deployWindowDays, deployRepos);
     for (const p of needMerge) {
       const raw2 = await showPr(p.number, cfg.orgUrl);
-      if (raw2?.lastMergeCommit?.commitId) ctx.store.setMergeCommit(p.canonical, raw2.lastMergeCommit.commitId);
+      if (raw2?.lastMergeCommit?.commitId) ctx.store.setMergeInfo(p.canonical, raw2.lastMergeCommit.commitId, raw2.closedDate ?? null);
     }
     const needDeploy = ctx.store.prsNeedingDeploy(cfg.deployWindowDays, deployRepos);
     if (needDeploy.length) {
       note("info", `resolving deploys for ${needDeploy.length} merged PR(s)`);
       for (const p of needDeploy) {
         try {
-          const deploy = await resolveDeploy(cfg.orgSlug, p.project, cfg.repoPipelines, p.repo, p.mergeCommit);
+          const deploy = await resolveDeploy(cfg.orgSlug, p.project, cfg.repoPipelines, p.repo, p.mergeCommit, Date.parse(p.mergedAt));
           ctx.store.setDeploy(p.canonical, deploy);
         } catch {
         }
@@ -2629,7 +2706,7 @@ async function closeDeparted(store2, orgUrl, mineCanonicals, snapshots, runId) {
       const rec = store2.getPr(canonical);
       store2.markClosed(canonical, pr.status, void 0, runId);
       if (pr.status === "completed" && pr.lastMergeCommit?.commitId) {
-        store2.setMergeCommit(canonical, pr.lastMergeCommit.commitId);
+        store2.setMergeInfo(canonical, pr.lastMergeCommit.commitId, pr.closedDate ?? null);
       }
       closed += 1;
       if (rec?.reviewSessionId) {
@@ -2677,7 +2754,9 @@ async function refreshPr(ctx, canonical) {
     isDraft: norm.isDraft,
     lastCommitSha: norm.sha,
     lastCommitAt: norm.createdAt,
-    prCreatedAt: norm.createdAt
+    prCreatedAt: norm.createdAt,
+    sourceBranch: norm.sourceBranch,
+    targetBranch: norm.targetBranch
   });
   ctx.store.setOwnership(canonical, own.role ?? "reviewer", own.teams, own.reviewState, norm.description, norm.isVendor, own.otherVotes);
   ctx.store.setDescription(canonical, norm.description);
@@ -2709,7 +2788,9 @@ async function trackByNumber(ctx, id) {
     isDraft: norm.isDraft,
     lastCommitSha: norm.sha,
     lastCommitAt: norm.createdAt,
-    prCreatedAt: norm.createdAt
+    prCreatedAt: norm.createdAt,
+    sourceBranch: norm.sourceBranch,
+    targetBranch: norm.targetBranch
   });
   ctx.store.setOwnership(norm.canonical, effective.role, effective.teams, effective.reviewState, norm.description, norm.isVendor, effective.otherVotes);
   ctx.store.setDescription(norm.canonical, norm.description);

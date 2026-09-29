@@ -60,7 +60,8 @@ function Chip({ label, env }: { label: string; env: DeployEnv | null }) {
 // couldn't map the PR to a build (no configured pipeline, or not resolved yet).
 export function DeployChips({ deploy }: { deploy: PrDeploy }) {
   if (!deploy.found) {
-    return <span className="text-muted text-[11px]">{deploy.terminal ? "no pipeline" : "resolving…"}</span>;
+    const label = deploy.reason === "no-pipeline" ? "no pipeline" : deploy.reason === "no-build" ? "no build found" : "resolving…";
+    return <span className="text-muted text-[11px]">{label}</span>;
   }
   return (
     <div className="flex items-center gap-1.5">

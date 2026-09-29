@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useQuery } from "@tanstack/react-query";
-import { Check, Clock, Copy, Eye, GitPullRequest, MessageSquare, MessageSquareText, PencilLine, X } from "lucide-react";
-import { prsQuery, type Pr } from "../lib/api";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Check, Clock, Copy, Eye, GitPullRequest, Loader2, MessageSquare, MessageSquareText, PencilLine, RotateCw, X } from "lucide-react";
+import { api, prsQuery, type Pr } from "../lib/api";
 import { shortAge } from "../lib/format";
 import { pushToast } from "../lib/toast";
 
@@ -72,6 +72,20 @@ function ReviewerChips({ votes }: { votes: { name: string; vote: number }[] }) {
 
 function MyPrCard({ pr }: { pr: Pr }) {
   const s = statusOf(pr);
+  const qc = useQueryClient();
+  const refresh = useMutation({
+    mutationFn: () => api.refreshPr(pr.canonical),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ["prs"] });
+      pushToast(`Refreshed ${pr.repo} #${pr.number}`);
+    },
+    onError: () => pushToast("Refresh failed", "error"),
+  });
+  const onRefresh = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!refresh.isPending) refresh.mutate();
+  };
   return (
     <a
       href={pr.canonical}
@@ -95,16 +109,28 @@ function MyPrCard({ pr }: { pr: Pr }) {
           <h3 className="text-fg mt-1.5 line-clamp-2 text-base font-semibold leading-snug">{pr.title}</h3>
         </div>
         <div className="flex shrink-0 flex-col items-end gap-1.5">
-          <span
-            className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium"
-            style={{
-              background: `color-mix(in srgb, var(${s.anchor}) 15%, transparent)`,
-              color: `color-mix(in srgb, var(${s.anchor}) 65%, var(--color-fg))`,
-            }}
-          >
-            <s.Icon size={12} />
-            {s.label}
-          </span>
+          <div className="flex items-center gap-1.5">
+            <button
+              type="button"
+              onClick={onRefresh}
+              disabled={refresh.isPending}
+              title="Refresh from Azure DevOps"
+              aria-label="Refresh"
+              className="text-muted hover:text-fg hover:bg-surface rounded-md p-1 transition-colors disabled:opacity-50"
+            >
+              {refresh.isPending ? <Loader2 size={13} className="animate-spin" /> : <RotateCw size={13} />}
+            </button>
+            <span
+              className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium"
+              style={{
+                background: `color-mix(in srgb, var(${s.anchor}) 15%, transparent)`,
+                color: `color-mix(in srgb, var(${s.anchor}) 65%, var(--color-fg))`,
+              }}
+            >
+              <s.Icon size={12} />
+              {s.label}
+            </span>
+          </div>
           <span className="text-muted text-xs">{shortAge(pr.prCreatedAt ?? pr.updatedAt)} old</span>
         </div>
       </div>

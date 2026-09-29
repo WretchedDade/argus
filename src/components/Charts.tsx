@@ -1,7 +1,9 @@
-import { Area, Bar, BarChart, CartesianGrid, Cell, ComposedChart, Label, LabelList, Legend, Pie, PieChart, ReferenceArea, ResponsiveContainer, Scatter, ScatterChart, Tooltip, Treemap, XAxis, YAxis, ZAxis } from "recharts";
+import { Area, AreaChart, Bar, BarChart, CartesianGrid, Cell, ComposedChart, Label, LabelList, Legend, Pie, PieChart, ReferenceArea, ResponsiveContainer, Scatter, ScatterChart, Tooltip, Treemap, XAxis, YAxis, ZAxis } from "recharts";
 import { useState } from "react";
 import type { InsightsLoadBucket, Period } from "../lib/api";
-import { fmtHours, shortRepo } from "../lib/format";
+import { fmtHours, nameColor, shortRepo } from "../lib/format";
+
+type StreamItem = { at: string; author: string | null; isVendor: boolean; verdict: string | null };
 
 type LatPoint = { at: string; hours: number; repo: string; number: number; verdict: string | null };
 
@@ -32,6 +34,15 @@ const TOOLTIP = {
 function localDate(key: string): Date {
   const [y, m, d] = key.slice(0, 10).split("-").map(Number);
   return new Date(y, m - 1, d);
+}
+
+// Monday-anchored week key (YYYY-MM-DD) for a timestamp, matching the recap/load
+// week convention.
+function mondayKey(iso: string): string {
+  const dt = new Date(iso);
+  const dow = (dt.getDay() + 6) % 7; // Mon = 0
+  const mon = new Date(dt.getFullYear(), dt.getMonth(), dt.getDate() - dow);
+  return `${mon.getFullYear()}-${String(mon.getMonth() + 1).padStart(2, "0")}-${String(mon.getDate()).padStart(2, "0")}`;
 }
 
 function weekLabel(iso: string): string {
@@ -119,6 +130,120 @@ export function LoadChart({ data, granularity, periods = [], onSelectDay }: { da
       </ComposedChart>
     </ResponsiveContainer>
   );
+}
+
+// Whose PRs you review, over time. A streamgraph (silhouette-stacked areas): each
+// band is an author (or FTE/vendor in "type" mode), thickness = reviews that week.
+// Overlays the same named context bands as the load chart.
+export function ReviewStreamChart({
+  items,
+  periods = [],
+  mode,
+}: {
+  items: StreamItem[];
+  periods?: Period[];
+  mode: "person" | "type";
+}) {
+  const TOP_N = 10;
+  const OTHER = "#94a3b8";
+  const weeks = recentWeekKeys(10);
+  const weekSet = new Set(weeks);
+
+  const keyOf = (it: StreamItem) => (mode === "type" ? (it.isVendor ? "Vendor" : "FTE") : it.author ?? "Unknown");
+  const totals = new Map<string, number>();
+  const perWeek = new Map<string, Map<string, number>>();
+  for (const w of weeks) perWeek.set(w, new Map());
+  for (const it of items) {
+    if (!it.verdict) continue;
+    const w = mondayKey(it.at);
+    if (!weekSet.has(w)) continue;
+    const k = keyOf(it);
+    totals.set(k, (totals.get(k) ?? 0) + 1);
+    const wk = perWeek.get(w)!;
+    wk.set(k, (wk.get(k) ?? 0) + 1);
+  }
+
+  let series: { key: string; color: string }[];
+  let collapse: (k: string) => string;
+  if (mode === "type") {
+    series = [
+      { key: "FTE", color: "#0f9b8e" },
+      { key: "Vendor", color: "#E69F00" },
+    ];
+    collapse = (k) => k;
+  } else {
+    const ranked = [...totals.entries()].sort((a, b) => b[1] - a[1]).map(([k]) => k);
+    const top = new Set(ranked.slice(0, TOP_N));
+    series = ranked.slice(0, TOP_N).map((k) => ({ key: k, color: nameColor(k) }));
+    if (ranked.length > TOP_N) series.push({ key: "Others", color: OTHER });
+    collapse = (k) => (top.has(k) ? k : "Others");
+  }
+
+  const data = weeks.map((w) => {
+    const row: Record<string, string | number> = { key: w };
+    for (const s of series) row[s.key] = 0;
+    for (const [k, n] of perWeek.get(w)!) {
+      const sk = collapse(k);
+      row[sk] = ((row[sk] as number) ?? 0) + n;
+    }
+    return row;
+  });
+
+  const bandFor = (p: Period): { x1: string; x2: string } | null => {
+    const hit = weeks.filter((k) => {
+      const wStart = localDate(k);
+      const wEnd = new Date(wStart);
+      wEnd.setDate(wEnd.getDate() + 6);
+      return localDate(p.start) <= wEnd && localDate(p.end) >= wStart;
+    });
+    return hit.length ? { x1: hit[0], x2: hit[hit.length - 1] } : null;
+  };
+  const bands = periods
+    .map((p) => ({ p, span: bandFor(p) }))
+    .filter((b): b is { p: Period; span: { x1: string; x2: string } } => b.span !== null);
+
+  if (![...totals.values()].some((n) => n > 0)) return <p className="text-muted py-8 text-center text-sm">No reviews recorded yet.</p>;
+
+  return (
+    <ResponsiveContainer width="100%" height={260}>
+      <AreaChart data={data} stackOffset="silhouette" margin={{ top: 8, right: 4, bottom: 0, left: 4 }}>
+        {bands.map(({ p, span }) => (
+          <ReferenceArea key={p.label + span.x1} x1={span.x1} x2={span.x2} ifOverflow="extendDomain" fill="#7C4DFF" fillOpacity={0.1} stroke="#7C4DFF" strokeOpacity={0.22}>
+            <Label value={p.label} position="insideTop" fill="#9575ff" fontSize={10} offset={4} />
+          </ReferenceArea>
+        ))}
+        <XAxis dataKey="key" tickFormatter={weekLabel} tick={{ fill: AXIS, fontSize: 11 }} axisLine={false} tickLine={false} minTickGap={8} />
+        <Tooltip contentStyle={TOOLTIP} itemStyle={{ color: "var(--color-fg)" }} labelFormatter={(k) => `Week of ${weekLabel(String(k))}`} />
+        <Legend wrapperStyle={{ fontSize: 11, paddingTop: 6 }} iconType="circle" iconSize={8} />
+        {series.map((s) => (
+          <Area key={s.key} type="monotone" dataKey={s.key} name={mode === "person" ? shortName(s.key) : s.key} stackId="1" stroke={s.color} fill={s.color} fillOpacity={0.72} strokeWidth={0.5} isAnimationActive={false} />
+        ))}
+      </AreaChart>
+    </ResponsiveContainer>
+  );
+}
+
+// The last `n` Monday-anchored week keys, oldest first, ending with this week.
+function recentWeekKeys(n: number): string[] {
+  const now = new Date();
+  const dow = (now.getDay() + 6) % 7;
+  const thisMon = new Date(now.getFullYear(), now.getMonth(), now.getDate() - dow);
+  const out: string[] = [];
+  for (let i = n - 1; i >= 0; i--) {
+    const d = new Date(thisMon);
+    d.setDate(d.getDate() - i * 7);
+    out.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`);
+  }
+  return out;
+}
+
+// Trim a display name to first name + last initial for a compact legend/tooltip.
+function shortName(name: string): string {
+  if (name === "Others" || name === "Unknown") return name;
+  const clean = name.replace(/\(.*?\)/g, " ").trim();
+  const parts = clean.split(/\s+/).filter(Boolean);
+  if (parts.length <= 1) return name;
+  return `${parts[0]} ${parts[parts.length - 1][0]}.`;
 }
 
 // Single horizontal 100%-wide segmented bar for an ordered distribution

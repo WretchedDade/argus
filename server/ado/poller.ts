@@ -1,7 +1,7 @@
 import { ArgusStore } from "../db.ts";
 import type { ArgusConfig } from "../config.ts";
 import type { ArchivableSession, PrRole } from "../types.ts";
-import { listActivePrs, showPr, whoami, AdoError, fetchPrThreads } from "./client.ts";
+import { listActivePrs, showPr, whoami, AdoError, fetchPrThreads, prChangedFileCount } from "./client.ts";
 import { classifyOwnership } from "./ownership.ts";
 import { normalizePr } from "./normalize.ts";
 import { fetchAuthorMeta } from "./authorMeta.ts";
@@ -151,6 +151,21 @@ async function runReconcile(ctx: PollerContext): Promise<ReconcileSummary | null
       }
     }
 
+    // Backfill PR size (files changed) for active PRs, bounded per cycle. Cached
+    // per head sha, so it only recomputes when a new commit lands.
+    const needFiles = ctx.store.prsNeedingFileCount();
+    if (needFiles.length) {
+      note("info", `sizing ${needFiles.length} PR(s)`);
+      for (const p of needFiles) {
+        try {
+          const count = await prChangedFileCount(cfg.orgUrl, cfg.project, p.repo, p.targetBranch, p.sourceBranch);
+          if (count !== null) ctx.store.setChangedFiles(p.canonical, count, p.sha);
+        } catch {
+          /* retry next cycle */
+        }
+      }
+    }
+
     note("info", "checking for merged/abandoned PRs…");
     const { closed } = await closeDeparted(ctx.store, cfg.orgUrl, mine.map((m) => m.canonical), snapshots, runId);
     note("info", closed ? `closed ${closed} departed PR(s)` : "no departed PRs closed");
@@ -161,17 +176,17 @@ async function runReconcile(ctx: PollerContext): Promise<ReconcileSummary | null
     // the feature, then resolve where merged PRs have shipped (bounded per cycle;
     // terminal results are cached, non-terminal re-resolve until prod finishes).
     const deployRepos = Object.keys(cfg.repoPipelines);
-    const needMerge = ctx.store.prsNeedingMergeCommit(cfg.deployWindowDays, deployRepos);
+    const needMerge = ctx.store.prsNeedingMergeInfo(cfg.deployWindowDays, deployRepos);
     for (const p of needMerge) {
       const raw = await showPr(p.number, cfg.orgUrl);
-      if (raw?.lastMergeCommit?.commitId) ctx.store.setMergeCommit(p.canonical, raw.lastMergeCommit.commitId);
+      if (raw?.lastMergeCommit?.commitId) ctx.store.setMergeInfo(p.canonical, raw.lastMergeCommit.commitId, raw.closedDate ?? null);
     }
     const needDeploy = ctx.store.prsNeedingDeploy(cfg.deployWindowDays, deployRepos);
     if (needDeploy.length) {
       note("info", `resolving deploys for ${needDeploy.length} merged PR(s)`);
       for (const p of needDeploy) {
         try {
-          const deploy = await resolveDeploy(cfg.orgSlug, p.project, cfg.repoPipelines, p.repo, p.mergeCommit);
+          const deploy = await resolveDeploy(cfg.orgSlug, p.project, cfg.repoPipelines, p.repo, p.mergeCommit, Date.parse(p.mergedAt));
           ctx.store.setDeploy(p.canonical, deploy);
         } catch {
           /* retry next cycle */
@@ -223,9 +238,10 @@ async function closeDeparted(
     if (pr && (pr.status === "completed" || pr.status === "abandoned")) {
       const rec = store.getPr(canonical);
       store.markClosed(canonical, pr.status, undefined, runId);
-      // Capture the merge commit so the deploy tracker can pin the exact build.
+      // Capture the merge commit + real merge time so the deploy tracker can pin
+      // the exact build and bound the search to the actual merge moment.
       if (pr.status === "completed" && pr.lastMergeCommit?.commitId) {
-        store.setMergeCommit(canonical, pr.lastMergeCommit.commitId);
+        store.setMergeInfo(canonical, pr.lastMergeCommit.commitId, pr.closedDate ?? null);
       }
       closed += 1;
       if (rec?.reviewSessionId) {
@@ -281,6 +297,8 @@ export async function refreshPr(ctx: PollerContext, canonical: string): Promise<
     lastCommitSha: norm.sha,
     lastCommitAt: norm.createdAt,
     prCreatedAt: norm.createdAt,
+    sourceBranch: norm.sourceBranch,
+    targetBranch: norm.targetBranch,
   });
   ctx.store.setOwnership(canonical, own.role ?? "reviewer", own.teams, own.reviewState, norm.description, norm.isVendor, own.otherVotes);
   // `show` returns the full description (the bulk list truncates it), so store it
@@ -327,6 +345,8 @@ export async function trackByNumber(
     lastCommitSha: norm.sha,
     lastCommitAt: norm.createdAt,
     prCreatedAt: norm.createdAt,
+    sourceBranch: norm.sourceBranch,
+    targetBranch: norm.targetBranch,
   });
   ctx.store.setOwnership(norm.canonical, effective.role, effective.teams, effective.reviewState, norm.description, norm.isVendor, effective.otherVotes);
   ctx.store.setDescription(norm.canonical, norm.description);
@@ -374,3 +394,4 @@ function inWorkHours(date: Date, cfg: ArgusConfig): boolean {
     date.getHours() < cfg.workEndHour
   );
 }
+
