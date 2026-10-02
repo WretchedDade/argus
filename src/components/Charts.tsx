@@ -1,9 +1,16 @@
-import { Area, AreaChart, Bar, BarChart, CartesianGrid, Cell, ComposedChart, Label, LabelList, Legend, Pie, PieChart, ReferenceArea, ResponsiveContainer, Scatter, ScatterChart, Tooltip, Treemap, XAxis, YAxis, ZAxis } from "recharts";
-import { useState } from "react";
+import { Area, AreaChart, Bar, BarChart, CartesianGrid, Cell, ComposedChart, Customized, Label, LabelList, Legend, Pie, PieChart, ReferenceArea, ResponsiveContainer, Scatter, ScatterChart, Tooltip, Treemap, XAxis, YAxis, ZAxis } from "recharts";
+import { useState, type ReactElement } from "react";
 import type { InsightsLoadBucket, Period } from "../lib/api";
 import { fmtHours, nameColor, shortRepo } from "../lib/format";
 
-type StreamItem = { at: string; author: string | null; isVendor: boolean; verdict: string | null };
+type StreamItem = { at: string; repo: string; author: string | null; isVendor: boolean; verdict: string | null };
+
+// Bots aren't FTEs or vendors. They have no vendor "(Company)" suffix but match
+// known automation names, so exclude vendors then test the name.
+function isBotName(name: string | null, isVendor: boolean): boolean {
+  if (!name || isVendor) return false;
+  return /\bbot\b/i.test(name) || /^(agency|dependabot|renovate|github actions|azure pipelines)/i.test(name.trim());
+}
 
 type LatPoint = { at: string; hours: number; repo: string; number: number; verdict: string | null };
 
@@ -133,69 +140,88 @@ export function LoadChart({ data, granularity, periods = [], onSelectDay }: { da
 }
 
 // Whose PRs you review, over time. A streamgraph (silhouette-stacked areas): each
-// band is an author (or FTE/vendor in "type" mode), thickness = reviews that week.
-// Overlays the same named context bands as the load chart.
+// band is an author (person), a repo, or FTE/vendor/bot (type). Overlays the same
+// named context bands as the load chart. Hover a band to isolate it.
 export function ReviewStreamChart({
   items,
   periods = [],
   mode,
+  topN,
 }: {
   items: StreamItem[];
   periods?: Period[];
-  mode: "person" | "type";
+  mode: "person" | "repo" | "type";
+  topN?: number;
 }) {
-  const TOP_N = 10;
-  const OTHER = "#94a3b8";
-  const weeks = recentWeekKeys(10);
-  const weekSet = new Set(weeks);
+  const gran: StreamGran = "day";
+  const [hovered, setHovered] = useState<string | null>(null);
+  const allBuckets = recentBucketKeys(gran, BUCKET_COUNT[gran]);
+  const bucketSet = new Set(allBuckets);
 
-  const keyOf = (it: StreamItem) => (mode === "type" ? (it.isVendor ? "Vendor" : "FTE") : it.author ?? "Unknown");
+  const keyOf = (it: StreamItem): string => {
+    if (mode === "repo") return shortRepo(it.repo);
+    if (mode === "type") return isBotName(it.author, it.isVendor) ? "Bot" : it.isVendor ? "Vendor" : "FTE";
+    return it.author ?? "Unknown";
+  };
   const totals = new Map<string, number>();
-  const perWeek = new Map<string, Map<string, number>>();
-  for (const w of weeks) perWeek.set(w, new Map());
+  const perBucket = new Map<string, Map<string, number>>();
+  for (const b of allBuckets) perBucket.set(b, new Map());
   for (const it of items) {
     if (!it.verdict) continue;
-    const w = mondayKey(it.at);
-    if (!weekSet.has(w)) continue;
+    const b = bucketKey(it.at, gran);
+    if (!bucketSet.has(b)) continue;
     const k = keyOf(it);
     totals.set(k, (totals.get(k) ?? 0) + 1);
-    const wk = perWeek.get(w)!;
-    wk.set(k, (wk.get(k) ?? 0) + 1);
+    perBucket.get(b)!.set(k, (perBucket.get(b)!.get(k) ?? 0) + 1);
   }
 
-  let series: { key: string; color: string }[];
-  let collapse: (k: string) => string;
-  if (mode === "type") {
-    series = [
-      { key: "FTE", color: "#0f9b8e" },
-      { key: "Vendor", color: "#E69F00" },
-    ];
-    collapse = (k) => k;
-  } else {
-    const ranked = [...totals.entries()].sort((a, b) => b[1] - a[1]).map(([k]) => k);
-    const top = new Set(ranked.slice(0, TOP_N));
-    series = ranked.slice(0, TOP_N).map((k) => ({ key: k, color: nameColor(k) }));
-    if (ranked.length > TOP_N) series.push({ key: "Others", color: OTHER });
-    collapse = (k) => (top.has(k) ? k : "Others");
-  }
+  // Trim leading empty buckets so the axis starts at your first recorded review
+  // (data only goes back so far — no point rendering months of dead space).
+  const firstActive = allBuckets.findIndex((b) => perBucket.get(b)!.size > 0);
+  const buckets = firstActive >= 0 ? allBuckets.slice(firstActive) : allBuckets;
 
-  const data = weeks.map((w) => {
-    const row: Record<string, string | number> = { key: w };
-    for (const s of series) row[s.key] = 0;
-    for (const [k, n] of perWeek.get(w)!) {
-      const sk = collapse(k);
-      row[sk] = ((row[sk] as number) ?? 0) + n;
-    }
+  // Which keys to show: person/repo = top N (drop the tail); type = all 3.
+  let ranked = [...totals.entries()].sort((a, b) => b[1] - a[1]).map(([k]) => k);
+  if (topN && mode !== "type") ranked = ranked.slice(0, topN);
+
+  const TYPE_COLOR: Record<string, string> = { FTE: "#0f9b8e", Vendor: "#E69F00", Bot: "#8b5cf6" };
+  const colorFor = (key: string): string =>
+    mode === "type" ? (TYPE_COLOR[key] ?? "#94a3b8") : key === "Unknown" ? "#94a3b8" : nameColor(key);
+
+  // Inside-out ordering: largest totals in the middle of the stack, alternating
+  // outward — the classic streamgraph layout, easier to read than flat stacking.
+  const order: string[] = [];
+  ranked.forEach((k, i) => (i % 2 === 0 ? order.push(k) : order.unshift(k)));
+  const series = order.map((key) => ({ key, color: colorFor(key) }));
+
+  const data = buckets.map((b) => {
+    const row: Record<string, string | number> = { key: b };
+    for (const s of series) row[s.key] = perBucket.get(b)!.get(s.key) ?? 0;
     return row;
   });
 
-  const bandFor = (p: Period): { x1: string; x2: string } | null => {
-    const hit = weeks.filter((k) => {
-      const wStart = localDate(k);
-      const wEnd = new Date(wStart);
-      wEnd.setDate(wEnd.getDate() + 6);
-      return localDate(p.start) <= wEnd && localDate(p.end) >= wStart;
+  // Label placement: give each band a DISTINCT week to anchor its card — its
+  // highest-count week not already claimed by a bigger band — so two bands that
+  // peak the same week (e.g. FTE and Bot) don't stack their cards. Falls back to
+  // the true peak if every candidate week is taken. Only weeks with >= 2 qualify,
+  // so thin slivers stay unlabeled.
+  const peakIndex = new Map<string, number>();
+  const takenWeeks = new Set<number>();
+  for (const key of ranked) {
+    const cands: { i: number; v: number }[] = [];
+    data.forEach((row, i) => {
+      const v = row[key] as number;
+      if (v >= 2) cands.push({ i, v });
     });
+    if (!cands.length) continue;
+    cands.sort((a, b) => b.v - a.v || a.i - b.i);
+    const pick = cands.find((c) => !takenWeeks.has(c.i)) ?? cands[0];
+    takenWeeks.add(pick.i);
+    peakIndex.set(key, pick.i);
+  }
+
+  const bandFor = (p: Period): { x1: string; x2: string } | null => {
+    const hit = buckets.filter((k) => localDate(p.start) <= bucketEnd(k, gran) && localDate(p.end) >= bucketStart(k, gran));
     return hit.length ? { x1: hit[0], x2: hit[hit.length - 1] } : null;
   };
   const bands = periods
@@ -204,37 +230,292 @@ export function ReviewStreamChart({
 
   if (![...totals.values()].some((n) => n > 0)) return <p className="text-muted py-8 text-center text-sm">No reviews recorded yet.</p>;
 
+  // Bands hold a constant opacity — the inline cards do the identifying now, so
+  // dimming the rest on hover just hurt readability. Hover is kept only to drive
+  // the single-band tooltip.
+  const opacityOf = (_key: string) => 0.8;
+  // Legend reads top-down by size (rank order), not the inside-out stack order.
+  const legend = ranked.map((key) => ({ key, color: colorFor(key), total: totals.get(key) ?? 0 }));
+
+  // Inline band cards, drawn as ONE overlay so they can see each other and avoid
+  // collisions. Recharts <Customized> hands us the laid-out series with pixel
+  // coordinates; we anchor each card at its assigned week, then a de-overlap pass
+  // nudges any card that would sit on top of an already-placed one downward.
+  const renderBandCards = (cprops: unknown): ReactElement | null => {
+    const p = cprops as {
+      formattedGraphicalItems?: { props?: { dataKey?: string; points?: { x?: number; y?: number }[] } }[];
+      offset?: { left?: number; top?: number; width?: number };
+    };
+    const items = p.formattedGraphicalItems;
+    if (!items) return null;
+    const ptsByKey = new Map<string, { x?: number; y?: number }[]>();
+    for (const it of items) {
+      const dk = it?.props?.dataKey;
+      if (dk != null) ptsByKey.set(String(dk), it.props?.points ?? []);
+    }
+    const plotLeft = p.offset?.left ?? 0;
+    const plotTop = p.offset?.top ?? 0;
+    const plotRight = plotLeft + (p.offset?.width ?? 0);
+    const padX = 5;
+    const sw = 8;
+    const swGap = 4;
+    const h = 17;
+    const gap = 6;
+    type Card = { key: string; px: number; yEdge: number; w: number; name: string; total: number; color: string; boxX: number; boxTop: number };
+    const cards: Card[] = [];
+    for (const key of ranked) {
+      const pi = peakIndex.get(key);
+      if (pi == null) continue;
+      const pt = ptsByKey.get(key)?.[pi];
+      if (!pt || pt.x == null || pt.y == null) continue;
+      const name = mode === "person" ? shortName(key) : key;
+      const total = totals.get(key) ?? 0;
+      const w = padX + sw + swGap + name.length * 6 + 5 + String(total).length * 6 + padX;
+      let boxX = pt.x - w / 2;
+      if (boxX < plotLeft + 2) boxX = plotLeft + 2;
+      if (boxX + w > plotRight - 2) boxX = plotRight - 2 - w;
+      // Default above the edge; flip below when there is no room at the top.
+      let boxTop = pt.y - gap - h;
+      if (boxTop < plotTop + 2) boxTop = pt.y + gap;
+      cards.push({ key, px: pt.x, yEdge: pt.y, w, name, total, color: colorFor(key), boxX, boxTop });
+    }
+    // De-overlap: place left-to-right; push a card down past any earlier card it
+    // would touch. A couple passes settle short collision chains.
+    cards.sort((a, b) => a.boxX - b.boxX);
+    for (let pass = 0; pass < 3; pass++) {
+      for (let i = 0; i < cards.length; i++) {
+        for (let j = 0; j < i; j++) {
+          const a = cards[j];
+          const b = cards[i];
+          const xOverlap = b.boxX < a.boxX + a.w + 3 && a.boxX < b.boxX + b.w + 3;
+          const yOverlap = b.boxTop < a.boxTop + h + 2 && a.boxTop < b.boxTop + h + 2;
+          if (xOverlap && yOverlap) b.boxTop = a.boxTop + h + 3;
+        }
+      }
+    }
+    return (
+      <g pointerEvents="none">
+        {cards.map((c) => {
+          const cardBottom = c.boxTop + h;
+          const ly2 = c.boxTop > c.yEdge ? c.boxTop : cardBottom; // leader to nearest card edge
+          return (
+            <g key={c.key}>
+              <line x1={c.px} y1={c.yEdge} x2={c.px} y2={ly2} stroke={c.color} strokeWidth={1} strokeOpacity={0.85} />
+              <rect x={c.boxX} y={c.boxTop} width={c.w} height={h} rx={4} fill="var(--color-canvas)" stroke="var(--color-line)" strokeWidth={1} />
+              <rect x={c.boxX + padX} y={c.boxTop + (h - sw) / 2} width={sw} height={sw} rx={2} fill={c.color} />
+              <text x={c.boxX + padX + sw + swGap} y={c.boxTop + 12} textAnchor="start" fontSize={10} fontWeight={600} fill="var(--color-fg)">
+                {c.name}
+                <tspan dx={5} fontWeight={400} fill="var(--color-muted)">
+                  {String(c.total)}
+                </tspan>
+              </text>
+            </g>
+          );
+        })}
+      </g>
+    );
+  };
+
   return (
-    <ResponsiveContainer width="100%" height={260}>
-      <AreaChart data={data} stackOffset="silhouette" margin={{ top: 8, right: 4, bottom: 0, left: 4 }}>
-        {bands.map(({ p, span }) => (
-          <ReferenceArea key={p.label + span.x1} x1={span.x1} x2={span.x2} ifOverflow="extendDomain" fill="#7C4DFF" fillOpacity={0.1} stroke="#7C4DFF" strokeOpacity={0.22}>
-            <Label value={p.label} position="insideTop" fill="#9575ff" fontSize={10} offset={4} />
-          </ReferenceArea>
+    <div>
+      <ResponsiveContainer width="100%" height={280}>
+        <AreaChart data={data} stackOffset="silhouette" margin={{ top: 8, right: 4, bottom: 0, left: 4 }}>
+          <CartesianGrid horizontal={false} stroke="var(--color-line)" strokeOpacity={0.55} />
+          <XAxis
+            dataKey="key"
+            interval={0}
+            tick={(p) => {
+              const { x, y, index, payload } = p as { x?: number; y?: number; index?: number; payload?: { value?: string } };
+              const every = Math.max(1, Math.ceil(buckets.length / 8));
+              if (x == null || y == null || index == null || index % every !== 0) return <g />;
+              return (
+                <text x={x} y={y + 12} textAnchor="middle" fontSize={11} fill={AXIS}>
+                  {bucketAxisLabel(String(payload?.value ?? ""), gran)}
+                </text>
+              );
+            }}
+            axisLine={false}
+            tickLine={false}
+          />
+          <Tooltip contentStyle={TOOLTIP} content={(props) => <StreamTip active={props.active} label={props.label as string | undefined} payload={props.payload as unknown as { dataKey?: string; value?: number }[] | undefined} hovered={hovered} mode={mode} gran={gran} />} />
+          {series.map((s) => (
+            <Area
+              key={s.key}
+              type="monotone"
+              dataKey={s.key}
+              name={mode === "person" ? shortName(s.key) : s.key}
+              stackId="1"
+              stroke={s.color}
+              strokeWidth={hovered === s.key ? 1.25 : 0.5}
+              fill={s.color}
+              fillOpacity={opacityOf(s.key)}
+              isAnimationActive={false}
+              onMouseEnter={() => setHovered(s.key)}
+              onMouseLeave={() => setHovered(null)}
+            />
+          ))}
+          <Customized component={renderBandCards} />
+          {bands.map(({ p, span }) => (
+            <ReferenceArea key={p.label + span.x1} x1={span.x1} x2={span.x2} ifOverflow="extendDomain" fill={PERIOD_COLOR} fillOpacity={0.12} stroke={PERIOD_COLOR} strokeOpacity={0.55} strokeWidth={1} strokeDasharray="4 3">
+              <Label content={(props) => <PeriodTag viewBox={(props as { viewBox?: { x?: number; y?: number; width?: number } }).viewBox} text={p.label} />} />
+            </ReferenceArea>
+          ))}
+        </AreaChart>
+      </ResponsiveContainer>
+      <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1">
+        {legend.map((l) => (
+          <div key={l.key} className="inline-flex items-center gap-1.5 text-[11px]">
+            <span className="inline-block h-2.5 w-2.5 flex-none rounded-[3px]" style={{ background: l.color }} />
+            <span className="text-fg">{mode === "person" ? shortName(l.key) : l.key}</span>
+            <span className="text-muted">{l.total}</span>
+          </div>
         ))}
-        <XAxis dataKey="key" tickFormatter={weekLabel} tick={{ fill: AXIS, fontSize: 11 }} axisLine={false} tickLine={false} minTickGap={8} />
-        <Tooltip contentStyle={TOOLTIP} itemStyle={{ color: "var(--color-fg)" }} labelFormatter={(k) => `Week of ${weekLabel(String(k))}`} />
-        <Legend wrapperStyle={{ fontSize: 11, paddingTop: 6 }} iconType="circle" iconSize={8} />
-        {series.map((s) => (
-          <Area key={s.key} type="monotone" dataKey={s.key} name={mode === "person" ? shortName(s.key) : s.key} stackId="1" stroke={s.color} fill={s.color} fillOpacity={0.72} strokeWidth={0.5} isAnimationActive={false} />
-        ))}
-      </AreaChart>
-    </ResponsiveContainer>
+      </div>
+    </div>
   );
 }
 
-// The last `n` Monday-anchored week keys, oldest first, ending with this week.
-function recentWeekKeys(n: number): string[] {
+const PERIOD_COLOR = "#7C4DFF"; // context-band accent (violet), distinct from the peacock band palette
+
+// Top-centered pill for a context band (e.g. "Hackathon"), rendered as the
+// ReferenceArea's label so the period reads as a labeled span, not bare text.
+function PeriodTag({ viewBox, text }: { viewBox?: { x?: number; y?: number; width?: number }; text: string }): ReactElement | null {
+  if (!viewBox || viewBox.x == null || viewBox.width == null) return null;
+  const cx = viewBox.x + viewBox.width / 2;
+  const top = (viewBox.y ?? 0) + 3;
+  const w = text.length * 6 + 14;
+  const h = 16;
+  return (
+    <g pointerEvents="none">
+      <rect x={cx - w / 2} y={top} width={w} height={h} rx={4} fill={PERIOD_COLOR} />
+      <text x={cx} y={top + 11.5} textAnchor="middle" fontSize={10} fontWeight={600} fill="#fff">
+        {text}
+      </text>
+    </g>
+  );
+}
+
+// Tooltip that shows ONLY the band you're hovering (a stacked streamgraph tooltip
+// listing all 30+ authors is unreadable). Falls back to a hint when between bands.
+function StreamTip({ active, label, payload, hovered, mode, gran }: { active?: boolean; label?: string; payload?: { dataKey?: string; value?: number }[]; hovered: string | null; mode: "person" | "repo" | "type"; gran: StreamGran }) {
+  if (!active) return null;
+  const when = label ? bucketTipLabel(String(label), gran) : "";
+  const entry = hovered ? payload?.find((p) => p.dataKey === hovered) : undefined;
+  return (
+    <div style={{ ...TOOLTIP, padding: "6px 9px" }}>
+      <div style={{ color: "var(--color-muted)", fontSize: 11 }}>{when}</div>
+      {hovered && entry ? (
+        <div style={{ color: "var(--color-fg)", fontWeight: 600 }}>
+          {mode === "person" ? shortName(hovered) : hovered}: {entry.value ?? 0}
+        </div>
+      ) : (
+        <div style={{ color: "var(--color-muted)", fontSize: 11 }}>hover a band</div>
+      )}
+    </div>
+  );
+}
+
+// X-axis granularity for the review streamgraph. "sprint" is a 2-week bin.
+export type StreamGran = "day" | "week" | "sprint" | "month";
+
+// How many buckets each granularity shows (roughly a comparable total span).
+const BUCKET_COUNT: Record<StreamGran, number> = { day: 60, week: 16, sprint: 12, month: 12 };
+
+// A Monday that starts a sprint. 2-week sprint bins are counted from here, so
+// the phase lines up with the team's real cadence. Adjust if sprints ever shift.
+const SPRINT_ANCHOR = new Date(2025, 6, 14); // Mon 2025-07-14
+const DAY_MS = 86_400_000;
+
+function ymd(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+function wholeDays(a: Date, b: Date): number {
+  return Math.round((a.getTime() - b.getTime()) / DAY_MS);
+}
+
+// Canonical bucket key for a timestamp at the given granularity (day/week/sprint
+// => YYYY-MM-DD bucket start; month => YYYY-MM).
+function bucketKey(iso: string, gran: StreamGran): string {
+  const dt = new Date(iso);
+  const day0 = new Date(dt.getFullYear(), dt.getMonth(), dt.getDate());
+  if (gran === "day") return ymd(day0);
+  if (gran === "month") return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, "0")}`;
+  if (gran === "sprint") {
+    const bin = Math.floor(wholeDays(day0, SPRINT_ANCHOR) / 14);
+    const start = new Date(SPRINT_ANCHOR);
+    start.setDate(start.getDate() + bin * 14);
+    return ymd(start);
+  }
+  return mondayKey(iso);
+}
+
+// The last `n` bucket keys for a granularity, oldest first, ending with the
+// bucket that contains today.
+function recentBucketKeys(gran: StreamGran, n: number): string[] {
   const now = new Date();
-  const dow = (now.getDay() + 6) % 7;
-  const thisMon = new Date(now.getFullYear(), now.getMonth(), now.getDate() - dow);
+  if (gran === "month") {
+    const out: string[] = [];
+    for (let i = n - 1; i >= 0; i--) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      out.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`);
+    }
+    return out;
+  }
+  if (gran === "day") {
+    // Weekdays only — skip Sat/Sun so a working-days axis stays compact and the
+    // weekend gaps don't stretch short context bands (e.g. a 2-day hackathon).
+    const out: string[] = [];
+    const d = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    while (out.length < n) {
+      const dow = d.getDay();
+      if (dow !== 0 && dow !== 6) out.unshift(ymd(d));
+      d.setDate(d.getDate() - 1);
+    }
+    return out;
+  }
+  const step = gran === "sprint" ? 14 : 7;
+  const curStart = localDate(bucketKey(now.toISOString(), gran));
   const out: string[] = [];
   for (let i = n - 1; i >= 0; i--) {
-    const d = new Date(thisMon);
-    d.setDate(d.getDate() - i * 7);
-    out.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`);
+    const d = new Date(curStart);
+    d.setDate(d.getDate() - i * step);
+    out.push(ymd(d));
   }
   return out;
+}
+
+// First calendar day of a bucket (handles the YYYY-MM month key).
+function bucketStart(key: string, gran: StreamGran): Date {
+  if (gran === "month") {
+    const [y, m] = key.split("-").map(Number);
+    return new Date(y, m - 1, 1);
+  }
+  return localDate(key);
+}
+// Last calendar day of a bucket, for context-band overlap tests.
+function bucketEnd(key: string, gran: StreamGran): Date {
+  if (gran === "month") {
+    const [y, m] = key.split("-").map(Number);
+    return new Date(y, m, 0); // day 0 of next month = last day of this month
+  }
+  const end = localDate(key);
+  end.setDate(end.getDate() + (gran === "day" ? 0 : gran === "sprint" ? 13 : 6));
+  return end;
+}
+// Short axis label for a bucket key.
+function bucketAxisLabel(key: string, gran: StreamGran): string {
+  if (gran === "month") {
+    const [y, m] = key.split("-").map(Number);
+    return new Date(y, m - 1, 1).toLocaleDateString([], { month: "short", year: "2-digit" });
+  }
+  return localDate(key).toLocaleDateString([], { month: "numeric", day: "numeric" });
+}
+// Longer tooltip label for a bucket key.
+function bucketTipLabel(key: string, gran: StreamGran): string {
+  if (gran === "month") return bucketAxisLabel(key, "month");
+  if (gran === "day") return localDate(key).toLocaleDateString([], { weekday: "short", month: "short", day: "numeric" });
+  const start = bucketAxisLabel(key, "week");
+  return gran === "sprint" ? `Sprint of ${start}` : `Week of ${start}`;
 }
 
 // Trim a display name to first name + last initial for a compact legend/tooltip.

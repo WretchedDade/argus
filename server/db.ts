@@ -1153,6 +1153,7 @@ export class ArgusStore {
         at: p.addedAt,
         author: p.author as string,
         vendor: !!p.isVendor,
+        repo: p.repo,
         teams: p.teamsJson ? (JSON.parse(p.teamsJson) as string[]) : [],
       }));
 
@@ -1524,8 +1525,16 @@ export class ArgusStore {
       level: d.level,
     }));
 
+    const trackingSince = (this.#db.prepare("SELECT MIN(ts) AS t FROM pr_events").get() as { t?: string } | undefined)?.t ?? null;
+
     return {
       generatedAt: now(),
+      summary: {
+        reviewsAllTime: rhythmItems.length,
+        firstReviewAt: rhythmItems.length ? rhythmItems[0].at : null,
+        lastReviewAt: rhythmItems.length ? rhythmItems[rhythmItems.length - 1].at : null,
+        trackingSince,
+      },
       latency: {
         count: latHours.length,
         pending: latPending,
@@ -1814,24 +1823,39 @@ export class ArgusStore {
   // Closed/merged PRs whose linked review sessions can be archived. Written by the
   // poller, read + cleared by the user-initiated archive action (which has the
   // session context the background poll lacks).
-  // Sessions ready to archive — computed directly: any closed PR (merged or
-  // abandoned) that still has a linked review session. Deterministic, so it
-  // doesn't depend on the poller catching the exact close transition. Archiving
-  // clears the session link (see markReviewSessionsArchived), so items drop off.
-  getArchivable(): ArchivableSession[] {
+  // Sessions ready to archive — computed directly: a closed PR (merged or
+  // abandoned) that still has a linked review session, OR an open PR that has
+  // gone stale (no activity past the recency window) with a linked session. Both
+  // are deterministic, so they don't depend on the poller catching a transition.
+  // Archiving clears the session link (see markReviewSessionsArchived), so items
+  // drop off — a stale PR that later wakes up gets a fresh review session, it is
+  // not re-flagged here. `status` distinguishes the reason ('completed'/reason
+  // vs 'stale') so the archive prompt reads correctly.
+  getArchivable(recencyDays: number): ArchivableSession[] {
+    const staleMs = recencyDays * 86_400_000;
+    const now = Date.now();
     const rows = this.#prep(`
       SELECT p.repo AS repo, p.number AS number, p.review_session_id AS sessionId,
-        COALESCE(
-          (SELECT json_extract(e.payload, '$.reason') FROM pr_events e
-           WHERE e.canonical = p.canonical AND e.type = 'closed'
-           ORDER BY e.ts DESC LIMIT 1),
-          'completed'
-        ) AS status
+        p.state AS state, p.updated_at AS updatedAt,
+        (SELECT json_extract(e.payload, '$.reason') FROM pr_events e
+         WHERE e.canonical = p.canonical AND e.type = 'closed'
+         ORDER BY e.ts DESC LIMIT 1) AS closeReason
       FROM prs p
-      WHERE p.state = 'closed' AND p.review_session_id IS NOT NULL AND p.dismissed = 0
+      WHERE p.review_session_id IS NOT NULL AND p.dismissed = 0
       ORDER BY p.updated_at DESC
-    `).all() as unknown as { repo: string; number: number; sessionId: string; status: string }[];
-    return rows.map((r) => ({ repo: r.repo, number: r.number, status: r.status, sessionId: r.sessionId }));
+    `).all() as unknown as { repo: string; number: number; sessionId: string; state: string; updatedAt: string; closeReason: string | null }[];
+    // Staleness is decided in JS with Date.parse (updated_at is stored in a
+    // locale format that is not lexicographically sortable), matching the rest
+    // of the store. Closed PRs are always archivable; open PRs only once idle
+    // past the recency window.
+    return rows
+      .filter((r) => r.state === "closed" || now - Date.parse(r.updatedAt) > staleMs)
+      .map((r) => ({
+        repo: r.repo,
+        number: r.number,
+        sessionId: r.sessionId,
+        status: r.state === "closed" ? (r.closeReason ?? "completed") : "stale",
+      }));
   }
 
   // Drop the review-session link on PRs whose sessions were just archived, so

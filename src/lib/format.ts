@@ -54,6 +54,15 @@ export function shortRepo(name: string): string {
   return name.replace(/^LPE\.Starfleet\./, "").replace(/^LPE\./, "");
 }
 
+// Author-type classifier — kept in lockstep with the server AUTOMATED_RE so the
+// windowed client donuts agree with the server's snapshot classification.
+export type AuthorType = "FTE" | "Vendor" | "Automated";
+const AUTOMATED_RE = /dependabot|renovate|\bbot\b|build service|azure pipelines|automation|\bagency\b/i;
+export function authorType(author: string | null, isVendor: boolean): AuthorType {
+  if (author && AUTOMATED_RE.test(author)) return "Automated";
+  return isVendor ? "Vendor" : "FTE";
+}
+
 // Deterministic avatar-style hue from a string (repo/author name), so each repo
 // gets a stable, distinct accent color without a lookup table.
 export function hashHue(name: string): number {

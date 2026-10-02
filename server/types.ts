@@ -99,6 +99,12 @@ export interface InsightsAuthoredPr {
 // log and current PR rows.
 export interface Insights {
   generatedAt: string;
+  summary: {
+    reviewsAllTime: number;
+    firstReviewAt: string | null;
+    lastReviewAt: string | null;
+    trackingSince: string | null;
+  };
   latency: {
     count: number;
     pending: number;

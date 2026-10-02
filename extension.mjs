@@ -883,6 +883,7 @@ var ArgusStore = class _ArgusStore {
       at: p.addedAt,
       author: p.author,
       vendor: !!p.isVendor,
+      repo: p.repo,
       teams: p.teamsJson ? JSON.parse(p.teamsJson) : []
     }));
     const VERDICTS = ["approved", "suggestions", "waiting", "rejected"];
@@ -1161,8 +1162,15 @@ var ArgusStore = class _ArgusStore {
       throughput: d.throughput,
       level: d.level
     }));
+    const trackingSince = this.#db.prepare("SELECT MIN(ts) AS t FROM pr_events").get()?.t ?? null;
     return {
       generatedAt: now(),
+      summary: {
+        reviewsAllTime: rhythmItems.length,
+        firstReviewAt: rhythmItems.length ? rhythmItems[0].at : null,
+        lastReviewAt: rhythmItems.length ? rhythmItems[rhythmItems.length - 1].at : null,
+        trackingSince
+      },
       latency: {
         count: latHours.length,
         pending: latPending,
@@ -1394,24 +1402,33 @@ var ArgusStore = class _ArgusStore {
   // Closed/merged PRs whose linked review sessions can be archived. Written by the
   // poller, read + cleared by the user-initiated archive action (which has the
   // session context the background poll lacks).
-  // Sessions ready to archive — computed directly: any closed PR (merged or
-  // abandoned) that still has a linked review session. Deterministic, so it
-  // doesn't depend on the poller catching the exact close transition. Archiving
-  // clears the session link (see markReviewSessionsArchived), so items drop off.
-  getArchivable() {
+  // Sessions ready to archive — computed directly: a closed PR (merged or
+  // abandoned) that still has a linked review session, OR an open PR that has
+  // gone stale (no activity past the recency window) with a linked session. Both
+  // are deterministic, so they don't depend on the poller catching a transition.
+  // Archiving clears the session link (see markReviewSessionsArchived), so items
+  // drop off — a stale PR that later wakes up gets a fresh review session, it is
+  // not re-flagged here. `status` distinguishes the reason ('completed'/reason
+  // vs 'stale') so the archive prompt reads correctly.
+  getArchivable(recencyDays) {
+    const staleMs = recencyDays * 864e5;
+    const now2 = Date.now();
     const rows = this.#prep(`
       SELECT p.repo AS repo, p.number AS number, p.review_session_id AS sessionId,
-        COALESCE(
-          (SELECT json_extract(e.payload, '$.reason') FROM pr_events e
-           WHERE e.canonical = p.canonical AND e.type = 'closed'
-           ORDER BY e.ts DESC LIMIT 1),
-          'completed'
-        ) AS status
+        p.state AS state, p.updated_at AS updatedAt,
+        (SELECT json_extract(e.payload, '$.reason') FROM pr_events e
+         WHERE e.canonical = p.canonical AND e.type = 'closed'
+         ORDER BY e.ts DESC LIMIT 1) AS closeReason
       FROM prs p
-      WHERE p.state = 'closed' AND p.review_session_id IS NOT NULL AND p.dismissed = 0
+      WHERE p.review_session_id IS NOT NULL AND p.dismissed = 0
       ORDER BY p.updated_at DESC
     `).all();
-    return rows.map((r) => ({ repo: r.repo, number: r.number, status: r.status, sessionId: r.sessionId }));
+    return rows.filter((r) => r.state === "closed" || now2 - Date.parse(r.updatedAt) > staleMs).map((r) => ({
+      repo: r.repo,
+      number: r.number,
+      sessionId: r.sessionId,
+      status: r.state === "closed" ? r.closeReason ?? "completed" : "stale"
+    }));
   }
   // Drop the review-session link on PRs whose sessions were just archived, so
   // they leave the archivable list. Keyed by sessionId (what the banner acts on).
@@ -1821,8 +1838,14 @@ function sendJson(res, status, body) {
 // server/api.ts
 function archivePrompt(items) {
   const lines = items.map((a) => `- ${a.repo} #${a.number} (${a.status}) \u2192 session \`${a.sessionId}\``);
+  const staleN = items.filter((a) => a.status === "stale").length;
+  const closedN = items.length - staleN;
+  const parts = [
+    closedN > 0 ? `${closedN} closed/merged` : null,
+    staleN > 0 ? `${staleN} stale (open but idle past the recency window)` : null
+  ].filter(Boolean);
   return [
-    `Argus: ${items.length} tracked PR(s) closed/merged and have a linked review session with no further work. Please archive these review sessions:`,
+    `Argus: ${items.length} tracked PR(s) have a linked review session with no further work (${parts.join(" and ")}). Please archive these review sessions:`,
     ``,
     ...lines
   ].join("\n");
@@ -2037,11 +2060,11 @@ async function handleApi(req, res, ctx) {
     return true;
   }
   if (route === "/api/archivable") {
-    sendJson(res, 200, { archivable: ctx.store.getArchivable() });
+    sendJson(res, 200, { archivable: ctx.store.getArchivable(ctx.getConfig().recencyDays) });
     return true;
   }
   if (route === "/api/archive" && req.method === "POST") {
-    const items = ctx.store.getArchivable();
+    const items = ctx.store.getArchivable(ctx.getConfig().recencyDays);
     if (items.length > 0) {
       await ctx.dispatch(archivePrompt(items));
       ctx.store.markReviewSessionsArchived(items.map((i) => i.sessionId));

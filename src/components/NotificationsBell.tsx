@@ -67,7 +67,7 @@ export function NotificationsBell() {
             ) : (
               <div className="flex flex-col">
                 <div className="text-muted border-line border-b px-3.5 py-2.5 text-xs">
-                  {archivable.length} review session{archivable.length === 1 ? "" : "s"} from merged PRs, ready to clean up.
+                  {archivable.length} review session{archivable.length === 1 ? "" : "s"} from merged or stale PRs, ready to clean up.
                 </div>
                 <div className="divide-line max-h-[calc(70vh-8rem)] divide-y overflow-y-auto">
                   {archivable.map((a) => (

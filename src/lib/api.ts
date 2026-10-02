@@ -68,6 +68,12 @@ export interface InsightsAuthoredPr {
 
 export interface Insights {
   generatedAt: string;
+  summary: {
+    reviewsAllTime: number;
+    firstReviewAt: string | null;
+    lastReviewAt: string | null;
+    trackingSince: string | null;
+  };
   latency: {
     count: number;
     pending: number;
@@ -99,7 +105,7 @@ export interface Insights {
     byAuthorType: InsightsCount[];
   };
   reach: {
-    items: { at: string; author: string; vendor: boolean; teams: string[] }[];
+    items: { at: string; author: string; vendor: boolean; repo: string; teams: string[] }[];
   };
   votePattern: {
     byType: { label: string; approved: number; suggestions: number; waiting: number; rejected: number }[];

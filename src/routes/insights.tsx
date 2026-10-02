@@ -4,7 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import { CheckCircle2, ChevronRight, GitPullRequest, Inbox, Timer, X } from "lucide-react";
 import { api, configQuery, insightsQuery, type InsightsCount, type LoadDayPr } from "../lib/api";
 import { AuthorTreemap, BalanceStrip, CoverageWaffle, DepthMeter, Donut, HBars, LatencyScatter, LoadChart, RepoScatter, ReviewCalendar, ReviewRhythm, ReviewStreamChart, VoteBars, VoteTurnBubbles } from "../components/Charts";
-import { fmtHours, shortRepo } from "../lib/format";
+import { authorType, fmtHours, shortRepo } from "../lib/format";
 import { SegToggle } from "../components/SegToggle";
 import { REVIEW_STATE_META } from "../lib/triage";
 import type { PrReviewState } from "../lib/api";
@@ -251,7 +251,21 @@ function topWithOther(counts: InsightsCount[], n: number): InsightsCount[] {
   return other > 0 ? [...top, { label: "Other", count: other }] : top;
 }
 
-type ReachItem = { at: string; author: string; vendor: boolean; teams: string[] };
+type ReachItem = { at: string; author: string; vendor: boolean; repo: string; teams: string[] };
+
+// A short calendar date, and a rough human span from a date to now — used by the
+// all-time review summary so you can see the window the totals cover.
+function fmtDate(iso: string | null): string {
+  return iso ? new Date(iso).toLocaleDateString([], { month: "short", day: "numeric", year: "numeric" }) : "—";
+}
+function humanSpan(fromIso: string | null): string {
+  if (!fromIso) return "";
+  const days = Math.max(1, Math.round((Date.now() - Date.parse(fromIso)) / 86_400_000));
+  if (days < 14) return `${days} days`;
+  if (days < 70) return `${Math.round(days / 7)} weeks`;
+  if (days < 365) return `${Math.round(days / 30)} months`;
+  return `${(days / 365).toFixed(1)} years`;
+}
 
 // Streak stats over a balance-day window. "Falling behind" = inflow > throughput;
 // "overload" = concurrent load at/above the heavy line. current = trailing run.
@@ -280,18 +294,24 @@ function balanceStreaks(days: { inflow: number; throughput: number; level: numbe
 function computeReach(items: ReachItem[], days: number | null) {
   const cutoff = days ? Date.now() - days * 86_400_000 : 0;
   const authorMap = new Map<string, number>();
+  const repoMap = new Map<string, number>();
   const teamSet = new Set<string>();
+  const typeCount = { FTE: 0, Vendor: 0, Automated: 0 };
   let vendor = 0;
   let prs = 0;
   for (const i of items) {
     if (days && Date.parse(i.at) < cutoff) continue;
     prs++;
     authorMap.set(i.author, (authorMap.get(i.author) ?? 0) + 1);
+    repoMap.set(i.repo, (repoMap.get(i.repo) ?? 0) + 1);
+    typeCount[authorType(i.author, i.vendor)]++;
     if (i.vendor) vendor++;
     for (const t of i.teams) teamSet.add(t);
   }
   const byAuthor = [...authorMap.entries()].map(([label, count]) => ({ label, count })).sort((a, c) => c.count - a.count);
-  return { prs, authors: authorMap.size, teams: teamSet.size, vendorShare: prs ? vendor / prs : 0, byAuthor };
+  const byRepo = [...repoMap.entries()].map(([label, count]) => ({ label, count })).sort((a, c) => c.count - a.count);
+  const byType = (["FTE", "Vendor", "Automated"] as const).map((label) => ({ label, count: typeCount[label] }));
+  return { prs, authors: authorMap.size, teams: teamSet.size, vendorShare: prs ? vendor / prs : 0, byAuthor, byRepo, byType };
 }
 
 function InsightsPage() {
@@ -300,22 +320,32 @@ function InsightsPage() {
   const labels = cfg?.teamLabels ?? {};
   if (!data) return <p className="text-muted text-sm">Loading…</p>;
 
-  const { latency, throughput, backlog, distribution, load, reach, votePattern, reviewDepth, votePath, reviewCoverage, reviewRhythm, balance } = data;
+  const { summary, latency, throughput, backlog, distribution, load, reach, votePattern, reviewDepth, votePath, reviewCoverage, reviewRhythm, balance } = data;
   const activeTotal = distribution.byAuthorType.reduce((sum, c) => sum + c.count, 0);
   const [gran, setGran] = useState<"day" | "week">("week");
   const [latView, setLatView] = useState<"scatter" | "distribution">("scatter");
   const [reachWin, setReachWin] = useState<"7" | "30" | "90" | "all">("30");
+  const [loadWin, setLoadWin] = useState<"7" | "30" | "90" | "all">("30");
   const [rhythmView, setRhythmView] = useState<"day" | "calendar">("day");
-  const [streamMode, setStreamMode] = useState<"person" | "type">("person");
+  const [streamMode, setStreamMode] = useState<"person" | "repo" | "type">("person");
+  const [topPerson, setTopPerson] = useState<5 | 10 | 15 | 20>(10);
+  const [topRepo, setTopRepo] = useState<3 | 5 | 8 | 12>(5);
   const [loadDay, setLoadDay] = useState<string | null>(null);
   const [balanceWin, setBalanceWin] = useState<4 | 8 | 12>(8);
   const reachDays = reachWin === "all" ? null : Number(reachWin);
   const r = computeReach(reach.items, reachDays);
+  const rl = computeReach(reach.items, loadWin === "all" ? null : Number(loadWin));
   const loadData = gran === "day" ? load.daily : load.weekly;
   const hasLoad = load.weekly.some((b) => b.inflow > 0 || b.throughput > 0 || b.backlog > 0);
 
   return (
     <div className="mx-auto flex max-w-4xl flex-col gap-5">
+      {summary.reviewsAllTime > 0 && (
+        <p className="text-muted text-xs">
+          <span className="text-fg font-semibold">{summary.reviewsAllTime}</span> reviews recorded over {humanSpan(summary.firstReviewAt)} · since {fmtDate(summary.firstReviewAt)}
+          {summary.trackingSince ? ` · tracking since ${fmtDate(summary.trackingSince)}` : ""}
+        </p>
+      )}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         <Kpi icon={Timer} label="Median review latency" value={fmtHours(latency.medianHours)} anchor="--color-teal-500" />
         <Kpi icon={CheckCircle2} label="Reviews (8 wks)" value={String(throughput.total)} anchor="--color-green-500" />
@@ -574,21 +604,50 @@ function InsightsPage() {
         <Section
           title="Whose PRs you review, over time"
           meta={
-            <SegToggle
-              value={streamMode}
-              onChange={setStreamMode}
-              options={[
-                { v: "person", label: "By person" },
-                { v: "type", label: "FTE vs vendor" },
-              ]}
-            />
+            <div className="flex flex-wrap items-center gap-2">
+              {streamMode === "person" && (
+                <SegToggle
+                  value={topPerson}
+                  onChange={setTopPerson}
+                  options={[
+                    { v: 5, label: "Top 5" },
+                    { v: 10, label: "Top 10" },
+                    { v: 15, label: "Top 15" },
+                    { v: 20, label: "Top 20" },
+                  ]}
+                />
+              )}
+              {streamMode === "repo" && (
+                <SegToggle
+                  value={topRepo}
+                  onChange={setTopRepo}
+                  options={[
+                    { v: 3, label: "Top 3" },
+                    { v: 5, label: "Top 5" },
+                    { v: 8, label: "Top 8" },
+                    { v: 12, label: "Top 12" },
+                  ]}
+                />
+              )}
+              <SegToggle
+                value={streamMode}
+                onChange={setStreamMode}
+                options={[
+                  { v: "person", label: "By person" },
+                  { v: "repo", label: "By repo" },
+                  { v: "type", label: "FTE/vendor/bot" },
+                ]}
+              />
+            </div>
           }
         >
-          <ReviewStreamChart items={reviewRhythm.items} periods={cfg?.periods ?? []} mode={streamMode} />
+          <ReviewStreamChart items={reviewRhythm.items} periods={cfg?.periods ?? []} mode={streamMode} topN={streamMode === "person" ? topPerson : streamMode === "repo" ? topRepo : undefined} />
           <p className="text-muted mt-3 text-[11px] leading-relaxed">
             {streamMode === "person"
-              ? "Each band is a person whose PRs you reviewed; thickness = reviews that week (top 7 + Others). Watch bands swell and fade as your attention shifts. Shaded regions are your context bands."
-              : "Your reviews split into FTE vs vendor code each week. A widening vendor band means more of your review time is going to vendor PRs. Shaded regions are your context bands."}
+              ? `Each band is a person whose PRs you reviewed; thickness = reviews that week (your top ${topPerson}; the long tail is dropped for legibility). Hover a band or card to isolate it. Shaded regions are your context bands.`
+              : streamMode === "repo"
+                ? `Each band is a repo; thickness = PRs you reviewed there that week (your top ${topRepo}). Watch which codebase pulls your review time as it shifts. Hover a band or card to isolate; shaded regions are your context bands.`
+                : "Your reviews split into FTE, vendor, and bot each week. A widening vendor band means more of your review time is going to vendor PRs. Hover a band or card to isolate; shaded regions are your context bands."}
           </p>
         </Section>
       )}
@@ -628,17 +687,30 @@ function InsightsPage() {
         );
       })()}
 
-      {activeTotal === 0 ? (
+      <div className="mb-3 flex items-center justify-between">
+        <h2 className="text-sm font-semibold">Review load</h2>
+        <SegToggle
+          value={loadWin}
+          onChange={setLoadWin}
+          options={[
+            { v: "7", label: "1w" },
+            { v: "30", label: "1m" },
+            { v: "90", label: "3m" },
+            { v: "all", label: "All" },
+          ]}
+        />
+      </div>
+      {rl.prs === 0 ? (
         <Section title="Review load">
-          <Empty>No active review PRs right now.</Empty>
+          <Empty>No reviewed PRs in this window.</Empty>
         </Section>
       ) : (
         <div className="grid gap-5 sm:grid-cols-2">
           <Section title="Review load — by repo">
-            <Donut data={topWithOther(distribution.byRepo.map((c) => ({ label: shortRepo(c.label), count: c.count })), 5)} />
+            <Donut data={topWithOther(rl.byRepo.map((c) => ({ label: shortRepo(c.label), count: c.count })), 5)} />
           </Section>
           <Section title="Review load — by author">
-            <Donut data={distribution.byAuthorType} />
+            <Donut data={rl.byType} />
           </Section>
           {reviewDepth.byType.length > 0 && (
             <Section title="Comment effort — by author" meta={`${reviewDepth.totalComments} comments`}>

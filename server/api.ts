@@ -9,8 +9,14 @@ import { sendJson } from "./respond.ts";
 // Chat message asking to archive the review sessions of PRs that closed/merged.
 function archivePrompt(items: ArchivableSession[]): string {
   const lines = items.map((a) => `- ${a.repo} #${a.number} (${a.status}) → session \`${a.sessionId}\``);
+  const staleN = items.filter((a) => a.status === "stale").length;
+  const closedN = items.length - staleN;
+  const parts = [
+    closedN > 0 ? `${closedN} closed/merged` : null,
+    staleN > 0 ? `${staleN} stale (open but idle past the recency window)` : null,
+  ].filter(Boolean);
   return [
-    `Argus: ${items.length} tracked PR(s) closed/merged and have a linked review session with no further work. Please archive these review sessions:`,
+    `Argus: ${items.length} tracked PR(s) have a linked review session with no further work (${parts.join(" and ")}). Please archive these review sessions:`,
     ``,
     ...lines,
   ].join("\n");
@@ -279,12 +285,12 @@ export async function handleApi(
   }
 
   if (route === "/api/archivable") {
-    sendJson(res, 200, { archivable: ctx.store.getArchivable() });
+    sendJson(res, 200, { archivable: ctx.store.getArchivable(ctx.getConfig().recencyDays) });
     return true;
   }
 
   if (route === "/api/archive" && req.method === "POST") {
-    const items = ctx.store.getArchivable();
+    const items = ctx.store.getArchivable(ctx.getConfig().recencyDays);
     if (items.length > 0) {
       await ctx.dispatch(archivePrompt(items));
       ctx.store.markReviewSessionsArchived(items.map((i) => i.sessionId));

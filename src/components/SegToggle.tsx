@@ -1,6 +1,6 @@
 // Small segmented control (a horizontal row of mutually-exclusive options).
 // Shared by the insights views and the tracked-PRs view.
-export function SegToggle<T extends string>({
+export function SegToggle<T extends string | number>({
   value,
   onChange,
   options,
