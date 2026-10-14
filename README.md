@@ -26,24 +26,20 @@ stores no secret and no password.
 
 ## Install
 
-Argus ships as a prebuilt extension. The `extension.mjs` server bundle and the
-`dist/` client are committed, so you do not need to build it to run it.
-
 1. Put the `argus` folder in your Copilot extensions directory
    (`~/.copilot/extensions/argus`), or install it with the Copilot
    `install_extension` action from a shared gist or repo folder.
-2. Reload extensions (or restart the app).
-3. Open the Argus canvas.
-
-To build from source instead:
-
-```
-npm install
+2. Build it:
+```powershell
+npm ci
 npm run build      # vite -> dist/, esbuild server -> extension.mjs
 ```
+3. Reload extensions (or restart the app).
+4. Open the Argus canvas.
 
-Run the build from the real folder path, not through a symlink. Vite fails to
-resolve `index.html` when the project root is a symlink.
+Run the build from the real folder path before creating the symlink. Vite fails
+to resolve `index.html` when the project root is a symlink. The dotfiles setup
+script handles this automatically.
 
 ## First run
 

@@ -840,6 +840,7 @@ var ArgusStore = class _ArgusStore {
     let latPending = 0;
     for (const p of prs) {
       if (!p.reviewedSha || !p.reviewedAt) continue;
+      if (p.state !== "closed" && nowMs - Date.parse(p.updatedAt) > staleMs) continue;
       if (!p.reviewedShaAuthoredAt) {
         latPending++;
         continue;
