@@ -1096,6 +1096,10 @@ export class ArgusStore {
     let latPending = 0;
     for (const p of prs) {
       if (!p.reviewedSha || !p.reviewedAt) continue;
+      // Exclude stale open PRs: their wait time is dominated by author inactivity,
+      // not your responsiveness, so they skew slowest/p90 (same stale test as the
+      // rest of the store).
+      if (p.state !== "closed" && nowMs - Date.parse(p.updatedAt) > staleMs) continue;
       if (!p.reviewedShaAuthoredAt) {
         latPending++;
         continue;
