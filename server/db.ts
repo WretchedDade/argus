@@ -376,6 +376,11 @@ export class ArgusStore {
       this.#db.exec("UPDATE prs SET changed_files = NULL, changed_files_sha = NULL");
       this.#setSetting("changed_files_reset", now());
     }
+    // One-time: pre-blob-only counts included tree entries and were inflated.
+    if (!this.#getSetting("changed_files_blob_count_reset")) {
+      this.#db.exec("UPDATE prs SET changed_files = NULL, changed_files_sha = NULL");
+      this.#setSetting("changed_files_blob_count_reset", now());
+    }
     // One-time: clear cached not-found deploy results, so they re-resolve. Covers
     // the pre-`reason` rows and the pre-`merged_at` rows whose build search used
     // Argus's detection time (often days after the real merge) and missed the build.

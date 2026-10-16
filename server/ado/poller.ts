@@ -281,6 +281,14 @@ export async function refreshPr(ctx: PollerContext, canonical: string): Promise<
   const identity = await resolveIdentity(ctx);
   const own = classifyOwnership(raw, identity, cfg.teamPatterns);
   const norm = normalizePr(raw, cfg.orgSlug, cfg.project, own);
+  const changedFiles = await prChangedFileCount(
+    cfg.orgUrl,
+    norm.project,
+    norm.repo,
+    norm.targetBranch,
+    norm.sourceBranch,
+  );
+  if (changedFiles === null) throw new AdoError(`Unable to count changed files for ${norm.repo} #${norm.number}`);
   ctx.store.upsertPr({
     canonical: norm.canonical,
     org: norm.org,
@@ -304,6 +312,7 @@ export async function refreshPr(ctx: PollerContext, canonical: string): Promise<
   // `show` returns the full description (the bulk list truncates it), so store it
   // authoritatively here.
   ctx.store.setDescription(canonical, norm.description);
+  ctx.store.setChangedFiles(canonical, changedFiles, norm.sha);
 }
 
 // Manually track a PR by number — the escape hatch for PRs the auto-discovery
@@ -394,4 +403,3 @@ function inWorkHours(date: Date, cfg: ArgusConfig): boolean {
     date.getHours() < cfg.workEndHour
   );
 }
-

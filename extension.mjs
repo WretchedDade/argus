@@ -268,6 +268,10 @@ var ArgusStore = class _ArgusStore {
       this.#db.exec("UPDATE prs SET changed_files = NULL, changed_files_sha = NULL");
       this.#setSetting("changed_files_reset", now());
     }
+    if (!this.#getSetting("changed_files_blob_count_reset")) {
+      this.#db.exec("UPDATE prs SET changed_files = NULL, changed_files_sha = NULL");
+      this.#setSetting("changed_files_blob_count_reset", now());
+    }
     if (!this.#getSetting("deploy_time_migrated")) {
       this.#db.exec("UPDATE prs SET deploy_json = NULL WHERE deploy_json IS NOT NULL AND json_extract(deploy_json, '$.found') = 0");
       this.#setSetting("deploy_time_migrated", now());
@@ -2774,6 +2778,14 @@ async function refreshPr(ctx, canonical) {
   const identity = await resolveIdentity(ctx);
   const own = classifyOwnership(raw, identity, cfg.teamPatterns);
   const norm = normalizePr(raw, cfg.orgSlug, cfg.project, own);
+  const changedFiles = await prChangedFileCount(
+    cfg.orgUrl,
+    norm.project,
+    norm.repo,
+    norm.targetBranch,
+    norm.sourceBranch
+  );
+  if (changedFiles === null) throw new AdoError(`Unable to count changed files for ${norm.repo} #${norm.number}`);
   ctx.store.upsertPr({
     canonical: norm.canonical,
     org: norm.org,
@@ -2795,6 +2807,7 @@ async function refreshPr(ctx, canonical) {
   });
   ctx.store.setOwnership(canonical, own.role ?? "reviewer", own.teams, own.reviewState, norm.description, norm.isVendor, own.otherVotes);
   ctx.store.setDescription(canonical, norm.description);
+  ctx.store.setChangedFiles(canonical, changedFiles, norm.sha);
 }
 async function trackByNumber(ctx, id) {
   const cfg = ctx.getConfig();
