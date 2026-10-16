@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { countBlobChanges } from "./client.ts";
 import { reconcile, type Snapshot } from "./reconcile.ts";
 import type { CurrentPr } from "./types.ts";
 
@@ -78,5 +79,10 @@ const types = (p: ReturnType<typeof reconcile>) => p.items[0]?.events.map((e) =>
   const plan = reconcile([pr({ createdAt: old })], new Map(), opts);
   assert.equal(plan.items.length, 0);
 }
+
+assert.equal(countBlobChanges([
+  ...Array.from({ length: 15 }, () => ({ item: { gitObjectType: "blob" } })),
+  ...Array.from({ length: 11 }, () => ({ item: { gitObjectType: "tree" } })),
+]), 15);
 
 console.log("reconcile self-check OK");

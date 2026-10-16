@@ -1745,6 +1745,9 @@ async function adoAccessToken() {
   tokenCache = { token: j.accessToken, exp: Number.isNaN(exp) ? Date.now() + 50 * 6e4 : exp };
   return j.accessToken;
 }
+function countBlobChanges(changes) {
+  return changes.filter((change) => change.item?.gitObjectType === "blob").length;
+}
 async function prChangedFileCount(orgUrl, project, repo, targetBranch, sourceBranch) {
   const base = `${orgUrl.replace(/\/$/, "")}/${encodeURIComponent(project)}/_apis/git/repositories/${encodeURIComponent(repo)}`;
   const params = new URLSearchParams({
@@ -1753,14 +1756,22 @@ async function prChangedFileCount(orgUrl, project, repo, targetBranch, sourceBra
     targetVersion: sourceBranch,
     targetVersionType: "branch",
     "api-version": "7.1",
-    $top: "1"
+    $top: "2000"
   });
   const token = await adoAccessToken();
-  const res = await fetch(`${base}/diffs/commits?${params}`, { headers: { Authorization: `Bearer ${token}` } });
-  if (!res.ok) throw new AdoError(`diffs/commits ${res.status} for ${repo} ${sourceBranch}`);
-  const j = await res.json();
-  if (!j.changeCounts) return 0;
-  return Object.values(j.changeCounts).reduce((a, n) => a + (n || 0), 0);
+  let count = 0;
+  let skip = 0;
+  while (true) {
+    params.set("$skip", String(skip));
+    const res = await fetch(`${base}/diffs/commits?${params}`, { headers: { Authorization: `Bearer ${token}` } });
+    if (!res.ok) throw new AdoError(`diffs/commits ${res.status} for ${repo} ${sourceBranch}`);
+    const j = await res.json();
+    const changes = j.changes ?? [];
+    count += countBlobChanges(changes);
+    if (j.allChangesIncluded) return count;
+    if (changes.length === 0) throw new AdoError(`diffs/commits pagination stalled for ${repo} ${sourceBranch}`);
+    skip += changes.length;
+  }
 }
 function showPr(id, org) {
   return azJson(["repos", "pr", "show", "--id", String(id), "--org", org]);

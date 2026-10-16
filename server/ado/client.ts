@@ -67,10 +67,16 @@ export async function adoAccessToken(): Promise<string> {
   return j.accessToken;
 }
 
-// PR size: the number of files changed, from the branch-to-branch diff. ADO's
-// `changeCounts` (Add/Edit/Delete file counts) is an exact aggregate, so this is
-// one REST call — no paging the file list, no local git. Lines changed are NOT
-// available cheaply (ADO gives no aggregate +/-), so we only return file count.
+interface DiffChange {
+  item?: { gitObjectType?: string };
+}
+
+export function countBlobChanges(changes: DiffChange[]): number {
+  return changes.filter((change) => change.item?.gitObjectType === "blob").length;
+}
+
+// PR size: the number of files changed, from the branch-to-branch diff. ADO
+// includes tree entries in this list, so count blobs only.
 export async function prChangedFileCount(orgUrl: string, project: string, repo: string, targetBranch: string, sourceBranch: string): Promise<number | null> {
   const base = `${orgUrl.replace(/\/$/, "")}/${encodeURIComponent(project)}/_apis/git/repositories/${encodeURIComponent(repo)}`;
   const params = new URLSearchParams({
@@ -79,14 +85,22 @@ export async function prChangedFileCount(orgUrl: string, project: string, repo: 
     targetVersion: sourceBranch,
     targetVersionType: "branch",
     "api-version": "7.1",
-    $top: "1",
+    $top: "2000",
   });
   const token = await adoAccessToken();
-  const res = await fetch(`${base}/diffs/commits?${params}`, { headers: { Authorization: `Bearer ${token}` } });
-  if (!res.ok) throw new AdoError(`diffs/commits ${res.status} for ${repo} ${sourceBranch}`);
-  const j = (await res.json()) as { changeCounts?: Record<string, number> };
-  if (!j.changeCounts) return 0;
-  return Object.values(j.changeCounts).reduce((a, n) => a + (n || 0), 0);
+  let count = 0;
+  let skip = 0;
+  while (true) {
+    params.set("$skip", String(skip));
+    const res = await fetch(`${base}/diffs/commits?${params}`, { headers: { Authorization: `Bearer ${token}` } });
+    if (!res.ok) throw new AdoError(`diffs/commits ${res.status} for ${repo} ${sourceBranch}`);
+    const j = (await res.json()) as { changes?: DiffChange[]; allChangesIncluded?: boolean };
+    const changes = j.changes ?? [];
+    count += countBlobChanges(changes);
+    if (j.allChangesIncluded) return count;
+    if (changes.length === 0) throw new AdoError(`diffs/commits pagination stalled for ${repo} ${sourceBranch}`);
+    skip += changes.length;
+  }
 }
 
 // Targeted read for a PR that dropped off the active list (to catch merge/abandon).
