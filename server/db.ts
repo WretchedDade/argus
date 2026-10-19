@@ -919,16 +919,19 @@ export class ArgusStore {
   // --- PR size (files changed) ---
 
   // Active board PRs whose file count is missing or stale (a new commit landed
-  // since it was counted). Bounded per cycle; needs branches for the diff call.
-  prsNeedingFileCount(limit = 20): { canonical: string; repo: string; sourceBranch: string; targetBranch: string; sha: string | null }[] {
-    return this.#prep(`
+  // since it was counted). New PRs bypass the bounded historical backfill.
+  prsNeedingFileCount(limit = 20, newPrs: ReadonlySet<string> = new Set()): { canonical: string; repo: string; sourceBranch: string; targetBranch: string; sha: string | null }[] {
+    const rows = this.#prep(`
       SELECT canonical, repo, source_branch AS sourceBranch, target_branch AS targetBranch, last_commit_sha AS sha
       FROM prs
       WHERE state != 'closed' AND dismissed = 0
         AND source_branch IS NOT NULL AND target_branch IS NOT NULL
         AND (changed_files IS NULL OR changed_files_sha IS NOT last_commit_sha)
-      LIMIT ?
-    `).all(limit) as unknown as { canonical: string; repo: string; sourceBranch: string; targetBranch: string; sha: string | null }[];
+    `).all() as unknown as { canonical: string; repo: string; sourceBranch: string; targetBranch: string; sha: string | null }[];
+    return [
+      ...rows.filter((pr) => newPrs.has(pr.canonical)),
+      ...rows.filter((pr) => !newPrs.has(pr.canonical)).slice(0, limit),
+    ];
   }
 
   setChangedFiles(canonical: string, count: number, sha: string | null): void {

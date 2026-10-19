@@ -151,9 +151,10 @@ async function runReconcile(ctx: PollerContext): Promise<ReconcileSummary | null
       }
     }
 
-    // Backfill PR size (files changed) for active PRs, bounded per cycle. Cached
-    // per head sha, so it only recomputes when a new commit lands.
-    const needFiles = ctx.store.prsNeedingFileCount();
+    // Size every new PR, then backfill older missing or stale counts with a
+    // per-cycle bound. Counts are cached per head sha.
+    const newPrs = new Set(plan.items.filter((item) => item.isAdd).map((item) => item.upsert.canonical));
+    const needFiles = ctx.store.prsNeedingFileCount(20, newPrs);
     if (needFiles.length) {
       note("info", `sizing ${needFiles.length} PR(s)`);
       for (const p of needFiles) {

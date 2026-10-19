@@ -90,6 +90,46 @@ assert.equal(countBlobChanges([
   ...Array.from({ length: 11 }, () => ({ item: { gitObjectType: "tree" } })),
 ]), 15);
 
+// New PRs bypass the historical backfill cap without being selected twice.
+{
+  const dir = mkdtempSync(path.join(tmpdir(), "argus-test-"));
+  try {
+    const store = new ArgusStore(path.join(dir, "argus.db"));
+    const newPrs = new Set<string>();
+    for (let i = 0; i < 50; i++) {
+      const canonical = `${key}-${i}`;
+      if (i < 25) newPrs.add(canonical);
+      store.upsertPr({
+        canonical,
+        org: "worldwidelearning",
+        project: "LPE",
+        repo: "r",
+        number: i + 1,
+        title: "t",
+        description: "",
+        author: "a",
+        isVendor: false,
+        role: "reviewer",
+        teams: [],
+        isDraft: false,
+        lastCommitSha: "sha1",
+        lastCommitAt: null,
+        prCreatedAt: null,
+        sourceBranch: `f-${i}`,
+        targetBranch: "main",
+      });
+    }
+    const selected = store.prsNeedingFileCount(20, newPrs);
+    assert.equal(selected.length, 45);
+    assert.equal(selected.filter((item) => newPrs.has(item.canonical)).length, 25);
+    assert.equal(selected.filter((item) => !newPrs.has(item.canonical)).length, 20);
+    assert.equal(new Set(selected.map((item) => item.canonical)).size, selected.length);
+    store.close();
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
 // The blob-only migration invalidates counts cached by the old tree-inclusive query.
 {
   const dir = mkdtempSync(path.join(tmpdir(), "argus-test-"));
