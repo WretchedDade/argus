@@ -30,7 +30,7 @@ const INGEST = "http://127.0.0.1:48100/api/pr/record-review";
 function recordCmd(canonical: string): string {
   return `Invoke-RestMethod -Method Post -Uri ${INGEST} -ContentType application/json -Body '{"canonical":"${canonical}","verdict":"<approved|suggestions|waiting|rejected>"}'`;
 }
-function reviewPrompt(pr: Pr, skillName: string): string {
+export function reviewPrompt(pr: Pr, skillName: string): string {
   const ref = `**${pr.repo} #${pr.number}** — ${pr.title}\n${pr.canonical}`;
   if (pr.reviewSessionId) {
     return [
@@ -47,6 +47,19 @@ function reviewPrompt(pr: Pr, skillName: string): string {
     `Spawn a child session named concisely from the PR's subject with its number (3-5 words + " #${pr.number}", dropping filler like "add"/"update" and NOT prefixing "Review" — it's implied; e.g. "Add feature flags for Probadge" (#${pr.number}) → "Probadge Feature Flags #${pr.number}"), and run the ${skillName} skill on it. In the child session's kickoff prompt, include the line \`Lane: ${pr.lane === "quick" ? "quick" : "review"}\` so the ${skillName} skill branches into ${pr.lane === "quick" ? "quick" : "full"} mode automatically. Spawn it decoupled (\`coordinate_with_creator: false\`) so it does not report back into this chat. Spawn it in interactive mode (\`kickoff.mode: "interactive"\`), never autopilot.`,
     ``,
     `As soon as the session exists, invoke the Argus \`linkReviewSession\` action with \`{ "canonical": "${pr.canonical}", "sessionId": "<child session id>" }\`. You do NOT need to wait for or relay the outcome: when the review concludes, the review session records its own verdict headlessly by running \`${recordCmd(pr.canonical)}\` in its terminal — no canvas required. If that POST fails (Argus not running), it should surface the verdict to Dade so he can record it manually.`,
+  ].join("\n");
+}
+
+export function automaticReviewPrompt(pr: Pr, skillName: string): string {
+  const ref = `**${pr.repo} #${pr.number}** — ${pr.title}\n${pr.canonical}`;
+  return [
+    `Argus: please run an **automatic review** of ${ref}`,
+    `Lane: quick`,
+    `Review mode: automatic`,
+    ``,
+    `Spawn a child session named concisely from the PR's subject with its number (3-5 words + " #${pr.number}", dropping filler like "add"/"update" and NOT prefixing "Review" — it's implied). Run the ${skillName} skill on it. The child kickoff prompt must include both \`Lane: quick\` and \`Review mode: automatic\`. Spawn it decoupled (\`coordinate_with_creator: false\`) with \`kickoff.mode: "autopilot"\`. Automatic mode is an in-depth full review, not the abbreviated quick-lane flow.`,
+    ``,
+    `As soon as the session exists, invoke the Argus \`linkReviewSession\` action with \`{ "canonical": "${pr.canonical}", "sessionId": "<child session id>" }\`. The child must review and validate autonomously. When validation is complete and confident with zero findings, it must cast an ADO Approved vote and record Argus verdict \`approved\`. With any finding, uncertainty, incomplete validation, or operational failure, it must post no ADO comments, cast no ADO vote, record only a provisional Argus \`waiting\` verdict when possible, and leave a detailed blocker summary in its own chat. It must never claim success after a partial failure.`,
   ].join("\n");
 }
 
@@ -164,11 +177,15 @@ export async function handleApi(
   }
 
   if (route === "/api/pr/review" && req.method === "POST") {
-    const body = (await readJsonBody(req)) as unknown as { canonical?: string };
+    const body = (await readJsonBody(req)) as unknown as { canonical?: string; automatic?: boolean };
     const pr = body.canonical ? ctx.store.getPr(body.canonical) : null;
     if (!pr) sendJson(res, 400, { error: "canonical required / not found" });
+    else if (body.automatic !== undefined && typeof body.automatic !== "boolean") sendJson(res, 400, { error: "automatic must be boolean" });
+    else if (body.automatic && pr.lane !== "quick") sendJson(res, 400, { error: "automatic review requires quick lane" });
     else {
-      await ctx.dispatch(reviewPrompt(pr, ctx.getConfig().reviewSkillName));
+      await ctx.dispatch(body.automatic
+        ? automaticReviewPrompt(pr, ctx.getConfig().reviewSkillName)
+        : reviewPrompt(pr, ctx.getConfig().reviewSkillName));
       sendJson(res, 200, { ok: true, reReview: !!pr.reviewSessionId });
     }
     return true;

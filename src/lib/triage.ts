@@ -1,5 +1,7 @@
 import type { Pr, PrReviewState } from "./api";
 
+export const shouldShowAutomaticReview = (pr: Pick<Pr, "lane">): boolean => pr.lane === "quick";
+
 const DAY_MS = 86_400_000;
 
 // A PR is stale once its last activity is older than the recency window: the

@@ -1,12 +1,12 @@
 import { useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Link } from "@tanstack/react-router";
-import { AlarmClock, AlarmClockOff, Ban, Building2, Check, ChevronDown, Clock, ExternalLink, GitPullRequest, ListChecks, Loader2, MessageSquareText, RefreshCw, RotateCcw, X, Zap } from "lucide-react";
+import { AlarmClock, AlarmClockOff, Ban, Bot, Building2, Check, ChevronDown, Clock, ExternalLink, GitPullRequest, ListChecks, Loader2, MessageSquareText, RefreshCw, RotateCcw, X, Zap } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { api, type Pr } from "../lib/api";
 import { resolveTeamLabel, shortAge, timeUntil } from "../lib/format";
 import { teamBadgeStyle } from "../lib/teamColor";
-import { REVIEW_STATE_META } from "../lib/triage";
+import { REVIEW_STATE_META, shouldShowAutomaticReview } from "../lib/triage";
 import { pushToast } from "../lib/toast";
 import { usePending } from "../lib/usePending";
 import { MarkdownPreview } from "./MarkdownPreview";
@@ -352,11 +352,11 @@ export function ActionBar({ pr }: { pr: Pr }) {
     }
   };
 
-  const review = () =>
+  const review = (automatic = false) =>
     reviewReq.run(async () => {
       try {
-        const { reReview } = await api.review(pr.canonical);
-        pushToast(reReview ? "Re-review requested" : "Review requested");
+        const { reReview } = await api.review(pr.canonical, automatic);
+        pushToast(automatic ? "Automatic review requested" : reReview ? "Re-review requested" : "Review requested");
       } catch {
         pushToast("Couldn't start review", "error");
       }
@@ -369,7 +369,7 @@ export function ActionBar({ pr }: { pr: Pr }) {
         disabled={reviewReq.pending}
         onClick={(e) => {
           swallow(e);
-          review();
+          review(false);
         }}
         className="inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-semibold text-white disabled:opacity-70"
         style={{ background: "var(--peacock-teal)" }}
@@ -377,6 +377,22 @@ export function ActionBar({ pr }: { pr: Pr }) {
         {reviewReq.pending && <Loader2 size={12} className="animate-spin" />}
         {pr.reviewSessionId ? "Re-review" : "Review"}
       </button>
+
+      {shouldShowAutomaticReview(pr) && (
+        <button
+          type="button"
+          disabled={reviewReq.pending}
+          onClick={(e) => {
+            swallow(e);
+            review(true);
+          }}
+          aria-label="Start automatic review"
+          className="text-muted hover:text-fg inline-flex items-center gap-1 rounded-md border border-line px-2 py-1 text-xs font-semibold transition-colors hover:bg-[color-mix(in_srgb,var(--color-fg)_8%,transparent)] disabled:opacity-70"
+        >
+          <Bot size={12} />
+          Auto
+        </button>
+      )}
 
       <LaneButton pr={pr} />
 

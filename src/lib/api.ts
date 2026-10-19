@@ -317,11 +317,11 @@ export const api = {
     });
     if (!res.ok) throw new Error(`snooze -> ${res.status}`);
   },
-  review: async (canonical: string): Promise<{ reReview: boolean }> => {
+  review: async (canonical: string, automatic = false): Promise<{ reReview: boolean }> => {
     const res = await fetch("/api/pr/review", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ canonical }),
+      body: JSON.stringify({ canonical, automatic }),
     });
     if (!res.ok) throw new Error(`review -> ${res.status}`);
     return res.json();

@@ -705,16 +705,19 @@ var ArgusStore = class _ArgusStore {
   }
   // --- PR size (files changed) ---
   // Active board PRs whose file count is missing or stale (a new commit landed
-  // since it was counted). Bounded per cycle; needs branches for the diff call.
-  prsNeedingFileCount(limit = 20) {
-    return this.#prep(`
+  // since it was counted). New PRs bypass the bounded historical backfill.
+  prsNeedingFileCount(limit = 20, newPrs = /* @__PURE__ */ new Set()) {
+    const rows = this.#prep(`
       SELECT canonical, repo, source_branch AS sourceBranch, target_branch AS targetBranch, last_commit_sha AS sha
       FROM prs
       WHERE state != 'closed' AND dismissed = 0
         AND source_branch IS NOT NULL AND target_branch IS NOT NULL
         AND (changed_files IS NULL OR changed_files_sha IS NOT last_commit_sha)
-      LIMIT ?
-    `).all(limit);
+    `).all();
+    return [
+      ...rows.filter((pr) => newPrs.has(pr.canonical)),
+      ...rows.filter((pr) => !newPrs.has(pr.canonical)).slice(0, limit)
+    ];
   }
   setChangedFiles(canonical, count, sha) {
     this.#prep("UPDATE prs SET changed_files = ?, changed_files_sha = ? WHERE canonical = ?").run(count, sha, canonical);
@@ -1890,6 +1893,19 @@ ${pr.canonical}`;
     `As soon as the session exists, invoke the Argus \`linkReviewSession\` action with \`{ "canonical": "${pr.canonical}", "sessionId": "<child session id>" }\`. You do NOT need to wait for or relay the outcome: when the review concludes, the review session records its own verdict headlessly by running \`${recordCmd(pr.canonical)}\` in its terminal \u2014 no canvas required. If that POST fails (Argus not running), it should surface the verdict to Dade so he can record it manually.`
   ].join("\n");
 }
+function automaticReviewPrompt(pr, skillName) {
+  const ref = `**${pr.repo} #${pr.number}** \u2014 ${pr.title}
+${pr.canonical}`;
+  return [
+    `Argus: please run an **automatic review** of ${ref}`,
+    `Lane: quick`,
+    `Review mode: automatic`,
+    ``,
+    `Spawn a child session named concisely from the PR's subject with its number (3-5 words + " #${pr.number}", dropping filler like "add"/"update" and NOT prefixing "Review" \u2014 it's implied). Run the ${skillName} skill on it. The child kickoff prompt must include both \`Lane: quick\` and \`Review mode: automatic\`. Spawn it decoupled (\`coordinate_with_creator: false\`) with \`kickoff.mode: "autopilot"\`. Automatic mode is an in-depth full review, not the abbreviated quick-lane flow.`,
+    ``,
+    `As soon as the session exists, invoke the Argus \`linkReviewSession\` action with \`{ "canonical": "${pr.canonical}", "sessionId": "<child session id>" }\`. The child must review and validate autonomously. When validation is complete and confident with zero findings, it must cast an ADO Approved vote and record Argus verdict \`approved\`. With any finding, uncertainty, incomplete validation, or operational failure, it must post no ADO comments, cast no ADO vote, record only a provisional Argus \`waiting\` verdict when possible, and leave a detailed blocker summary in its own chat. It must never claim success after a partial failure.`
+  ].join("\n");
+}
 async function readJsonBody(req) {
   const chunks = [];
   for await (const chunk of req) chunks.push(chunk);
@@ -1974,8 +1990,10 @@ async function handleApi(req, res, ctx) {
     const body = await readJsonBody(req);
     const pr = body.canonical ? ctx.store.getPr(body.canonical) : null;
     if (!pr) sendJson(res, 400, { error: "canonical required / not found" });
+    else if (body.automatic !== void 0 && typeof body.automatic !== "boolean") sendJson(res, 400, { error: "automatic must be boolean" });
+    else if (body.automatic && pr.lane !== "quick") sendJson(res, 400, { error: "automatic review requires quick lane" });
     else {
-      await ctx.dispatch(reviewPrompt(pr, ctx.getConfig().reviewSkillName));
+      await ctx.dispatch(body.automatic ? automaticReviewPrompt(pr, ctx.getConfig().reviewSkillName) : reviewPrompt(pr, ctx.getConfig().reviewSkillName));
       sendJson(res, 200, { ok: true, reReview: !!pr.reviewSessionId });
     }
     return true;
@@ -2680,7 +2698,8 @@ async function runReconcile(ctx) {
         }
       }
     }
-    const needFiles = ctx.store.prsNeedingFileCount();
+    const newPrs = new Set(plan.items.filter((item) => item.isAdd).map((item) => item.upsert.canonical));
+    const needFiles = ctx.store.prsNeedingFileCount(20, newPrs);
     if (needFiles.length) {
       note("info", `sizing ${needFiles.length} PR(s)`);
       for (const p of needFiles) {
