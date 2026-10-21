@@ -18,6 +18,9 @@ assert.match(prompt, /Review mode: automatic/);
 assert.match(prompt, /coordinate_with_creator: false/);
 assert.match(prompt, /kickoff\.mode: "autopilot"/);
 assert.match(prompt, /in-depth full review/);
+assert.match(prompt, /rely on the PR's existing Azure DevOps build\/check status and test results/);
+assert.match(prompt, /must not run local test suites, builds, linters, typechecks/);
+assert.match(prompt, /Missing, running, inaccessible, or failed CI evidence means validation is incomplete/);
 
 const interactivePrompt = reviewPrompt({
   repo: "LPE.UI",
@@ -38,6 +41,9 @@ for (const path of [
   assert.match(skill, /validation is complete and confident/);
   assert.match(skill, /post no ADO comments/);
   assert.match(skill, /cast no ADO vote/);
+  assert.match(skill, /rely on the PR's existing Azure DevOps build\/check status and test results/);
+  assert.match(skill, /[Dd]o not run local test suites, builds, linters, typechecks/);
+  assert.match(skill, /missing, still running, inaccessible, or failed, validation is incomplete/i);
 }
 
 console.log("automatic review self-check OK");

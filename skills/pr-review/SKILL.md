@@ -69,8 +69,12 @@ findings, not 10 or more.
 
 Run an autonomous, in-depth Full Mode review even though Argus exposes the action
 only in the quick lane. Review the entire PR, set up the worktree, use code
-intelligence, inspect existing threads and linked work items, and validate
-normally. Do not pause for Turn 1 / Turn 2 or use ownership-only filtering.
+intelligence, and inspect existing threads and linked work items. Inspect and
+rely on the PR's existing Azure DevOps build/check status and test results. Do
+not run local test suites, builds, linters, typechecks, or other expensive
+validation commands. If required CI/build/test evidence is missing, still
+running, inaccessible, or failed, validation is incomplete. Do not pause for
+Turn 1 / Turn 2 or use ownership-only filtering.
 
 When there are **zero findings** and **validation is complete and confident**,
 cast the ADO Approved vote and record Argus verdict `approved`. Do not approve
