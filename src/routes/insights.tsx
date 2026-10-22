@@ -216,7 +216,7 @@ function LoadDrawer({ bucketKey, granularity, onClose }: { bucketKey: string; gr
     <>
       <div className="fixed inset-0 z-40 bg-black/20" onClick={onClose} aria-hidden="true" />
       <div
-        className="border-line fixed inset-y-0 right-0 z-50 flex w-full max-w-lg flex-col border-l shadow-2xl"
+        className="border-line fixed inset-y-0 right-0 z-50 flex w-full flex-col border-l shadow-2xl"
         style={{ background: "var(--card-bg)" }}
         role="dialog"
         aria-modal="true"
