@@ -410,6 +410,7 @@ var ArgusStore = class _ArgusStore {
     });
   }
   getPr(canonical) {
+    this.#clearExpiredSnoozes();
     const row = this.#prep("SELECT * FROM prs WHERE canonical = ?").get(canonical);
     return row ? rowToPr(row) : null;
   }
@@ -423,6 +424,7 @@ var ArgusStore = class _ArgusStore {
     return row?.canonical ?? null;
   }
   listPrs(opts = {}) {
+    this.#clearExpiredSnoozes();
     const where = [];
     if (!opts.includeClosed) where.push("state != 'closed'");
     if (!opts.includeDismissed) where.push("dismissed = 0");
@@ -431,6 +433,11 @@ var ArgusStore = class _ArgusStore {
       `SELECT * FROM prs ${clause} ORDER BY updated_at DESC`
     ).all();
     return rows.map(rowToPr);
+  }
+  #clearExpiredSnoozes() {
+    this.#prep(
+      "UPDATE prs SET snoozed_until = NULL, snooze_mode = NULL WHERE snoozed_until IS NOT NULL AND snoozed_until <= ?"
+    ).run(now());
   }
   appendEvent(canonical, type, payload, ts = now(), runId) {
     this.#prep(

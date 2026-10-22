@@ -2,11 +2,13 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { automaticReviewPrompt, reviewPrompt } from "./api.ts";
-import { shouldShowAutomaticReview } from "../src/lib/triage.ts";
+import { isSnoozed, shouldShowAutomaticReview } from "../src/lib/triage.ts";
 import type { Pr } from "./types.ts";
 
 assert.equal(shouldShowAutomaticReview({ lane: "quick" }), true);
 assert.equal(shouldShowAutomaticReview({ lane: "review" }), false);
+assert.equal(isSnoozed({ snoozeMode: "time", snoozedUntil: "2026-01-01T00:00:00.000Z" }, Date.parse("2026-01-02T00:00:00.000Z")), false);
+assert.equal(isSnoozed({ snoozeMode: "time", snoozedUntil: "2026-01-03T00:00:00.000Z" }, Date.parse("2026-01-02T00:00:00.000Z")), true);
 
 const prompt = automaticReviewPrompt({
   repo: "LPE.UI",

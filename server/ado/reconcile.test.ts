@@ -170,4 +170,41 @@ assert.equal(countBlobChanges([
   }
 }
 
+// Reads clear expired timed snoozes but preserve future ones.
+{
+  const dir = mkdtempSync(path.join(tmpdir(), "argus-test-"));
+  try {
+    const store = new ArgusStore(path.join(dir, "argus.db"));
+    store.upsertPr({
+      canonical: key,
+      org: "worldwidelearning",
+      project: "LPE",
+      repo: "r",
+      number: 1,
+      title: "t",
+      description: "",
+      author: "a",
+      isVendor: false,
+      role: "reviewer",
+      teams: [],
+      isDraft: false,
+      lastCommitSha: "sha1",
+      lastCommitAt: null,
+      prCreatedAt: null,
+      sourceBranch: "f",
+      targetBranch: "main",
+    });
+    store.setSnooze(key, "2000-01-01T00:00:00.000Z");
+    assert.equal(store.getPr(key)?.snoozedUntil, null);
+    assert.equal(store.getPr(key)?.snoozeMode, null);
+
+    store.setSnooze(key, "2100-01-01T00:00:00.000Z");
+    assert.equal(store.getPr(key)?.snoozedUntil, "2100-01-01T00:00:00.000Z");
+    assert.equal(store.getPr(key)?.snoozeMode, "time");
+    store.close();
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
 console.log("reconcile self-check OK");

@@ -540,6 +540,7 @@ export class ArgusStore {
   }
 
   getPr(canonical: string): Pr | null {
+    this.#clearExpiredSnoozes();
     const row = this.#prep("SELECT * FROM prs WHERE canonical = ?").get(canonical) as
       | PrRow
       | undefined;
@@ -557,6 +558,7 @@ export class ArgusStore {
   }
 
   listPrs(opts: ListOptions = {}): Pr[] {
+    this.#clearExpiredSnoozes();
     const where: string[] = [];
     if (!opts.includeClosed) where.push("state != 'closed'");
     if (!opts.includeDismissed) where.push("dismissed = 0");
@@ -565,6 +567,12 @@ export class ArgusStore {
       `SELECT * FROM prs ${clause} ORDER BY updated_at DESC`,
     ).all() as unknown as PrRow[];
     return rows.map(rowToPr);
+  }
+
+  #clearExpiredSnoozes(): void {
+    this.#prep(
+      "UPDATE prs SET snoozed_until = NULL, snooze_mode = NULL WHERE snoozed_until IS NOT NULL AND snoozed_until <= ?",
+    ).run(now());
   }
 
   appendEvent(

@@ -8,7 +8,7 @@ import { ActionBar, VoteChips } from "../components/PrCard";
 import { DeployChips } from "../components/DeployChips";
 import { resolveTeamLabel, timeAgo } from "../lib/format";
 import { teamBadgeStyle } from "../lib/teamColor";
-import { REVIEW_STATE_META } from "../lib/triage";
+import { isSnoozed, REVIEW_STATE_META } from "../lib/triage";
 
 export const Route = createFileRoute("/pr")({
   validateSearch: (s: Record<string, unknown>): { c: string } => ({ c: String(s.c ?? "") }),
@@ -193,7 +193,7 @@ function PrDetailPage() {
               <Chip anchor="--color-sky-500">
                 <span className="capitalize">{pr.lane}</span> lane
               </Chip>
-              {(pr.snoozeMode === "fte" || pr.snoozedUntil) && (
+              {isSnoozed(pr) && (
                 <Chip anchor="--color-amber-500">
                   <AlarmClock size={11} /> {snoozeLabel(pr)}
                 </Chip>

@@ -6,7 +6,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { api, type Pr } from "../lib/api";
 import { resolveTeamLabel, shortAge, timeUntil } from "../lib/format";
 import { teamBadgeStyle } from "../lib/teamColor";
-import { REVIEW_STATE_META, shouldShowAutomaticReview } from "../lib/triage";
+import { isSnoozed, REVIEW_STATE_META, shouldShowAutomaticReview } from "../lib/triage";
 import { pushToast } from "../lib/toast";
 import { usePending } from "../lib/usePending";
 import { MarkdownPreview } from "./MarkdownPreview";
@@ -236,7 +236,7 @@ function SnoozeMenu({ pr }: { pr: Pr }) {
   const itemCls = "text-fg block w-full px-3 py-1.5 text-left hover:bg-[color-mix(in_srgb,var(--color-fg)_8%,transparent)]";
 
   // Already snoozed: the snooze action is meaningless, so offer a wake instead.
-  if (pr.snoozeMode === "fte" || pr.snoozedUntil) {
+  if (isSnoozed(pr)) {
     return (
       <Tip label="Wake now">
         <button
@@ -475,6 +475,7 @@ export function PrCard({
 }) {
   const accent = accentVar(pr);
   const restore = usePending();
+  const snoozed = isSnoozed(pr);
 
   if (variant === "compact") {
     return (
@@ -504,11 +505,11 @@ export function PrCard({
         </span>
         <SizeChip files={pr.changedFiles} />
         <StatePill pr={pr} small />
-        {pr.snoozeMode === "fte" ? (
+        {snoozed && pr.snoozeMode === "fte" ? (
           <span className="text-muted inline-flex shrink-0 items-center gap-1">
             <AlarmClock size={11} /> until FTE
           </span>
-        ) : pr.snoozedUntil ? (
+        ) : snoozed && pr.snoozedUntil ? (
           <span className="text-muted inline-flex shrink-0 items-center gap-1">
             <AlarmClock size={11} /> {timeUntil(pr.snoozedUntil)}
           </span>

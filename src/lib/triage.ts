@@ -10,6 +10,13 @@ export function isStale(pr: Pr, recencyDays: number, now = Date.now()): boolean 
   return now - Date.parse(pr.updatedAt) > recencyDays * DAY_MS;
 }
 
+export function isSnoozed(
+  pr: Pick<Pr, "snoozeMode" | "snoozedUntil">,
+  now = Date.now(),
+): boolean {
+  return pr.snoozeMode === "fte" || (!!pr.snoozedUntil && Date.parse(pr.snoozedUntil) > now);
+}
+
 // Needs your action: awaiting your first vote (or an unknown state).
 export function needsAction(pr: Pr): boolean {
   return pr.reviewState === "needs" || pr.reviewState === null;
@@ -27,7 +34,7 @@ export function needsYouCount(prs: Pr[], recencyDays: number, now = Date.now()):
     (p) =>
       p.role !== "author" &&
       !p.outOfScope &&
-      !(p.snoozeMode === "fte" || (!!p.snoozedUntil && Date.parse(p.snoozedUntil) > now)) &&
+      !isSnoozed(p, now) &&
       !isStale(p, recencyDays, now) &&
       needsAction(p) &&
       !p.isDraft,

@@ -4,7 +4,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, configQuery, healthQuery, prsQuery, type Lane, type Pr } from "../lib/api";
 import { PrCard } from "./PrCard";
 import { pushToast } from "../lib/toast";
-import { byRecent, isStale, needsAction } from "../lib/triage";
+import { byRecent, isSnoozed, isStale, needsAction } from "../lib/triage";
 
 const LANE_LABEL: Record<Lane, string> = { review: "Full review", quick: "Quick" };
 
@@ -204,12 +204,10 @@ export function TriageQueue() {
   }
 
   const now = Date.now();
-  const isSnoozed = (p: Pr) => p.snoozeMode === "fte" || (!!p.snoozedUntil && Date.parse(p.snoozedUntil) > now);
-
   const inScope = review.filter((p) => !p.outOfScope);
   const outOfScope = review.filter((p) => p.outOfScope);
-  const snoozed = inScope.filter(isSnoozed);
-  const awake = inScope.filter((p) => !isSnoozed(p));
+  const snoozed = inScope.filter((p) => isSnoozed(p, now));
+  const awake = inScope.filter((p) => !isSnoozed(p, now));
   const active = awake.filter((p) => !isStale(p, recencyDays));
   const stale = awake.filter((p) => isStale(p, recencyDays));
   const needs = active.filter((p) => needsAction(p) && !p.isDraft).length;
