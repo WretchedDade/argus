@@ -47,10 +47,14 @@ export interface LoadDayPr {
   title: string;
   state: string | null;
   ageDays: number;
+  dayKey: string;
 }
 
-export interface LoadDayDetail {
+export interface LoadDetail {
   key: string;
+  endKey: string;
+  granularity: "day" | "week";
+  peakDayKey: string;
   arrived: LoadDayPr[];
   reviewed: LoadDayPr[];
   onPlate: LoadDayPr[];
@@ -334,7 +338,8 @@ export const api = {
   },
   changes: () => getJson<ChangeFeed>("/api/changes"),
   insights: () => getJson<{ insights: Insights }>("/api/insights").then((r) => r.insights),
-  loadDay: (key: string) => getJson<{ detail: LoadDayDetail }>(`/api/load/day?key=${key}`).then((r) => r.detail),
+  loadDetail: (key: string, granularity: "day" | "week") =>
+    getJson<{ detail: LoadDetail }>(`/api/load/detail?key=${key}&granularity=${granularity}`).then((r) => r.detail),
   markChangesRead: async (canonical: string): Promise<void> => {
     const res = await fetch("/api/changes/read", {
       method: "POST",

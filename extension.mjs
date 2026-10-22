@@ -169,6 +169,10 @@ function weekKey(ms) {
   d.setUTCHours(0, 0, 0, 0);
   return d.toISOString().slice(0, 10);
 }
+function localDayKey(ms) {
+  const d = new Date(ms);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
 function recentWeeks(n) {
   const start = weekKey(Date.now());
   const startMs = Date.parse(start);
@@ -769,7 +773,8 @@ var ArgusStore = class _ArgusStore {
       number: p.number,
       title: p.title,
       state: p.reviewState,
-      ageDays: Math.max(0, Math.floor((dayEnd - Date.parse(p.addedAt)) / 864e5))
+      ageDays: Math.max(0, Math.floor((dayEnd - Date.parse(p.addedAt)) / 864e5)),
+      dayKey
     });
     const arrived = [];
     const onPlate = [];
@@ -801,15 +806,62 @@ var ArgusStore = class _ArgusStore {
         number: r.number,
         title: r.title,
         state: r.reviewState,
-        ageDays: Math.max(0, Math.floor((dayEnd - Date.parse(r.addedAt)) / 864e5))
+        ageDays: Math.max(0, Math.floor((dayEnd - Date.parse(r.addedAt)) / 864e5)),
+        dayKey
       });
     }
     const byAge = (a, b2) => b2.ageDays - a.ageDays;
     return {
       key: dayKey,
+      endKey: dayKey,
+      granularity: "day",
+      peakDayKey: dayKey,
       arrived: arrived.sort(byAge),
       reviewed: reviewed.sort(byAge),
       onPlate: onPlate.sort(byAge)
+    };
+  }
+  loadWeekDetail(weekKey2, recencyDays, work = { endHour: 17, days: [1, 2, 3, 4, 5] }) {
+    const start = /* @__PURE__ */ new Date(`${weekKey2}T00:00:00`);
+    const days = Array.from({ length: 7 }, (_, i) => {
+      const day = new Date(start);
+      day.setDate(day.getDate() + i);
+      return localDayKey(day.getTime());
+    });
+    const details = days.map((day) => this.loadDayDetail(day, recencyDays, work));
+    const peak = details.reduce((best, detail) => detail.onPlate.length > best.onPlate.length ? detail : best);
+    const weekEnd = new Date(start);
+    weekEnd.setDate(weekEnd.getDate() + 7);
+    const byAge = (a, b2) => b2.ageDays - a.ageDays;
+    const arrived = this.#prep(`
+      SELECT canonical, repo, number, title, review_state AS reviewState, added_at AS addedAt
+      FROM prs
+      WHERE (role IS NULL OR role != 'author') AND dismissed = 0 AND out_of_scope = 0 AND is_draft = 0
+        AND added_at >= ? AND added_at < ?
+    `).all(start.toISOString(), weekEnd.toISOString());
+    const reviewed = this.#prep(`
+      SELECT e.canonical, e.ts, p.repo, p.number, p.title, p.review_state AS reviewState, p.added_at AS addedAt
+      FROM pr_events e JOIN prs p ON e.canonical = p.canonical
+      WHERE e.type = 'reviewed' AND json_extract(e.payload, '$.verdict') IS NOT NULL
+        AND e.ts >= ? AND e.ts < ?
+    `).all(start.toISOString(), weekEnd.toISOString());
+    const toRow = (p, at) => ({
+      canonical: p.canonical,
+      repo: p.repo,
+      number: p.number,
+      title: p.title,
+      state: p.reviewState,
+      ageDays: Math.max(0, Math.floor((Date.parse(at) + 864e5 - Date.parse(p.addedAt)) / 864e5)),
+      dayKey: localDayKey(Date.parse(at))
+    });
+    return {
+      key: weekKey2,
+      endKey: days[6],
+      granularity: "week",
+      peakDayKey: peak.key,
+      arrived: arrived.map((p) => toRow(p, p.addedAt)).sort((a, b2) => a.dayKey.localeCompare(b2.dayKey) || byAge(a, b2)),
+      reviewed: reviewed.map((p) => toRow(p, p.ts)).sort((a, b2) => a.dayKey.localeCompare(b2.dayKey) || byAge(a, b2)),
+      onPlate: peak.onPlate
     };
   }
   computeInsights(recencyDays, work = { endHour: 17, days: [1, 2, 3, 4, 5] }) {
@@ -2065,12 +2117,16 @@ async function handleApi(req, res, ctx) {
     sendJson(res, 200, { config, setup_complete: true, skill });
     return true;
   }
-  if (route === "/api/load/day") {
+  if (route === "/api/load/detail") {
     const key = url.searchParams.get("key");
+    const granularity = url.searchParams.get("granularity");
     if (!key || !/^\d{4}-\d{2}-\d{2}$/.test(key)) sendJson(res, 400, { error: "key (YYYY-MM-DD) required" });
+    else if (granularity !== "day" && granularity !== "week") sendJson(res, 400, { error: "granularity (day or week) required" });
     else {
       const cfg = ctx.getConfig();
-      sendJson(res, 200, { detail: ctx.store.loadDayDetail(key, cfg.recencyDays, { endHour: cfg.workEndHour, days: cfg.workDays }) });
+      const work = { endHour: cfg.workEndHour, days: cfg.workDays };
+      const detail = granularity === "week" ? ctx.store.loadWeekDetail(key, cfg.recencyDays, work) : ctx.store.loadDayDetail(key, cfg.recencyDays, work);
+      sendJson(res, 200, { detail });
     }
     return true;
   }

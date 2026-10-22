@@ -74,7 +74,7 @@ export function ThroughputChart({ data }: { data: { week: string; quick: number;
 
 // Load & capacity: New PRs vs Reviewed as grouped bars, with the "on your plate"
 // level as an area — all on one shared axis so their heights are comparable.
-export function LoadChart({ data, granularity, periods = [], onSelectDay }: { data: InsightsLoadBucket[]; granularity: "day" | "week"; periods?: Period[]; onSelectDay?: (key: string) => void }) {
+export function LoadChart({ data, granularity, periods = [], onSelect }: { data: InsightsLoadBucket[]; granularity: "day" | "week"; periods?: Period[]; onSelect?: (key: string) => void }) {
   const fmt = (k: string) => {
     if (granularity !== "day") return weekLabel(k);
     const d = localDate(k);
@@ -98,15 +98,39 @@ export function LoadChart({ data, granularity, periods = [], onSelectDay }: { da
   const bands = periods
     .map((p) => ({ p, span: bandFor(p) }))
     .filter((b): b is { p: Period; span: { x1: string; x2: string } } => b.span !== null);
+  const tick = onSelect
+    ? ({ x = 0, y = 0, payload }: { x?: number | string; y?: number | string; payload?: { value?: string | number } }) => {
+        const key = String(payload?.value ?? "");
+        const select = () => key && onSelect(key);
+        return (
+          <g
+            transform={`translate(${Number(x)},${Number(y)})`}
+            role="button"
+            tabIndex={0}
+            aria-label={`Open ${granularity} ${fmt(key)} load breakdown`}
+            onClick={select}
+            onKeyDown={(event) => {
+              if (event.key === "Enter" || event.key === " ") {
+                event.preventDefault();
+                select();
+              }
+            }}
+            style={{ cursor: "pointer" }}
+          >
+            <text dy={16} textAnchor="middle" fill={AXIS} fontSize={11}>{fmt(key)}</text>
+          </g>
+        );
+      }
+    : { fill: AXIS, fontSize: 11 };
   return (
     <ResponsiveContainer width="100%" height={240}>
       <ComposedChart
         data={data}
         margin={{ top: 8, right: 4, bottom: 0, left: 0 }}
         onClick={(s: { activeLabel?: string | number }) => {
-          if (granularity === "day" && onSelectDay && s?.activeLabel != null) onSelectDay(String(s.activeLabel));
+          if (onSelect && s?.activeLabel != null) onSelect(String(s.activeLabel));
         }}
-        style={granularity === "day" && onSelectDay ? { cursor: "pointer" } : undefined}
+        style={onSelect ? { cursor: "pointer" } : undefined}
       >
         {bands.map(({ p, span }) => (
           <ReferenceArea
@@ -123,7 +147,7 @@ export function LoadChart({ data, granularity, periods = [], onSelectDay }: { da
           </ReferenceArea>
         ))}
         <CartesianGrid stroke={GRID} vertical={false} />
-        <XAxis dataKey="key" tickFormatter={fmt} tick={{ fill: AXIS, fontSize: 11 }} axisLine={false} tickLine={false} interval={granularity === "day" ? 0 : "preserveStartEnd"} minTickGap={8} />
+        <XAxis dataKey="key" tickFormatter={fmt} tick={tick} axisLine={false} tickLine={false} interval={granularity === "day" ? 0 : "preserveStartEnd"} minTickGap={8} />
         <YAxis allowDecimals={false} tick={{ fill: AXIS, fontSize: 11 }} axisLine={false} tickLine={false} width={30} />
         <Tooltip
           cursor={{ fill: "rgba(148,163,184,0.08)" }}

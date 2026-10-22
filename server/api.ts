@@ -261,12 +261,18 @@ export async function handleApi(
     return true;
   }
 
-  if (route === "/api/load/day") {
+  if (route === "/api/load/detail") {
     const key = url.searchParams.get("key");
+    const granularity = url.searchParams.get("granularity");
     if (!key || !/^\d{4}-\d{2}-\d{2}$/.test(key)) sendJson(res, 400, { error: "key (YYYY-MM-DD) required" });
+    else if (granularity !== "day" && granularity !== "week") sendJson(res, 400, { error: "granularity (day or week) required" });
     else {
       const cfg = ctx.getConfig();
-      sendJson(res, 200, { detail: ctx.store.loadDayDetail(key, cfg.recencyDays, { endHour: cfg.workEndHour, days: cfg.workDays }) });
+      const work = { endHour: cfg.workEndHour, days: cfg.workDays };
+      const detail = granularity === "week"
+        ? ctx.store.loadWeekDetail(key, cfg.recencyDays, work)
+        : ctx.store.loadDayDetail(key, cfg.recencyDays, work);
+      sendJson(res, 200, { detail });
     }
     return true;
   }

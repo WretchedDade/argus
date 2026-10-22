@@ -1,7 +1,7 @@
 import { DatabaseSync, type StatementSync } from "node:sqlite";
 import { mkdirSync, readFileSync } from "node:fs";
 import path from "node:path";
-import type { ActivityEvent, ActivityEventType, ActivityVerdict, ArchivableSession, AuthorMeta, DeployTimelinePr, Insights, InsightsCount, InsightsLoadBucket, InsightsWaiting, Lane, LoadDayPr, Pr, PrDeploy, PrEvent, PrEventType, PrReviewState, PrRole, PrState, PrUpsert, RunEvent } from "./types.ts";
+import type { ActivityEvent, ActivityEventType, ActivityVerdict, ArchivableSession, AuthorMeta, DeployTimelinePr, Insights, InsightsCount, InsightsLoadBucket, InsightsWaiting, Lane, LoadDayPr, LoadDetail, Pr, PrDeploy, PrEvent, PrEventType, PrReviewState, PrRole, PrState, PrUpsert, RunEvent } from "./types.ts";
 import type { Plan, Snapshot } from "./ado/reconcile.ts";
 import type { ConfigOverrides } from "./config.ts";
 import { isVendorName } from "./ado/normalize.ts";
@@ -193,6 +193,11 @@ function weekKey(ms: number): string {
   d.setUTCDate(d.getUTCDate() - day);
   d.setUTCHours(0, 0, 0, 0);
   return d.toISOString().slice(0, 10);
+}
+
+function localDayKey(ms: number): string {
+  const d = new Date(ms);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 
 // The last `n` week-start keys, oldest first, ending with the current week.
@@ -955,7 +960,7 @@ export class ArgusStore {
     dayKey: string,
     recencyDays: number,
     work: { endHour: number; days: number[] } = { endHour: 17, days: [1, 2, 3, 4, 5] },
-  ): { key: string; arrived: LoadDayPr[]; reviewed: LoadDayPr[]; onPlate: LoadDayPr[] } {
+  ): LoadDetail {
     const nowMs = Date.now();
     const staleMs = recencyDays * 86_400_000;
     const [y, m, d] = dayKey.split("-").map(Number);
@@ -998,6 +1003,7 @@ export class ArgusStore {
       title: p.title,
       state: p.reviewState,
       ageDays: Math.max(0, Math.floor((dayEnd - Date.parse(p.addedAt)) / 86_400_000)),
+      dayKey,
     });
 
     const arrived: LoadDayPr[] = [];
@@ -1034,15 +1040,73 @@ export class ArgusStore {
         title: r.title,
         state: r.reviewState,
         ageDays: Math.max(0, Math.floor((dayEnd - Date.parse(r.addedAt)) / 86_400_000)),
+        dayKey,
       });
     }
 
     const byAge = (a: LoadDayPr, b: LoadDayPr) => b.ageDays - a.ageDays;
     return {
       key: dayKey,
+      endKey: dayKey,
+      granularity: "day",
+      peakDayKey: dayKey,
       arrived: arrived.sort(byAge),
       reviewed: reviewed.sort(byAge),
       onPlate: onPlate.sort(byAge),
+    };
+  }
+
+  loadWeekDetail(
+    weekKey: string,
+    recencyDays: number,
+    work: { endHour: number; days: number[] } = { endHour: 17, days: [1, 2, 3, 4, 5] },
+  ): LoadDetail {
+    const start = new Date(`${weekKey}T00:00:00`);
+    const days = Array.from({ length: 7 }, (_, i) => {
+      const day = new Date(start);
+      day.setDate(day.getDate() + i);
+      return localDayKey(day.getTime());
+    });
+    const details = days.map((day) => this.loadDayDetail(day, recencyDays, work));
+    const peak = details.reduce((best, detail) => (detail.onPlate.length > best.onPlate.length ? detail : best));
+    const weekEnd = new Date(start);
+    weekEnd.setDate(weekEnd.getDate() + 7);
+    const byAge = (a: LoadDayPr, b: LoadDayPr) => b.ageDays - a.ageDays;
+
+    const arrived = this.#prep(`
+      SELECT canonical, repo, number, title, review_state AS reviewState, added_at AS addedAt
+      FROM prs
+      WHERE (role IS NULL OR role != 'author') AND dismissed = 0 AND out_of_scope = 0 AND is_draft = 0
+        AND added_at >= ? AND added_at < ?
+    `).all(start.toISOString(), weekEnd.toISOString()) as unknown as {
+      canonical: string; repo: string; number: number; title: string; reviewState: string | null; addedAt: string;
+    }[];
+    const reviewed = this.#prep(`
+      SELECT e.canonical, e.ts, p.repo, p.number, p.title, p.review_state AS reviewState, p.added_at AS addedAt
+      FROM pr_events e JOIN prs p ON e.canonical = p.canonical
+      WHERE e.type = 'reviewed' AND json_extract(e.payload, '$.verdict') IS NOT NULL
+        AND e.ts >= ? AND e.ts < ?
+    `).all(start.toISOString(), weekEnd.toISOString()) as unknown as {
+      canonical: string; ts: string; repo: string; number: number; title: string; reviewState: string | null; addedAt: string;
+    }[];
+    const toRow = (p: { canonical: string; repo: string; number: number; title: string; reviewState: string | null; addedAt: string }, at: string): LoadDayPr => ({
+      canonical: p.canonical,
+      repo: p.repo,
+      number: p.number,
+      title: p.title,
+      state: p.reviewState,
+      ageDays: Math.max(0, Math.floor((Date.parse(at) + 86_400_000 - Date.parse(p.addedAt)) / 86_400_000)),
+      dayKey: localDayKey(Date.parse(at)),
+    });
+
+    return {
+      key: weekKey,
+      endKey: days[6],
+      granularity: "week",
+      peakDayKey: peak.key,
+      arrived: arrived.map((p) => toRow(p, p.addedAt)).sort((a, b) => a.dayKey.localeCompare(b.dayKey) || byAge(a, b)),
+      reviewed: reviewed.map((p) => toRow(p, p.ts)).sort((a, b) => a.dayKey.localeCompare(b.dayKey) || byAge(a, b)),
+      onPlate: peak.onPlate,
     };
   }
 

@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { CheckCircle2, ChevronRight, GitPullRequest, Inbox, Timer, X } from "lucide-react";
+import { CheckCircle2, ChevronRight, GitPullRequest, Inbox, Search, Timer, X } from "lucide-react";
 import { api, configQuery, insightsQuery, type InsightsCount, type LoadDayPr } from "../lib/api";
 import { AuthorTreemap, BalanceStrip, CoverageWaffle, DepthMeter, Donut, HBars, LatencyScatter, LoadChart, RepoScatter, ReviewCalendar, ReviewRhythm, ReviewStreamChart, VoteBars, VoteTurnBubbles } from "../components/Charts";
 import { authorType, fmtHours, shortRepo } from "../lib/format";
@@ -95,8 +95,7 @@ function LoadPrCard({ p }: { p: LoadDayPr }) {
   const meta = p.state ? REVIEW_STATE_META[p.state as PrReviewState] : null;
   return (
     <div
-      className="border-line flex flex-col rounded-md border border-l-4 px-3 py-2"
-      style={meta ? { borderLeftColor: `var(${meta.anchor})` } : { borderLeftColor: "var(--color-line)" }}
+      className="border-line flex flex-col rounded-md border px-3 py-2"
     >
       <div className="flex items-baseline justify-between gap-2">
         <span className="text-fg text-sm font-medium">{p.title}</span>
@@ -125,16 +124,29 @@ function LoadPrCard({ p }: { p: LoadDayPr }) {
   );
 }
 
+function loadDateLabel(key: string, weekday = true) {
+  const [y, m, d] = key.split("-").map(Number);
+  return new Date(y, m - 1, d).toLocaleDateString([], {
+    weekday: weekday ? "long" : undefined,
+    month: "short",
+    day: "numeric",
+  });
+}
+
 // Right slide-out panel showing which PRs fall into each of the three load
-// buckets on a clicked day. Tabbed (arrived / reviewed / on plate) so one list
-// gets the full panel width; sorted oldest-first. Fetched from /api/load/day.
-function LoadDayDrawer({ dayKey, onClose }: { dayKey: string; onClose: () => void }) {
-  const q = useQuery({ queryKey: ["loadDay", dayKey], queryFn: () => api.loadDay(dayKey) });
+// buckets on a clicked day or week.
+function LoadDrawer({ bucketKey, granularity, onClose }: { bucketKey: string; granularity: "day" | "week"; onClose: () => void }) {
+  const q = useQuery({
+    queryKey: ["loadDetail", granularity, bucketKey],
+    queryFn: () => api.loadDetail(bucketKey, granularity),
+  });
   const d = q.data;
   const [tab, setTab] = useState<"arrived" | "reviewed" | "onPlate">("onPlate");
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
-  const [y, m, dd] = dayKey.split("-").map(Number);
-  const label = new Date(y, m - 1, dd).toLocaleDateString([], { weekday: "long", month: "short", day: "numeric" });
+  const [search, setSearch] = useState("");
+  const label = granularity === "week" && d
+    ? `${loadDateLabel(d.key, false)}–${loadDateLabel(d.endKey, false)}`
+    : loadDateLabel(bucketKey);
 
   const tabs: { id: "arrived" | "reviewed" | "onPlate"; title: string; color: string; prs: LoadDayPr[] }[] = [
     { id: "arrived", title: "New PRs", color: "#0072B2", prs: d?.arrived ?? [] },
@@ -142,6 +154,16 @@ function LoadDayDrawer({ dayKey, onClose }: { dayKey: string; onClose: () => voi
     { id: "onPlate", title: "On your plate", color: "#E69F00", prs: d?.onPlate ?? [] },
   ];
   const active = tabs.find((t) => t.id === tab)!;
+  const filtered = useMemo(() => {
+    const needle = search.trim().toLocaleLowerCase();
+    if (!needle) return active.prs;
+    const number = needle.replace(/^#/, "");
+    return active.prs.filter((p) =>
+      p.title.toLocaleLowerCase().includes(needle)
+      || p.repo.toLocaleLowerCase().includes(needle)
+      || (!!number && String(p.number).includes(number)),
+    );
+  }, [active.prs, search]);
 
   // On the "On your plate" tab, split the list the same way the chart counts it:
   // New PRs (arrived that day), Reviewed (reviewed that day but not new), and
@@ -152,7 +174,26 @@ function LoadDayDrawer({ dayKey, onClose }: { dayKey: string; onClose: () => voi
     { key: "new", title: "New PRs", color: "#0072B2", prs: (d?.onPlate ?? []).filter((p) => arrivedSet.has(p.canonical)) },
     { key: "reviewed", title: "Reviewed", color: "#009E73", prs: (d?.onPlate ?? []).filter((p) => !arrivedSet.has(p.canonical) && reviewedSet.has(p.canonical)) },
     { key: "existing", title: "Existing", color: "#8E8E8E", prs: (d?.onPlate ?? []).filter((p) => !arrivedSet.has(p.canonical) && !reviewedSet.has(p.canonical)) },
-  ].filter((g) => g.prs.length > 0);
+  ].map((g) => ({ ...g, prs: g.prs.filter((p) => filtered.includes(p)) })).filter((g) => g.prs.length > 0);
+  const stateOrder: (PrReviewState | "unknown")[] = ["needs", "rejected", "suggestions", "waiting", "covered", "approved", "unknown"];
+  const stateGroups = stateOrder.map((state) => {
+    const meta = state === "unknown" ? null : REVIEW_STATE_META[state];
+    return {
+      key: state,
+      title: meta?.label ?? "No standing",
+      color: meta ? `var(${meta.anchor})` : "var(--color-muted)",
+      prs: filtered.filter((p) => (p.state ?? "unknown") === state),
+    };
+  }).filter((g) => g.prs.length > 0);
+  const dayGroups = Array.from(new Set(filtered.map((p) => p.dayKey))).sort().map((day) => ({
+    key: day,
+    title: loadDateLabel(day),
+    color: active.color,
+    prs: filtered.filter((p) => p.dayKey === day),
+  }));
+  const groups = granularity === "week"
+    ? (tab === "onPlate" ? stateGroups : dayGroups)
+    : (tab === "onPlate" ? onPlateGroups : []);
 
   // Lock the underlying page scroll while the panel is open so we don't get two
   // side-by-side scrollbars (page + panel).
@@ -163,30 +204,46 @@ function LoadDayDrawer({ dayKey, onClose }: { dayKey: string; onClose: () => voi
       document.body.style.overflow = prev;
     };
   }, []);
+  useEffect(() => {
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") onClose();
+    };
+    document.addEventListener("keydown", closeOnEscape);
+    return () => document.removeEventListener("keydown", closeOnEscape);
+  }, [onClose]);
 
   return (
     <>
-      <div className="fixed inset-0 z-40 bg-black/20" onClick={onClose} />
+      <div className="fixed inset-0 z-40 bg-black/20" onClick={onClose} aria-hidden="true" />
       <div
         className="border-line fixed inset-y-0 right-0 z-50 flex w-full max-w-lg flex-col border-l shadow-2xl"
         style={{ background: "var(--card-bg)" }}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="load-detail-title"
       >
         <div className="border-line flex items-center justify-between border-b px-5 py-3">
           <div className="flex flex-col">
-            <span className="text-fg text-sm font-semibold">{label}</span>
-            <span className="text-muted text-[11px]">Load breakdown</span>
+            <span id="load-detail-title" className="text-fg text-sm font-semibold">{label}</span>
+            <span className="text-muted text-[11px]">
+              {granularity === "week" && d
+                ? `Week breakdown · On your plate is the ${loadDateLabel(d.peakDayKey)} peak snapshot`
+                : "Day load breakdown"}
+            </span>
           </div>
           <button type="button" onClick={onClose} aria-label="Close" className="text-muted hover:text-fg rounded-md p-1">
             <X size={16} />
           </button>
         </div>
 
-        <div className="border-line flex border-b">
+        <div className="border-line flex border-b" role="tablist" aria-label="Load detail">
           {tabs.map((t) => (
             <button
               key={t.id}
               type="button"
               onClick={() => setTab(t.id)}
+              role="tab"
+              aria-selected={tab === t.id}
               className="relative flex flex-1 items-center justify-center gap-1.5 py-2.5 text-xs font-medium"
               style={{ color: tab === t.id ? "var(--color-fg)" : "var(--color-muted)" }}
             >
@@ -198,20 +255,39 @@ function LoadDayDrawer({ dayKey, onClose }: { dayKey: string; onClose: () => voi
           ))}
         </div>
 
-        <div className="pretty-scroll flex-1 overflow-y-auto px-3 pb-3">
-          {!d ? (
+        <div className="border-line border-b px-3 py-2">
+          <label className="border-line flex items-center gap-2 rounded-md border px-2.5 py-1.5 focus-within:outline focus-within:outline-2 focus-within:outline-offset-2" style={{ background: "var(--color-bg)" }}>
+            <Search size={14} className="text-muted shrink-0" />
+            <span className="sr-only">Search pull requests</span>
+            <input
+              autoFocus
+              type="search"
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+              placeholder="Search title, repo, or PR number"
+              className="text-fg placeholder:text-muted min-w-0 flex-1 bg-transparent text-xs outline-none"
+            />
+            <span className="text-muted shrink-0 text-[11px]" aria-live="polite">{filtered.length}/{active.prs.length}</span>
+          </label>
+        </div>
+
+        <div className="pretty-scroll flex-1 overflow-y-auto px-3 pb-3" role="tabpanel">
+          {q.isError ? (
+            <div className="text-muted py-8 text-center text-sm">Could not load this breakdown. Close the drawer and try again.</div>
+          ) : !d ? (
             <div className="text-muted py-8 text-center text-sm">Loading…</div>
-          ) : active.prs.length === 0 ? (
+          ) : filtered.length === 0 ? (
             <div className="text-muted py-8 text-center text-sm">None</div>
-          ) : tab === "onPlate" ? (
+          ) : groups.length > 0 ? (
             <div className="flex flex-col gap-4">
-              {onPlateGroups.map((g) => {
+              {groups.map((g) => {
                 const isCollapsed = collapsed[g.key];
                 return (
                   <div key={g.key} className="flex flex-col gap-1.5">
                     <button
                       type="button"
                       onClick={() => setCollapsed((c) => ({ ...c, [g.key]: !c[g.key] }))}
+                      aria-expanded={!isCollapsed}
                       className="sticky top-0 z-10 -mx-3 flex items-center gap-1.5 border-b px-3 py-2"
                       style={{ background: "var(--card-bg)", borderColor: "var(--color-line)" }}
                     >
@@ -224,15 +300,15 @@ function LoadDayDrawer({ dayKey, onClose }: { dayKey: string; onClose: () => voi
                       <span className="text-fg text-xs font-semibold">{g.title}</span>
                       <span className="text-muted text-[11px]">{g.prs.length}</span>
                     </button>
-                    {!isCollapsed && g.prs.map((p) => <LoadPrCard key={p.canonical} p={p} />)}
+                    {!isCollapsed && g.prs.map((p, i) => <LoadPrCard key={`${p.canonical}:${p.dayKey}:${i}`} p={p} />)}
                   </div>
                 );
               })}
             </div>
           ) : (
             <div className="flex flex-col gap-1.5 pt-3">
-              {active.prs.map((p) => (
-                <LoadPrCard key={p.canonical} p={p} />
+              {filtered.map((p, i) => (
+                <LoadPrCard key={`${p.canonical}:${p.dayKey}:${i}`} p={p} />
               ))}
             </div>
           )}
@@ -330,7 +406,7 @@ function InsightsPage() {
   const [streamMode, setStreamMode] = useState<"person" | "repo" | "type">("person");
   const [topPerson, setTopPerson] = useState<5 | 10 | 15 | 20>(10);
   const [topRepo, setTopRepo] = useState<3 | 5 | 8 | 12>(5);
-  const [loadDay, setLoadDay] = useState<string | null>(null);
+  const [loadSelection, setLoadSelection] = useState<{ key: string; granularity: "day" | "week" } | null>(null);
   const [balanceWin, setBalanceWin] = useState<4 | 8 | 12>(8);
   const reachDays = reachWin === "all" ? null : Number(reachWin);
   const r = computeReach(reach.items, reachDays);
@@ -371,7 +447,12 @@ function InsightsPage() {
           <Empty>No review activity captured yet.</Empty>
         ) : (
           <div>
-            <LoadChart data={loadData} granularity={gran} periods={cfg?.periods ?? []} onSelectDay={setLoadDay} />
+            <LoadChart
+              data={loadData}
+              granularity={gran}
+              periods={cfg?.periods ?? []}
+              onSelect={(key) => setLoadSelection({ key, granularity: gran })}
+            />
             <div className="border-line mt-3 grid gap-2 border-t pt-3 sm:grid-cols-3">
               <LegendKey color="#0072B2" term="New PRs" desc="landed on your plate" />
               <LegendKey color="#009E73" term="Reviewed" desc="reviews you finished" />
@@ -381,9 +462,9 @@ function InsightsPage() {
                 desc={gran === "week" ? "peak # of PRs live that week" : "# of PRs live that day"}
               />
             </div>
-            {gran === "day" && (
-              <p className="text-muted/70 mt-2 text-[11px]">Click a day to see which PRs are in each bucket.</p>
-            )}
+            <p className="text-muted/70 mt-2 text-[11px]">
+              Click a {gran} to see which PRs are in each bucket.
+            </p>
           </div>
         )}
       </Section>
@@ -720,7 +801,13 @@ function InsightsPage() {
         </div>
       )}
 
-      {loadDay && <LoadDayDrawer dayKey={loadDay} onClose={() => setLoadDay(null)} />}
+      {loadSelection && (
+        <LoadDrawer
+          bucketKey={loadSelection.key}
+          granularity={loadSelection.granularity}
+          onClose={() => setLoadSelection(null)}
+        />
+      )}
     </div>
   );
 }

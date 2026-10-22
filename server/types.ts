@@ -65,6 +65,17 @@ export interface LoadDayPr {
   title: string;
   state: string | null;
   ageDays: number;
+  dayKey: string;
+}
+
+export interface LoadDetail {
+  key: string;
+  endKey: string;
+  granularity: "day" | "week";
+  peakDayKey: string;
+  arrived: LoadDayPr[];
+  reviewed: LoadDayPr[];
+  onPlate: LoadDayPr[];
 }
 
 export interface InsightsWaiting {
