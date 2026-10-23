@@ -75,6 +75,16 @@ export interface WeeklyReviewPr {
   changedFiles: number | null;
   totalComments: number | null;
   otherComments: number | null;
+  effort: WeeklyReviewEffort | null;
+}
+
+export interface WeeklyReviewEffort {
+  score: number;
+  size: number;
+  updates: number;
+  depth: number;
+  discussion: number;
+  revisits: number;
 }
 
 export interface WeeklyReviewFacts {
@@ -86,6 +96,11 @@ export interface WeeklyReviewFacts {
   coverage: {
     sizeKnown: number;
     commentsKnown: number;
+    scoreKnown: number;
+  };
+  effort: {
+    total: number;
+    average: number | null;
   };
 }
 
@@ -390,6 +405,12 @@ export const prsQuery = queryOptions({ queryKey: ["prs"], queryFn: api.prs, refe
 export const archivableQuery = queryOptions({ queryKey: ["archivable"], queryFn: api.archivable, refetchInterval: 15_000 });
 export const changesQuery = queryOptions({ queryKey: ["changes"], queryFn: api.changes, refetchInterval: 12_000 });
 export const insightsQuery = queryOptions({ queryKey: ["insights"], queryFn: api.insights, refetchInterval: 30_000 });
+export const weeklyReviewFactsQuery = (startKey: string) =>
+  queryOptions({
+    queryKey: ["weeklyReviewFacts", startKey],
+    queryFn: () => api.weeklyReviewFacts(startKey),
+    refetchInterval: 30_000,
+  });
 export const healthQuery = queryOptions({ queryKey: ["health"], queryFn: api.health, refetchInterval: 4000 });
 export const runsQuery = queryOptions({ queryKey: ["runs"], queryFn: () => api.runs(50), refetchInterval: 5000 });
 

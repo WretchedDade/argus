@@ -56,7 +56,7 @@ function weekLabel(iso: string): string {
   return localDate(iso).toLocaleDateString([], { month: "numeric", day: "numeric" });
 }
 
-// Weekly review throughput, quick + full lanes stacked.
+// Weekly unique PR throughput, quick + full lanes stacked.
 export function ThroughputChart({ data }: { data: { week: string; quick: number; review: number }[] }) {
   return (
     <ResponsiveContainer width="100%" height={180}>

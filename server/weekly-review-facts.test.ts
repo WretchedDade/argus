@@ -7,12 +7,15 @@ import { countReviewComments } from "./ado/client.ts";
 
 const dir = mkdtempSync(path.join(tmpdir(), "argus-weekly-review-test-"));
 const dbFile = path.join(dir, "argus.db");
+let store!: ArgusStore;
+let storeOpen = false;
 
 try {
   const startKey = "2026-10-19";
   const at = (day: number, hour = 9) => new Date(2026, 9, 19 + day, hour).toISOString();
   const canonical = (n: number) => `https://example.test/r/pullrequest/${n}`;
-  const store = new ArgusStore(dbFile);
+  store = new ArgusStore(dbFile);
+  storeOpen = true;
 
   const addPr = (number: number, author: string, isVendor: boolean) => {
     store.upsertPr({
@@ -42,6 +45,7 @@ try {
   store.setLane(canonical(1), "quick");
   store.setChangedFiles(canonical(1), 7, "sha-1");
   store.setCommentCounts(canonical(1), 4, 6);
+  store.setChangedFiles(canonical(2), 1, "sha-2");
   store.setChangedFiles(canonical(3), 1, "sha-3");
   store.setCommentCounts(canonical(2), 0, 2);
 
@@ -56,12 +60,18 @@ try {
   store.appendEvent(canonical(1), "commit_pushed", { from: "sha-0", to: "sha-1" }, at(-2));
   store.appendEvent(canonical(1), "commit_pushed", { from: "sha-1", to: "sha-2" }, at(1));
 
+  assert.deepEqual(
+    store.prsNeedingCommentCount().map((pr) => pr.canonical),
+    [canonical(3)],
+    "A recorded review stays eligible for comment backfill after its current review state changes.",
+  );
   const facts = store.weeklyReviewFacts(startKey);
   assert.equal(facts.startKey, startKey);
   assert.equal(facts.endKey, "2026-10-26");
   assert.equal(facts.actionCount, 4);
   assert.equal(facts.uniquePrCount, 3);
-  assert.deepEqual(facts.coverage, { sizeKnown: 2, commentsKnown: 2 });
+  assert.deepEqual(facts.coverage, { sizeKnown: 3, commentsKnown: 2, scoreKnown: 2 });
+  assert.deepEqual(facts.effort, { total: 10, average: 5 });
 
   const first = facts.prs[0];
   assert.equal(first.canonical, canonical(3));
@@ -86,9 +96,19 @@ try {
     changedFiles: 7,
     totalComments: 4,
     otherComments: 6,
+    effort: {
+      score: 8,
+      size: 3,
+      updates: 1,
+      depth: 2,
+      discussion: 1,
+      revisits: 1,
+    },
   });
   assert.equal(facts.prs.find((pr) => pr.canonical === canonical(2))?.authorType, "Automated");
   assert.equal(facts.prs.find((pr) => pr.canonical === canonical(2))?.updateEpisodes, 0);
+  assert.equal(facts.prs.find((pr) => pr.canonical === canonical(2))?.effort?.score, 2);
+  assert.equal(first.effort, null);
   assert.deepEqual(
     facts.prs.map((pr) => pr.canonical),
     [canonical(3), canonical(1), canonical(2)],
@@ -106,7 +126,9 @@ try {
     { mine: 1, others: 1 },
   );
   store.close();
+  storeOpen = false;
 } finally {
+  if (storeOpen) store.close();
   rmSync(dir, { recursive: true, force: true });
 }
 

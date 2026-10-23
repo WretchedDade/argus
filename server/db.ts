@@ -1,7 +1,7 @@
 import { DatabaseSync, type StatementSync } from "node:sqlite";
 import { mkdirSync, readFileSync } from "node:fs";
 import path from "node:path";
-import type { ActivityEvent, ActivityEventType, ActivityVerdict, ArchivableSession, AuthorMeta, DeployTimelinePr, Insights, InsightsCount, InsightsLoadBucket, InsightsWaiting, Lane, LoadDayPr, LoadDetail, Pr, PrDeploy, PrEvent, PrEventType, PrReviewState, PrRole, PrState, PrUpsert, RunEvent, WeeklyReviewFacts } from "./types.ts";
+import type { ActivityEvent, ActivityEventType, ActivityVerdict, ArchivableSession, AuthorMeta, DeployTimelinePr, Insights, InsightsCount, InsightsLoadBucket, InsightsWaiting, Lane, LoadDayPr, LoadDetail, Pr, PrDeploy, PrEvent, PrEventType, PrReviewState, PrRole, PrState, PrUpsert, RunEvent, WeeklyReviewEffort, WeeklyReviewFacts } from "./types.ts";
 import type { Plan, Snapshot } from "./ado/reconcile.ts";
 import type { ConfigOverrides } from "./config.ts";
 import { isVendorName } from "./ado/normalize.ts";
@@ -216,6 +216,23 @@ const AUTOMATED_RE = /dependabot|renovate|\bbot\b|build service|azure pipelines|
 function classifyAuthor(author: string | null, isVendor: boolean): "FTE" | "Vendor" | "Automated" {
   if (author && AUTOMATED_RE.test(author)) return "Automated";
   return isVendor ? "Vendor" : "FTE";
+}
+
+function weeklyReviewEffort(pr: {
+  finalLane: Lane;
+  changedFiles: number | null;
+  totalComments: number | null;
+  otherComments: number | null;
+  reviewActions: number;
+  updateEpisodes: number;
+}): WeeklyReviewEffort | null {
+  if (pr.changedFiles === null || pr.totalComments === null || pr.otherComments === null) return null;
+  const size = pr.changedFiles <= 2 ? 1 : pr.changedFiles <= 5 ? 2 : pr.changedFiles <= 10 ? 3 : pr.changedFiles <= 20 ? 4 : 5;
+  const updates = pr.updateEpisodes <= 1 ? 0 : pr.updateEpisodes <= 4 ? 1 : 2;
+  const depth = (pr.finalLane === "review" ? 1 : 0) + (pr.totalComments === 0 ? 0 : pr.totalComments <= 2 ? 1 : 2);
+  const discussion = pr.otherComments <= 3 ? 0 : pr.otherComments <= 10 ? 1 : 2;
+  const revisits = pr.reviewActions <= 1 ? 0 : pr.reviewActions === 2 ? 1 : 2;
+  return { score: size + updates + depth + discussion + revisits, size, updates, depth, discussion, revisits };
 }
 
 
@@ -656,22 +673,26 @@ export class ArgusStore {
       updateEpisodes: number;
       latestReviewAt: string;
     }[];
-    const prs = rows.map((row) => ({
-      canonical: row.canonical,
-      repo: row.repo,
-      number: row.number,
-      title: row.title,
-      author: row.author,
-      authorType: classifyAuthor(row.author, !!row.isVendor),
-      reviewActions: row.reviewActions,
-      lifetimeReviewActions: row.lifetimeReviewActions,
-      updateEpisodes: row.updateEpisodes,
-      latestReviewAt: row.latestReviewAt,
-      finalLane: row.finalLane as Lane,
-      changedFiles: row.changedFiles,
-      totalComments: row.totalComments,
-      otherComments: row.otherComments,
-    }));
+    const prs = rows.map((row) => {
+      const pr = {
+        canonical: row.canonical,
+        repo: row.repo,
+        number: row.number,
+        title: row.title,
+        author: row.author,
+        authorType: classifyAuthor(row.author, !!row.isVendor),
+        reviewActions: row.reviewActions,
+        lifetimeReviewActions: row.lifetimeReviewActions,
+        updateEpisodes: row.updateEpisodes,
+        latestReviewAt: row.latestReviewAt,
+        finalLane: row.finalLane as Lane,
+        changedFiles: row.changedFiles,
+        totalComments: row.totalComments,
+        otherComments: row.otherComments,
+      };
+      return { ...pr, effort: weeklyReviewEffort(pr) };
+    });
+    const scored = prs.flatMap((pr) => (pr.effort ? [pr.effort.score] : []));
     return {
       startKey,
       endKey,
@@ -681,6 +702,11 @@ export class ArgusStore {
       coverage: {
         sizeKnown: prs.filter((pr) => pr.changedFiles !== null).length,
         commentsKnown: prs.filter((pr) => pr.totalComments !== null && pr.otherComments !== null).length,
+        scoreKnown: scored.length,
+      },
+      effort: {
+        total: scored.reduce((total, score) => total + score, 0),
+        average: scored.length ? scored.reduce((total, score) => total + score, 0) / scored.length : null,
       },
     };
   }
@@ -902,8 +928,12 @@ export class ArgusStore {
   prsNeedingCommentCount(limit = 25): { canonical: string; number: number; project: string; repo: string }[] {
     return this.#prep(
       `SELECT canonical, number, project, repo FROM prs
-       WHERE (my_comments IS NULL OR other_comments IS NULL) AND role != 'author'
-         AND review_state IN ('approved','suggestions','waiting','rejected')
+       WHERE (my_comments IS NULL OR other_comments IS NULL) AND (role IS NULL OR role != 'author')
+         AND EXISTS (
+           SELECT 1 FROM pr_events e
+           WHERE e.canonical = prs.canonical AND e.type = 'reviewed'
+             AND json_extract(e.payload, '$.verdict') IS NOT NULL
+         )
        LIMIT ?`,
     ).all(limit) as unknown as { canonical: string; number: number; project: string; repo: string }[];
   }
@@ -1112,10 +1142,11 @@ export class ArgusStore {
 
     const reviewed: LoadDayPr[] = [];
     for (const r of this.#prep(`
-      SELECT e.canonical, e.ts, p.repo, p.number, p.title, p.review_state AS reviewState, p.added_at AS addedAt
+      SELECT e.canonical, MAX(e.ts) AS ts, p.repo, p.number, p.title, p.review_state AS reviewState, p.added_at AS addedAt
       FROM pr_events e JOIN prs p ON e.canonical = p.canonical
       WHERE e.type = 'reviewed' AND json_extract(e.payload, '$.verdict') IS NOT NULL
         AND e.ts >= ? AND e.ts < ?
+      GROUP BY e.canonical
     `).all(new Date(dayStart).toISOString(), new Date(dayEnd).toISOString()) as unknown as {
       canonical: string; ts: string; repo: string; number: number; title: string; reviewState: string | null; addedAt: string;
     }[]) {
@@ -1168,10 +1199,11 @@ export class ArgusStore {
       canonical: string; repo: string; number: number; title: string; reviewState: string | null; addedAt: string;
     }[];
     const reviewed = this.#prep(`
-      SELECT e.canonical, e.ts, p.repo, p.number, p.title, p.review_state AS reviewState, p.added_at AS addedAt
+      SELECT e.canonical, MAX(e.ts) AS ts, p.repo, p.number, p.title, p.review_state AS reviewState, p.added_at AS addedAt
       FROM pr_events e JOIN prs p ON e.canonical = p.canonical
       WHERE e.type = 'reviewed' AND json_extract(e.payload, '$.verdict') IS NOT NULL
         AND e.ts >= ? AND e.ts < ?
+      GROUP BY e.canonical
     `).all(start.toISOString(), weekEnd.toISOString()) as unknown as {
       canonical: string; ts: string; repo: string; number: number; title: string; reviewState: string | null; addedAt: string;
     }[];
@@ -1225,13 +1257,12 @@ export class ArgusStore {
     `).all() as unknown as { canonical: string; ts: string; lane: string; addedAt: string }[];
 
 
-    // Throughput: every verdict-review counts, bucketed by week and lane.
-    const tpByWeek = new Map<string, { quick: number; review: number }>();
+    // Throughput: unique PRs reviewed in each week, bucketed by final lane.
+    const tpByWeek = new Map<string, Map<string, string>>();
     for (const r of reviewed) {
       const wk = weekKey(Date.parse(r.ts));
-      const cell = tpByWeek.get(wk) ?? tpByWeek.set(wk, { quick: 0, review: 0 }).get(wk)!;
-      if (r.lane === "quick") cell.quick++;
-      else cell.review++;
+      const cell = tpByWeek.get(wk) ?? tpByWeek.set(wk, new Map()).get(wk)!;
+      cell.set(r.canonical, r.lane);
     }
 
     // All PR rows, decoded once, for latency / backlog / distribution / authored.
@@ -1617,8 +1648,6 @@ export class ArgusStore {
       const end = ends.length ? Math.min(...ends) : nowMs;
       if (end > start) intervals.push({ start, end });
     }
-    const throughputMs = reviewed.map((r) => Date.parse(r.ts));
-
     const DAY_MS = 86_400_000;
     const WINDOW_DAYS = 84; // 12 weeks, enough to derive both series
     const todayStart = new Date();
@@ -1646,9 +1675,14 @@ export class ArgusStore {
       const i = dayIndex(rollToBusinessDay(ms));
       if (i >= 0 && i < WINDOW_DAYS) rolledInflow[i]++;
     }
-    for (const ms of throughputMs) {
-      const i = dayIndex(ms);
-      if (i >= 0 && i < WINDOW_DAYS) dayBuckets[i].throughput++;
+    const dailyReviewed = new Set<string>();
+    for (const review of reviewed) {
+      const i = dayIndex(Date.parse(review.ts));
+      const key = `${i}|${review.canonical}`;
+      if (i >= 0 && i < WINDOW_DAYS && !dailyReviewed.has(key)) {
+        dailyReviewed.add(key);
+        dayBuckets[i].throughput++;
+      }
     }
     const daily: InsightsLoadBucket[] = dayBuckets
       .slice(-14)
@@ -1668,8 +1702,11 @@ export class ArgusStore {
       const wk = weekKey(d.dayStart);
       const cell = weeklyLoad.get(wk) ?? weeklyLoad.set(wk, { inflow: 0, throughput: 0, peak: 0 }).get(wk)!;
       cell.inflow += d.inflow;
-      cell.throughput += d.throughput;
       cell.peak = Math.max(cell.peak, d.level);
+    }
+    for (const [week, prsReviewed] of tpByWeek) {
+      const cell = weeklyLoad.get(week);
+      if (cell) cell.throughput = prsReviewed.size;
     }
     const loadWeekly: InsightsLoadBucket[] = loadWeeks.map((week) => {
       const cell = weeklyLoad.get(week) ?? { inflow: 0, throughput: 0, peak: 0 };
@@ -1700,7 +1737,7 @@ export class ArgusStore {
     return {
       generatedAt: now(),
       summary: {
-        reviewsAllTime: rhythmItems.length,
+        reviewsAllTime: new Set(reviewed.map((review) => review.canonical)).size,
         firstReviewAt: rhythmItems.length ? rhythmItems[0].at : null,
         lastReviewAt: rhythmItems.length ? rhythmItems[rhythmItems.length - 1].at : null,
         trackingSince,
@@ -1716,10 +1753,16 @@ export class ArgusStore {
         distribution: latDistribution,
       },
       throughput: {
-        total: reviewed.length,
+        total: new Set(
+          reviewed
+            .filter((review) => weeks.includes(weekKey(Date.parse(review.ts))))
+            .map((review) => review.canonical),
+        ).size,
         weekly: weeks.map((week) => {
-          const cell = tpByWeek.get(week) ?? { quick: 0, review: 0 };
-          return { week, quick: cell.quick, review: cell.review, total: cell.quick + cell.review };
+          const prsReviewed = tpByWeek.get(week) ?? new Map<string, string>();
+          const quick = [...prsReviewed.values()].filter((lane) => lane === "quick").length;
+          const review = prsReviewed.size - quick;
+          return { week, quick, review, total: prsReviewed.size };
         }),
       },
       load: {

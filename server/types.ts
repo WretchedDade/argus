@@ -93,6 +93,16 @@ export interface WeeklyReviewPr {
   changedFiles: number | null;
   totalComments: number | null;
   otherComments: number | null;
+  effort: WeeklyReviewEffort | null;
+}
+
+export interface WeeklyReviewEffort {
+  score: number;
+  size: number;
+  updates: number;
+  depth: number;
+  discussion: number;
+  revisits: number;
 }
 
 export interface WeeklyReviewFacts {
@@ -104,6 +114,11 @@ export interface WeeklyReviewFacts {
   coverage: {
     sizeKnown: number;
     commentsKnown: number;
+    scoreKnown: number;
+  };
+  effort: {
+    total: number;
+    average: number | null;
   };
 }
 
@@ -116,7 +131,7 @@ export interface InsightsWaiting {
 }
 
 // One time bucket (a day or a week) for the load/capacity view. inflow = PRs that
-// entered your review queue; throughput = reviews you completed; backlog = the
+// entered your review queue; throughput = unique PRs reviewed; backlog = the
 // "waiting on you" level (daily: level that day; weekly: that week's peak).
 export interface InsightsLoadBucket {
   key: string;

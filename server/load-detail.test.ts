@@ -50,6 +50,8 @@ try {
 
   store = new ArgusStore(dbFile);
   store.appendEvent(canonical(2), "reviewed", { verdict: "approved" }, at(1, 15));
+  store.appendEvent(canonical(2), "reviewed", { verdict: "approved" }, at(1, 16));
+  store.appendEvent(canonical(2), "reviewed", { verdict: "approved" }, at(2, 10));
   store.appendEvent(canonical(4), "closed", {}, at(5, 1));
 
   const bucket = store.computeInsights(30).load.weekly.find((item) => item.key === weekKey);
@@ -58,6 +60,9 @@ try {
     { inflow: detail.arrived.length, throughput: detail.reviewed.length, peak: detail.onPlate.length },
     { inflow: bucket?.inflow, throughput: bucket?.throughput, peak: bucket?.backlog },
   );
+  assert.equal(store.loadDayDetail(at(1, 0).slice(0, 10), 30).reviewed.length, 1);
+  assert.equal(store.loadDayDetail(at(2, 0).slice(0, 10), 30).reviewed.length, 1);
+  assert.equal(detail.reviewed.length, 1, "Weekly throughput counts each PR once across repeat reviews.");
   assert.equal(detail.peakDayKey, at(1, 0).slice(0, 10));
   assert.equal(detail.arrived.at(-1)?.dayKey, at(4, 0).slice(0, 10));
   store.close();

@@ -418,13 +418,13 @@ function InsightsPage() {
     <div className="mx-auto flex max-w-4xl flex-col gap-5">
       {summary.reviewsAllTime > 0 && (
         <p className="text-muted text-xs">
-          <span className="text-fg font-semibold">{summary.reviewsAllTime}</span> reviews recorded over {humanSpan(summary.firstReviewAt)} · since {fmtDate(summary.firstReviewAt)}
+          <span className="text-fg font-semibold">{summary.reviewsAllTime}</span> PRs reviewed over {humanSpan(summary.firstReviewAt)} · since {fmtDate(summary.firstReviewAt)}
           {summary.trackingSince ? ` · tracking since ${fmtDate(summary.trackingSince)}` : ""}
         </p>
       )}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         <Kpi icon={Timer} label="Median review latency" value={fmtHours(latency.medianHours)} anchor="--color-teal-500" />
-        <Kpi icon={CheckCircle2} label="Reviews (8 wks)" value={String(throughput.total)} anchor="--color-green-500" />
+        <Kpi icon={CheckCircle2} label="PRs reviewed (8 wks)" value={String(throughput.total)} anchor="--color-green-500" />
         <Kpi icon={Inbox} label="Waiting on you" value={String(backlog.waitingCount)} anchor="--color-amber-500" />
         <Kpi icon={GitPullRequest} label="Active reviews" value={String(activeTotal)} anchor="--color-sky-500" />
       </div>
@@ -455,7 +455,7 @@ function InsightsPage() {
             />
             <div className="border-line mt-3 grid gap-2 border-t pt-3 sm:grid-cols-3">
               <LegendKey color="#0072B2" term="New PRs" desc="landed on your plate" />
-              <LegendKey color="#009E73" term="Reviewed" desc="reviews you finished" />
+              <LegendKey color="#009E73" term="Reviewed" desc="unique PRs you reviewed" />
               <LegendKey
                 color="#E69F00"
                 term="On your plate"
