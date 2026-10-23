@@ -78,6 +78,35 @@ export interface LoadDetail {
   onPlate: LoadDayPr[];
 }
 
+export interface WeeklyReviewPr {
+  canonical: string;
+  repo: string;
+  number: number;
+  title: string;
+  author: string | null;
+  authorType: "FTE" | "Vendor" | "Automated";
+  reviewActions: number;
+  lifetimeReviewActions: number;
+  updateEpisodes: number;
+  latestReviewAt: string;
+  finalLane: Lane;
+  changedFiles: number | null;
+  totalComments: number | null;
+  otherComments: number | null;
+}
+
+export interface WeeklyReviewFacts {
+  startKey: string;
+  endKey: string;
+  actionCount: number;
+  uniquePrCount: number;
+  prs: WeeklyReviewPr[];
+  coverage: {
+    sizeKnown: number;
+    commentsKnown: number;
+  };
+}
+
 export interface InsightsWaiting {
   canonical: string;
   repo: string;

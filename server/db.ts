@@ -1,7 +1,7 @@
 import { DatabaseSync, type StatementSync } from "node:sqlite";
 import { mkdirSync, readFileSync } from "node:fs";
 import path from "node:path";
-import type { ActivityEvent, ActivityEventType, ActivityVerdict, ArchivableSession, AuthorMeta, DeployTimelinePr, Insights, InsightsCount, InsightsLoadBucket, InsightsWaiting, Lane, LoadDayPr, LoadDetail, Pr, PrDeploy, PrEvent, PrEventType, PrReviewState, PrRole, PrState, PrUpsert, RunEvent } from "./types.ts";
+import type { ActivityEvent, ActivityEventType, ActivityVerdict, ArchivableSession, AuthorMeta, DeployTimelinePr, Insights, InsightsCount, InsightsLoadBucket, InsightsWaiting, Lane, LoadDayPr, LoadDetail, Pr, PrDeploy, PrEvent, PrEventType, PrReviewState, PrRole, PrState, PrUpsert, RunEvent, WeeklyReviewFacts } from "./types.ts";
 import type { Plan, Snapshot } from "./ado/reconcile.ts";
 import type { ConfigOverrides } from "./config.ts";
 import { isVendorName } from "./ado/normalize.ts";
@@ -365,6 +365,7 @@ export class ArgusStore {
     this.#ensureColumn("prs", "reviewed_at", "TEXT"); // when I recorded my verdict (latency end)
     this.#ensureColumn("prs", "reviewed_sha_authored_at", "TEXT"); // authored date of reviewed_sha (latency start); backfilled by the poller
     this.#ensureColumn("prs", "my_comments", "INTEGER"); // # of comments I authored on this PR; counted once after I record a verdict
+    this.#ensureColumn("prs", "other_comments", "INTEGER"); // # of non-system comments authored by others
     this.#ensureColumn("prs", "approvals_json", "TEXT"); // individuals who approved (name + vote), for card display
     this.#ensureColumn("prs", "author_meta_json", "TEXT"); // completability + comment counts for authored PRs
     this.#ensureColumn("prs", "merge_commit", "TEXT"); // the merge commit sha (for deploy tracking); captured on close
@@ -599,6 +600,91 @@ export class ArgusStore {
     return rows.map(rowToEvent);
   }
 
+  weeklyReviewFacts(startKey: string): WeeklyReviewFacts {
+    const [year, month, day] = startKey.split("-").map(Number);
+    const start = new Date(year, month - 1, day);
+    const end = new Date(year, month - 1, day + 7);
+    const startIso = start.toISOString();
+    const endIso = end.toISOString();
+    const endKey = localDayKey(end.getTime());
+    const rows = this.#prep(`
+      WITH verdict_reviews AS (
+        SELECT canonical, ts
+        FROM pr_events
+        WHERE type = 'reviewed' AND json_extract(payload, '$.verdict') IS NOT NULL
+      ),
+      weekly AS (
+        SELECT canonical, COUNT(*) AS reviewActions, MAX(ts) AS latestReviewAt
+        FROM verdict_reviews
+        WHERE ts >= ? AND ts < ?
+        GROUP BY canonical
+      ),
+      lifetime AS (
+        SELECT canonical, COUNT(*) AS lifetimeReviewActions
+        FROM verdict_reviews
+        GROUP BY canonical
+      ),
+      updates AS (
+        SELECT canonical, COUNT(*) AS updateEpisodes
+        FROM pr_events
+        WHERE type = 'commit_pushed'
+        GROUP BY canonical
+      )
+      SELECT p.canonical, p.repo, p.number, p.title, p.author, p.is_vendor AS isVendor,
+             p.lane AS finalLane, p.changed_files AS changedFiles, p.my_comments AS totalComments,
+             p.other_comments AS otherComments,
+             w.reviewActions, l.lifetimeReviewActions, COALESCE(u.updateEpisodes, 0) AS updateEpisodes,
+             w.latestReviewAt
+      FROM weekly w
+      JOIN prs p ON p.canonical = w.canonical
+      JOIN lifetime l ON l.canonical = w.canonical
+      LEFT JOIN updates u ON u.canonical = w.canonical
+      ORDER BY w.latestReviewAt DESC, p.repo ASC, p.number DESC, p.canonical ASC
+    `).all(startIso, endIso) as unknown as {
+      canonical: string;
+      repo: string;
+      number: number;
+      title: string;
+      author: string | null;
+      isVendor: number;
+      finalLane: string;
+      changedFiles: number | null;
+      totalComments: number | null;
+      otherComments: number | null;
+      reviewActions: number;
+      lifetimeReviewActions: number;
+      updateEpisodes: number;
+      latestReviewAt: string;
+    }[];
+    const prs = rows.map((row) => ({
+      canonical: row.canonical,
+      repo: row.repo,
+      number: row.number,
+      title: row.title,
+      author: row.author,
+      authorType: classifyAuthor(row.author, !!row.isVendor),
+      reviewActions: row.reviewActions,
+      lifetimeReviewActions: row.lifetimeReviewActions,
+      updateEpisodes: row.updateEpisodes,
+      latestReviewAt: row.latestReviewAt,
+      finalLane: row.finalLane as Lane,
+      changedFiles: row.changedFiles,
+      totalComments: row.totalComments,
+      otherComments: row.otherComments,
+    }));
+    return {
+      startKey,
+      endKey,
+      actionCount: prs.reduce((total, pr) => total + pr.reviewActions, 0),
+      uniquePrCount: prs.length,
+      prs,
+      coverage: {
+        sizeKnown: prs.filter((pr) => pr.changedFiles !== null).length,
+        commentsKnown: prs.filter((pr) => pr.totalComments !== null && pr.otherComments !== null).length,
+      },
+    };
+  }
+
   // Windowed feed of MY PR activity (authored + reviewed), for external
   // consumers (Clio's capture pulse). Every tracked PR is mine in some role, so
   // the source is simply pr_events joined to PR identity, restricted to the
@@ -816,14 +902,14 @@ export class ArgusStore {
   prsNeedingCommentCount(limit = 25): { canonical: string; number: number; project: string; repo: string }[] {
     return this.#prep(
       `SELECT canonical, number, project, repo FROM prs
-       WHERE my_comments IS NULL AND role != 'author'
+       WHERE (my_comments IS NULL OR other_comments IS NULL) AND role != 'author'
          AND review_state IN ('approved','suggestions','waiting','rejected')
        LIMIT ?`,
     ).all(limit) as unknown as { canonical: string; number: number; project: string; repo: string }[];
   }
 
-  setMyComments(canonical: string, count: number): void {
-    this.#prep("UPDATE prs SET my_comments = ? WHERE canonical = ?").run(count, canonical);
+  setCommentCounts(canonical: string, mine: number, others: number): void {
+    this.#prep("UPDATE prs SET my_comments = ?, other_comments = ? WHERE canonical = ?").run(mine, others, canonical);
   }
 
   // --- Deploy tracking (where a merged PR shipped) ---
@@ -1876,7 +1962,7 @@ export class ArgusStore {
       this.#prep("UPDATE prs SET reviewed_at = ? WHERE canonical = ?").run(now(), canonical);
       // Mark my comment count stale so the poller recounts once (comments are
       // effectively final at verdict time; a re-review re-triggers the count).
-      this.#prep("UPDATE prs SET my_comments = NULL WHERE canonical = ?").run(canonical);
+      this.#prep("UPDATE prs SET my_comments = NULL, other_comments = NULL WHERE canonical = ?").run(canonical);
       const prev = this.#prep("SELECT review_state AS s FROM prs WHERE canonical = ?").get(canonical) as
         | { s: string | null }
         | undefined;

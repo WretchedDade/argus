@@ -124,6 +124,20 @@ export interface PrThread {
   comments?: { commentType?: string; author?: { uniqueName?: string; displayName?: string } }[];
 }
 
+export function countReviewComments(threads: PrThread[], me: string): { mine: number; others: number } {
+  let mine = 0;
+  let others = 0;
+  for (const thread of threads) {
+    if (thread.isDeleted) continue;
+    for (const comment of thread.comments ?? []) {
+      if (comment.commentType === "system") continue;
+      if (comment.author?.uniqueName === me) mine++;
+      else others++;
+    }
+  }
+  return { mine, others };
+}
+
 // PR comment threads. Routed through `az devops invoke` (which uses the az login)
 // because the bearer-token REST path returns 401 in this environment.
 export function fetchPrThreads(orgUrl: string, project: string, repoId: string, prId: number): Promise<PrThread[]> {

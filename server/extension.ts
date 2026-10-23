@@ -4,7 +4,7 @@ import { existsSync, cpSync } from "node:fs";
 import { homedir } from "node:os";
 import { joinSession, createCanvas } from "@github/copilot-sdk/extension";
 import { ArgusStore } from "./db.ts";
-import { fetchPrThreads } from "./ado/client.ts";
+import { countReviewComments, fetchPrThreads } from "./ado/client.ts";
 import { startServer, stopInstance, startIngestServer, type Instance, type ServerContext } from "./server.ts";
 import { defaultConfig, mergeConfig, type ArgusConfig, type ConfigOverrides } from "./config.ts";
 import {
@@ -71,9 +71,8 @@ async function countMyComments(canonical: string): Promise<void> {
     const pr = store.getPr(canonical);
     if (!cfg.me || !pr) return;
     const threads = await fetchPrThreads(cfg.orgUrl, pr.project, pr.repo, pr.number);
-    let n = 0;
-    for (const t of threads) for (const c of t.comments ?? []) if (c.commentType !== "system" && c.author?.uniqueName === cfg.me) n++;
-    store.setMyComments(canonical, n);
+    const comments = countReviewComments(threads, cfg.me);
+    store.setCommentCounts(canonical, comments.mine, comments.others);
   } catch {
     /* left null; the poller backfill retries */
   }

@@ -1,7 +1,7 @@
 import { ArgusStore } from "../db.ts";
 import type { ArgusConfig } from "../config.ts";
 import type { ArchivableSession, PrRole } from "../types.ts";
-import { listActivePrs, showPr, whoami, AdoError, fetchPrThreads, prChangedFileCount } from "./client.ts";
+import { listActivePrs, showPr, whoami, AdoError, countReviewComments, fetchPrThreads, prChangedFileCount } from "./client.ts";
 import { classifyOwnership } from "./ownership.ts";
 import { normalizePr } from "./normalize.ts";
 import { fetchAuthorMeta } from "./authorMeta.ts";
@@ -142,9 +142,8 @@ async function runReconcile(ctx: PollerContext): Promise<ReconcileSummary | null
       for (const p of needComments) {
         try {
           const threads = await fetchPrThreads(cfg.orgUrl, p.project, p.repo, p.number);
-          let n = 0;
-          for (const t of threads) for (const c of t.comments ?? []) if (c.commentType !== "system" && c.author?.uniqueName === identity) n++;
-          ctx.store.setMyComments(p.canonical, n);
+          const comments = countReviewComments(threads, identity);
+          ctx.store.setCommentCounts(p.canonical, comments.mine, comments.others);
         } catch {
           /* retry next cycle */
         }

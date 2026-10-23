@@ -9,7 +9,7 @@
     "build:client": "vite build",
     "build:server": "esbuild server/extension.ts --bundle --platform=node --format=esm --outfile=extension.mjs --external:@github/copilot-sdk",
     "build": "npm run build:client && npm run build:server",
-    "test": "node server/ado/reconcile.test.ts && node server/automatic-review.test.ts && node server/load-detail.test.ts",
+    "test": "node server/ado/reconcile.test.ts && node server/automatic-review.test.ts && node server/load-detail.test.ts && node server/weekly-review-facts.test.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

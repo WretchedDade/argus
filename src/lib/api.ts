@@ -60,6 +60,35 @@ export interface LoadDetail {
   onPlate: LoadDayPr[];
 }
 
+export interface WeeklyReviewPr {
+  canonical: string;
+  repo: string;
+  number: number;
+  title: string;
+  author: string | null;
+  authorType: "FTE" | "Vendor" | "Automated";
+  reviewActions: number;
+  lifetimeReviewActions: number;
+  updateEpisodes: number;
+  latestReviewAt: string;
+  finalLane: Lane;
+  changedFiles: number | null;
+  totalComments: number | null;
+  otherComments: number | null;
+}
+
+export interface WeeklyReviewFacts {
+  startKey: string;
+  endKey: string;
+  actionCount: number;
+  uniquePrCount: number;
+  prs: WeeklyReviewPr[];
+  coverage: {
+    sizeKnown: number;
+    commentsKnown: number;
+  };
+}
+
 export interface InsightsAuthoredPr {
   canonical: string;
   repo: string;
@@ -338,6 +367,8 @@ export const api = {
   },
   changes: () => getJson<ChangeFeed>("/api/changes"),
   insights: () => getJson<{ insights: Insights }>("/api/insights").then((r) => r.insights),
+  weeklyReviewFacts: (startKey: string) =>
+    getJson<{ facts: WeeklyReviewFacts }>(`/api/reviews/week?key=${encodeURIComponent(startKey)}`).then((r) => r.facts),
   loadDetail: (key: string, granularity: "day" | "week") =>
     getJson<{ detail: LoadDetail }>(`/api/load/detail?key=${key}&granularity=${granularity}`).then((r) => r.detail),
   markChangesRead: async (canonical: string): Promise<void> => {

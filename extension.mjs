@@ -258,6 +258,7 @@ var ArgusStore = class _ArgusStore {
     this.#ensureColumn("prs", "reviewed_at", "TEXT");
     this.#ensureColumn("prs", "reviewed_sha_authored_at", "TEXT");
     this.#ensureColumn("prs", "my_comments", "INTEGER");
+    this.#ensureColumn("prs", "other_comments", "INTEGER");
     this.#ensureColumn("prs", "approvals_json", "TEXT");
     this.#ensureColumn("prs", "author_meta_json", "TEXT");
     this.#ensureColumn("prs", "merge_commit", "TEXT");
@@ -454,6 +455,75 @@ var ArgusStore = class _ArgusStore {
     ).all(canonical);
     return rows.map(rowToEvent);
   }
+  weeklyReviewFacts(startKey) {
+    const [year, month, day] = startKey.split("-").map(Number);
+    const start = new Date(year, month - 1, day);
+    const end = new Date(year, month - 1, day + 7);
+    const startIso = start.toISOString();
+    const endIso = end.toISOString();
+    const endKey = localDayKey(end.getTime());
+    const rows = this.#prep(`
+      WITH verdict_reviews AS (
+        SELECT canonical, ts
+        FROM pr_events
+        WHERE type = 'reviewed' AND json_extract(payload, '$.verdict') IS NOT NULL
+      ),
+      weekly AS (
+        SELECT canonical, COUNT(*) AS reviewActions, MAX(ts) AS latestReviewAt
+        FROM verdict_reviews
+        WHERE ts >= ? AND ts < ?
+        GROUP BY canonical
+      ),
+      lifetime AS (
+        SELECT canonical, COUNT(*) AS lifetimeReviewActions
+        FROM verdict_reviews
+        GROUP BY canonical
+      ),
+      updates AS (
+        SELECT canonical, COUNT(*) AS updateEpisodes
+        FROM pr_events
+        WHERE type = 'commit_pushed'
+        GROUP BY canonical
+      )
+      SELECT p.canonical, p.repo, p.number, p.title, p.author, p.is_vendor AS isVendor,
+             p.lane AS finalLane, p.changed_files AS changedFiles, p.my_comments AS totalComments,
+             p.other_comments AS otherComments,
+             w.reviewActions, l.lifetimeReviewActions, COALESCE(u.updateEpisodes, 0) AS updateEpisodes,
+             w.latestReviewAt
+      FROM weekly w
+      JOIN prs p ON p.canonical = w.canonical
+      JOIN lifetime l ON l.canonical = w.canonical
+      LEFT JOIN updates u ON u.canonical = w.canonical
+      ORDER BY w.latestReviewAt DESC, p.repo ASC, p.number DESC, p.canonical ASC
+    `).all(startIso, endIso);
+    const prs = rows.map((row) => ({
+      canonical: row.canonical,
+      repo: row.repo,
+      number: row.number,
+      title: row.title,
+      author: row.author,
+      authorType: classifyAuthor(row.author, !!row.isVendor),
+      reviewActions: row.reviewActions,
+      lifetimeReviewActions: row.lifetimeReviewActions,
+      updateEpisodes: row.updateEpisodes,
+      latestReviewAt: row.latestReviewAt,
+      finalLane: row.finalLane,
+      changedFiles: row.changedFiles,
+      totalComments: row.totalComments,
+      otherComments: row.otherComments
+    }));
+    return {
+      startKey,
+      endKey,
+      actionCount: prs.reduce((total, pr) => total + pr.reviewActions, 0),
+      uniquePrCount: prs.length,
+      prs,
+      coverage: {
+        sizeKnown: prs.filter((pr) => pr.changedFiles !== null).length,
+        commentsKnown: prs.filter((pr) => pr.totalComments !== null && pr.otherComments !== null).length
+      }
+    };
+  }
   // Windowed feed of MY PR activity (authored + reviewed), for external
   // consumers (Clio's capture pulse). Every tracked PR is mine in some role, so
   // the source is simply pr_events joined to PR identity, restricted to the
@@ -613,13 +683,13 @@ var ArgusStore = class _ArgusStore {
   prsNeedingCommentCount(limit = 25) {
     return this.#prep(
       `SELECT canonical, number, project, repo FROM prs
-       WHERE my_comments IS NULL AND role != 'author'
+       WHERE (my_comments IS NULL OR other_comments IS NULL) AND role != 'author'
          AND review_state IN ('approved','suggestions','waiting','rejected')
        LIMIT ?`
     ).all(limit);
   }
-  setMyComments(canonical, count) {
-    this.#prep("UPDATE prs SET my_comments = ? WHERE canonical = ?").run(count, canonical);
+  setCommentCounts(canonical, mine, others) {
+    this.#prep("UPDATE prs SET my_comments = ?, other_comments = ? WHERE canonical = ?").run(mine, others, canonical);
   }
   // --- Deploy tracking (where a merged PR shipped) ---
   // Merge commit + real merge time (ADO closedDate), captured on close so we can
@@ -1443,7 +1513,7 @@ var ArgusStore = class _ArgusStore {
     const VERDICT_STATES = /* @__PURE__ */ new Set(["approved", "suggestions", "waiting", "rejected"]);
     if (opts.verdict && VERDICT_STATES.has(opts.verdict)) {
       this.#prep("UPDATE prs SET reviewed_at = ? WHERE canonical = ?").run(now(), canonical);
-      this.#prep("UPDATE prs SET my_comments = NULL WHERE canonical = ?").run(canonical);
+      this.#prep("UPDATE prs SET my_comments = NULL, other_comments = NULL WHERE canonical = ?").run(canonical);
       const prev = this.#prep("SELECT review_state AS s FROM prs WHERE canonical = ?").get(canonical);
       this.#prep("UPDATE prs SET review_state = ? WHERE canonical = ?").run(opts.verdict, canonical);
       if (prev && prev.s !== opts.verdict) {
@@ -1845,6 +1915,19 @@ function showPr(id, org) {
 function listPrPolicies(org, id) {
   return azJson(["repos", "pr", "policy", "list", "--id", String(id), "--org", org]);
 }
+function countReviewComments(threads, me2) {
+  let mine = 0;
+  let others = 0;
+  for (const thread of threads) {
+    if (thread.isDeleted) continue;
+    for (const comment of thread.comments ?? []) {
+      if (comment.commentType === "system") continue;
+      if (comment.author?.uniqueName === me2) mine++;
+      else others++;
+    }
+  }
+  return { mine, others };
+}
 function fetchPrThreads(orgUrl, project, repoId, prId) {
   return azJson([
     "devops",
@@ -1970,6 +2053,12 @@ async function readJsonBody(req) {
   for await (const chunk of req) chunks.push(chunk);
   const text = Buffer.concat(chunks).toString("utf-8").trim();
   return text ? JSON.parse(text) : {};
+}
+function isMondayKey(key) {
+  if (!key || !/^\d{4}-\d{2}-\d{2}$/.test(key)) return false;
+  const [year, month, day] = key.split("-").map(Number);
+  const date = new Date(year, month - 1, day);
+  return date.getFullYear() === year && date.getMonth() === month - 1 && date.getDate() === day && date.getDay() === 1;
 }
 async function handleApi(req, res, ctx) {
   const url = new URL(req.url || "/", "http://127.0.0.1");
@@ -2139,6 +2228,12 @@ async function handleApi(req, res, ctx) {
     sendJson(res, 200, {
       insights: ctx.store.computeInsights(cfg.recencyDays, { endHour: cfg.workEndHour, days: cfg.workDays })
     });
+    return true;
+  }
+  if (route === "/api/reviews/week") {
+    const key = url.searchParams.get("key");
+    if (!isMondayKey(key)) sendJson(res, 400, { error: "key must be a Monday in YYYY-MM-DD format" });
+    else sendJson(res, 200, { facts: ctx.store.weeklyReviewFacts(key) });
     return true;
   }
   if (route === "/api/changes/read" && req.method === "POST") {
@@ -2754,9 +2849,8 @@ async function runReconcile(ctx) {
       for (const p of needComments) {
         try {
           const threads = await fetchPrThreads(cfg.orgUrl, p.project, p.repo, p.number);
-          let n = 0;
-          for (const t of threads) for (const c of t.comments ?? []) if (c.commentType !== "system" && c.author?.uniqueName === identity) n++;
-          ctx.store.setMyComments(p.canonical, n);
+          const comments = countReviewComments(threads, identity);
+          ctx.store.setCommentCounts(p.canonical, comments.mine, comments.others);
         } catch {
         }
       }
@@ -2983,9 +3077,8 @@ async function countMyComments(canonical) {
     const pr = store.getPr(canonical);
     if (!cfg.me || !pr) return;
     const threads = await fetchPrThreads(cfg.orgUrl, pr.project, pr.repo, pr.number);
-    let n = 0;
-    for (const t of threads) for (const c of t.comments ?? []) if (c.commentType !== "system" && c.author?.uniqueName === cfg.me) n++;
-    store.setMyComments(canonical, n);
+    const comments = countReviewComments(threads, cfg.me);
+    store.setCommentCounts(canonical, comments.mine, comments.others);
   } catch {
   }
 }
