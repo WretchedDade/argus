@@ -69,20 +69,23 @@ findings, not 10 or more.
 
 Run an autonomous, in-depth Full Mode review even though Argus exposes the action
 only in the quick lane. Review the entire PR, set up the worktree, use code
-intelligence, and inspect existing threads and linked work items. Inspect and
-rely on the PR's existing Azure DevOps build/check status and test results. Do
-not run local test suites, builds, linters, typechecks, or other expensive
-validation commands. If required CI/build/test evidence is missing, still
-running, inaccessible, or failed, validation is incomplete. Do not pause for
-Turn 1 / Turn 2 or use ownership-only filtering.
+intelligence, and inspect existing threads and linked work items. Do not pause
+for Turn 1 / Turn 2 or use ownership-only filtering.
 
-When there are **zero findings** and **validation is complete and confident**,
-cast the ADO Approved vote and record Argus verdict `approved`. Do not approve
-under any other condition. With any
-finding, uncertainty, incomplete validation, or operational failure: **post no
-ADO comments**, **cast no ADO vote**, record provisional Argus verdict `waiting`
-when possible, and leave a detailed findings/blocker summary in the child chat.
-Never claim success after a partial failure.
+Do not run local tests, builds, linters, typechecks, or other expensive
+validation commands. Ignore every ADO PR validation, check, and policy status
+when deciding the verdict, including pending or failed ownership enforcer,
+builds, tests, policies, required reviewers, and other merge gates. Those are
+merge requirements, not evidence for or against the code-review stance. Never
+wait merely because a merge validation is pending, unavailable, or failed.
+
+When the code review is complete and confident with **zero findings**, cast the
+ADO Approved vote and record Argus verdict `approved`, regardless of merge
+validation state. With any code finding, genuine uncertainty, inability to
+complete the code review, or operational failure: **post no ADO comments**,
+**cast no ADO vote**, record provisional Argus verdict `waiting` when possible,
+and leave a detailed findings/blocker summary in the child chat. Never claim
+success after a partial failure.
 
 ## Phase 0 — Setup and context
 
@@ -110,10 +113,11 @@ related code so a finding is grounded, not guessed.
 
 ## Phase 2 — Findings and comments
 
-- **Automatic Mode:** do not post comments. Any finding, uncertainty, incomplete
-  validation, or failure stops the review before ADO writes. Only a completed,
-  confident zero-finding review casts an Approved vote and records Argus
-  `approved`.
+- **Automatic Mode:** do not post comments. Any code finding, genuine
+  uncertainty, inability to complete the code review, or operational failure
+  stops the review before ADO writes. Merge-validation state does not. Only a
+  completed, confident zero-finding code review casts an Approved vote and
+  records Argus `approved`.
 - Consolidate related findings. Tier them into "fix now" and "follow-up".
 - Lead with what is good. Frame conventions as patterns to learn, not mistakes.
 - Post a comment **only** with the reviewer's approval. The reviewer's name is on
@@ -141,9 +145,9 @@ Invoke-RestMethod -Method Post -Uri http://127.0.0.1:48100/api/pr/record-review 
 In Automatic Mode, `approved` is allowed only after the ADO Approved vote
 succeeds. Otherwise record provisional `waiting` when possible; it is an Argus
 queue state and does not imply an ADO vote. The final child-chat summary must
-state what was reviewed, validation performed, ADO vote status, and Argus
-recording status. If not approved, include every finding or blocker and confirm
-that no ADO comments or vote were posted.
+state what was reviewed, ADO vote status, and Argus recording status. If not
+approved, include every finding or blocker and confirm that no ADO comments or
+vote were posted.
 
 ## What to look for
 

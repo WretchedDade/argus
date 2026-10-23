@@ -2,13 +2,11 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { automaticReviewPrompt, reviewPrompt } from "./api.ts";
-import { isSnoozed, shouldShowAutomaticReview } from "../src/lib/triage.ts";
+import { shouldShowAutomaticReview } from "../src/lib/triage.ts";
 import type { Pr } from "./types.ts";
 
 assert.equal(shouldShowAutomaticReview({ lane: "quick" }), true);
 assert.equal(shouldShowAutomaticReview({ lane: "review" }), false);
-assert.equal(isSnoozed({ snoozeMode: "time", snoozedUntil: "2026-01-01T00:00:00.000Z" }, Date.parse("2026-01-02T00:00:00.000Z")), false);
-assert.equal(isSnoozed({ snoozeMode: "time", snoozedUntil: "2026-01-03T00:00:00.000Z" }, Date.parse("2026-01-02T00:00:00.000Z")), true);
 
 const prompt = automaticReviewPrompt({
   repo: "LPE.UI",
@@ -20,9 +18,12 @@ assert.match(prompt, /Review mode: automatic/);
 assert.match(prompt, /coordinate_with_creator: false/);
 assert.match(prompt, /kickoff\.mode: "autopilot"/);
 assert.match(prompt, /in-depth full review/);
-assert.match(prompt, /rely on the PR's existing Azure DevOps build\/check status and test results/);
-assert.match(prompt, /must not run local test suites, builds, linters, typechecks/);
-assert.match(prompt, /Missing, running, inaccessible, or failed CI evidence means validation is incomplete/);
+assert.match(prompt, /must not run local tests, builds, linters, typechecks/);
+assert.match(prompt, /ignore every ADO PR validation, check, and policy status/);
+assert.match(prompt, /ownership enforcer/);
+assert.match(prompt, /pending, unavailable, or failed merge validation is never a reason to wait/);
+assert.match(prompt, /complete and confident with zero findings/);
+assert.doesNotMatch(prompt, /validation is complete and confident|incomplete validation/);
 
 const interactivePrompt = reviewPrompt({
   repo: "LPE.UI",
@@ -40,12 +41,14 @@ for (const path of [
   const skill = readFileSync(fileURLToPath(new URL(path, import.meta.url)), "utf8").replace(/\s+/g, " ");
   assert.match(skill, /Review mode: automatic/);
   assert.match(skill, /zero findings/);
-  assert.match(skill, /validation is complete and confident/);
+  assert.match(skill, /Do not run local tests, builds, linters, typechecks/);
+  assert.match(skill, /Ignore every ADO PR validation, check, and policy status/);
+  assert.match(skill, /ownership enforcer/);
+  assert.match(skill, /Never wait merely because a merge validation is pending, unavailable, or failed/);
+  assert.match(skill, /regardless of merge(?:-| )validation state/);
   assert.match(skill, /post no ADO comments/);
   assert.match(skill, /cast no ADO vote/);
-  assert.match(skill, /rely on the PR's existing Azure DevOps build\/check status and test results/);
-  assert.match(skill, /[Dd]o not run local test suites, builds, linters, typechecks/);
-  assert.match(skill, /missing, still running, inaccessible, or failed, validation is incomplete/i);
+  assert.doesNotMatch(skill, /validation is complete and confident|incomplete validation|validation performed/);
 }
 
 console.log("automatic review self-check OK");
