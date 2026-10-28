@@ -5,9 +5,12 @@ import type { Session } from "@github/copilot-sdk/extension";
 let session: Session | null = null;
 
 export function setSession(s: Session): void {
-  session = s;
+    session = s;
 }
 
 export function log(message: string, level?: string): void {
-  if (session) void session.log(message, level ? { level } : undefined).catch(() => {});
+    if (session)
+        void session
+            .log(message, level ? { level } : undefined)
+            .catch(() => {});
 }

@@ -28,16 +28,62 @@ stores no secret and no password.
 
 1. Clone this repo, then link or place it at `~/.copilot/extensions/argus`.
 2. Build it (build output is not committed):
+
 ```powershell
 npm ci             # also runs the build via the prepare script
 npm run build      # rebuild after source changes: vite -> dist/, esbuild -> extension.mjs
 ```
+
 3. Reload extensions (or restart the app).
 4. Open the Argus canvas.
 
 Run the build from the real folder path before creating the symlink. Vite fails
-to resolve `index.html` when the project root is a symlink. The dotfiles setup
-script handles this automatically.
+to resolve `index.html` when the project root is a symlink.
+
+## Local config
+
+Org-specific values live in `argus.config.json` in the extension folder. The file
+is gitignored, so it never reaches the repo. Copy the example and edit it:
+
+```powershell
+Copy-Item argus.config.example.json argus.config.json
+```
+
+Use JSON field names, not environment variable names:
+
+| JSON fields                                        | Value                                                                                   |
+| -------------------------------------------------- | --------------------------------------------------------------------------------------- |
+| `orgUrl`, `orgSlug`, `project`                     | Strings identifying the Azure DevOps organization and project                           |
+| `me`                                               | Identity string, or `null` to detect the identity from `az`                             |
+| `avatarUrl`, `reviewSkillName`                     | Strings for the custom avatar URL and review skill name                                 |
+| `teamPatterns`                                     | Array of reviewer-group glob strings                                                    |
+| `teamLabels`                                       | Object mapping reviewer-group names to short label strings                              |
+| `repoPipelines`                                    | Object mapping repo names to numeric build pipeline definition IDs                      |
+| `periods`                                          | Array of objects with string fields `label`, `start`, and `end`; dates use `YYYY-MM-DD` |
+| `deployWindowDays`, `recencyDays`, `retentionDays` | Numbers of days                                                                         |
+| `workStartHour`, `workEndHour`                     | Numeric hours, for example `9` and `17`                                                 |
+| `workDays`                                         | Array of weekday numbers, Sunday=`0` through Saturday=`6`                               |
+
+For example, the JSON equivalent of `ARGUS_WORK_HOURS=9-17` and
+`ARGUS_WORK_DAYS=1-5` is:
+
+```json
+{
+    "workStartHour": 9,
+    "workEndHour": 17,
+    "workDays": [1, 2, 3, 4, 5]
+}
+```
+
+`ARGUS_DB_FILE` is environment-only. Neither this file nor Settings can change the
+database path. Set `ARGUS_DB_FILE` before starting the extension.
+
+Set `ARGUS_CONFIG_FILE` to read the file from another path. Values saved in
+Settings override this file, and this file overrides the environment variables.
+
+Unknown fields are ignored. If the file contains invalid JSON or a supported field
+has the wrong type, Argus logs the error and uses no overrides from that file.
+Setup is complete only while the effective org URL, org slug, and project are set.
 
 ## First run
 
@@ -110,21 +156,46 @@ spawn-a-review loop needs `pr-review`.
 
 Settings persist in the store. Environment variables set the defaults:
 
-| Variable | Purpose | Default |
-| --- | --- | --- |
-| `ARGUS_ME` | identity override | auto from `az` |
-| `ARGUS_ORG_URL` | Azure DevOps org URL | `https://dev.azure.com/worldwidelearning` |
-| `ARGUS_ORG_SLUG` | org slug | `worldwidelearning` |
-| `ARGUS_PROJECT` | project | `LPE` |
-| `ARGUS_TEAM_PATTERNS` | reviewer-group globs, comma-separated | (one team's default) |
-| `ARGUS_RECENCY_DAYS` | days before an idle PR goes stale | `7` |
-| `ARGUS_WORK_HOURS` | work hours, `start-end` | `9-17` |
-| `ARGUS_WORK_DAYS` | work days, `start-end` (Mon=1) | `1-5` |
-| `ARGUS_DB_FILE` | store path | OneDrive Desktop, else `data/argus.db` |
+| Variable              | Purpose                               | Default                                |
+| --------------------- | ------------------------------------- | -------------------------------------- |
+| `ARGUS_ME`            | identity override                     | auto from `az`                         |
+| `ARGUS_ORG_URL`       | Azure DevOps org URL                  | none, or built from `ARGUS_ORG_SLUG`   |
+| `ARGUS_ORG_SLUG`      | org slug                              | none                                   |
+| `ARGUS_PROJECT`       | project                               | none                                   |
+| `ARGUS_TEAM_PATTERNS` | reviewer-group globs, comma-separated | none                                   |
+| `ARGUS_RECENCY_DAYS`  | days before an idle PR goes stale     | `7`                                    |
+| `ARGUS_WORK_HOURS`    | work hours, `start-end`               | `9-17`                                 |
+| `ARGUS_WORK_DAYS`     | work days, `start-end` (Mon=1)        | `1-5`                                  |
+| `ARGUS_DB_FILE`       | store path                            | OneDrive Desktop, else `data/argus.db` |
 
 The store is a `node:sqlite` database. It holds your PR history, so keep it
 private. It lives outside the extension folder by default, so sharing the folder
 does not share your data.
+
+## Formatting
+
+Run `npm run format` to format source files with four-space indentation. Run
+`npm run format:check` to check formatting without changing files.
+
+`npm ci` installs the Git pre-commit hook through the `prepare` script. The hook
+uses lint-staged to format staged files with Prettier. Generated files and local
+configuration are excluded.
+
+## Pull request checks
+
+GitHub Actions runs the build, formatting check, typecheck, and tests on pull
+requests and pushes to `main`. Run the same checks locally:
+
+```powershell
+npm ci
+npm run format:check
+npm run typecheck
+npm test
+```
+
+`npm ci` builds the extension through `prepare`. The build also generates the
+route tree required by the typecheck. After source changes, run `npm run build`
+before the checks.
 
 ## Stack
 

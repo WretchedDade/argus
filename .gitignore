@@ -3,6 +3,8 @@ data/
 *.db
 *.db-journal
 *.db-wal
+*.db-shm
 dist/
 extension.mjs
 src/routeTree.gen.ts
+argus.config.json
