@@ -26,13 +26,11 @@ stores no secret and no password.
 
 ## Install
 
-1. Put the `argus` folder in your Copilot extensions directory
-   (`~/.copilot/extensions/argus`), or install it with the Copilot
-   `install_extension` action from a shared gist or repo folder.
-2. Build it:
+1. Clone this repo, then link or place it at `~/.copilot/extensions/argus`.
+2. Build it (build output is not committed):
 ```powershell
-npm ci
-npm run build      # vite -> dist/, esbuild server -> extension.mjs
+npm ci             # also runs the build via the prepare script
+npm run build      # rebuild after source changes: vite -> dist/, esbuild -> extension.mjs
 ```
 3. Reload extensions (or restart the app).
 4. Open the Argus canvas.

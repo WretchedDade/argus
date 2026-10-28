@@ -3,3 +3,6 @@ data/
 *.db
 *.db-journal
 *.db-wal
+dist/
+extension.mjs
+src/routeTree.gen.ts
