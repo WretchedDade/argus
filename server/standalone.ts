@@ -87,10 +87,16 @@ console.log(`Argus standalone: ${instance.url}`);
 console.log(`DB: ${DB_FILE}`);
 console.log(`Config: ${CONFIG_FILE}`);
 
+let shuttingDown = false;
 async function shutdown(): Promise<void> {
+    if (shuttingDown) return;
+    shuttingDown = true;
     stopPoller();
     if (ingest) ingest.close();
-    await stopInstance(instance);
+    await Promise.race([
+        stopInstance(instance),
+        new Promise((resolve) => setTimeout(resolve, 1000)),
+    ]);
     store.close();
     process.exit(0);
 }

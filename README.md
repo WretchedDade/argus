@@ -101,8 +101,9 @@ preview's ingest port for manual verdict recording, not `48100`.
 ### Stop or reset a preview
 
 Press Ctrl+C in the terminal that runs `npm run standalone`. Closing the browser
-tab does not stop the runner or its poller. Shutdown stops the poller and closes
-the local servers and database. It keeps the database for the next run.
+tab does not stop the runner or its poller. Shutdown stops the poller and waits
+up to one second for active browser requests before closing the database and
+exiting. It keeps the database for the next run.
 
 To reset the default preview, first stop every runner that uses its database.
 Then run this command from the checkout:
