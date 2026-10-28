@@ -155,6 +155,22 @@ Run `npm run format` to format source files with four-space indentation. Run
 uses lint-staged to format staged files with Prettier. Generated files and local
 configuration are excluded.
 
+## Pull request checks
+
+GitHub Actions runs the build, formatting check, typecheck, and tests on pull
+requests and pushes to `main`. Run the same checks locally:
+
+```powershell
+npm ci
+npm run format:check
+npm run typecheck
+npm test
+```
+
+`npm ci` builds the extension through `prepare`. The build also generates the
+route tree required by the typecheck. After source changes, run `npm run build`
+before the checks.
+
 ## Stack
 
 - React 18 + TanStack Router + TanStack Query
