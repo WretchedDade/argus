@@ -28,10 +28,12 @@ stores no secret and no password.
 
 1. Clone this repo, then link or place it at `~/.copilot/extensions/argus`.
 2. Build it (build output is not committed):
+
 ```powershell
 npm ci             # also runs the build via the prepare script
 npm run build      # rebuild after source changes: vite -> dist/, esbuild -> extension.mjs
 ```
+
 3. Reload extensions (or restart the app).
 4. Open the Argus canvas.
 
@@ -128,21 +130,30 @@ spawn-a-review loop needs `pr-review`.
 
 Settings persist in the store. Environment variables set the defaults:
 
-| Variable | Purpose | Default |
-| --- | --- | --- |
-| `ARGUS_ME` | identity override | auto from `az` |
-| `ARGUS_ORG_URL` | Azure DevOps org URL | none, or built from `ARGUS_ORG_SLUG` |
-| `ARGUS_ORG_SLUG` | org slug | none |
-| `ARGUS_PROJECT` | project | none |
-| `ARGUS_TEAM_PATTERNS` | reviewer-group globs, comma-separated | none |
-| `ARGUS_RECENCY_DAYS` | days before an idle PR goes stale | `7` |
-| `ARGUS_WORK_HOURS` | work hours, `start-end` | `9-17` |
-| `ARGUS_WORK_DAYS` | work days, `start-end` (Mon=1) | `1-5` |
-| `ARGUS_DB_FILE` | store path | OneDrive Desktop, else `data/argus.db` |
+| Variable              | Purpose                               | Default                                |
+| --------------------- | ------------------------------------- | -------------------------------------- |
+| `ARGUS_ME`            | identity override                     | auto from `az`                         |
+| `ARGUS_ORG_URL`       | Azure DevOps org URL                  | none, or built from `ARGUS_ORG_SLUG`   |
+| `ARGUS_ORG_SLUG`      | org slug                              | none                                   |
+| `ARGUS_PROJECT`       | project                               | none                                   |
+| `ARGUS_TEAM_PATTERNS` | reviewer-group globs, comma-separated | none                                   |
+| `ARGUS_RECENCY_DAYS`  | days before an idle PR goes stale     | `7`                                    |
+| `ARGUS_WORK_HOURS`    | work hours, `start-end`               | `9-17`                                 |
+| `ARGUS_WORK_DAYS`     | work days, `start-end` (Mon=1)        | `1-5`                                  |
+| `ARGUS_DB_FILE`       | store path                            | OneDrive Desktop, else `data/argus.db` |
 
 The store is a `node:sqlite` database. It holds your PR history, so keep it
 private. It lives outside the extension folder by default, so sharing the folder
 does not share your data.
+
+## Formatting
+
+Run `npm run format` to format source files with four-space indentation. Run
+`npm run format:check` to check formatting without changing files.
+
+`npm ci` installs the Git pre-commit hook through the `prepare` script. The hook
+uses lint-staged to format staged files with Prettier. Generated files and local
+configuration are excluded.
 
 ## Stack
 

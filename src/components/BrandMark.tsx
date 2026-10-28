@@ -6,6 +6,6 @@ import { RadarSweep } from "./RadarSweep";
 // asset from src/assets, without touching the header layout. The beam speeds up
 // while the poller is actively running a cycle.
 export function BrandMark({ size = 34 }: { size?: number }) {
-  const health = useQuery(healthQuery);
-  return <RadarSweep size={size} watching={!!health.data?.poller.running} />;
+    const health = useQuery(healthQuery);
+    return <RadarSweep size={size} watching={!!health.data?.poller.running} />;
 }

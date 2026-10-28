@@ -5,16 +5,28 @@ import { homedir } from "node:os";
 import { joinSession, createCanvas } from "@github/copilot-sdk/extension";
 import { ArgusStore } from "./db.ts";
 import { countReviewComments, fetchPrThreads } from "./ado/client.ts";
-import { startServer, stopInstance, startIngestServer, type Instance, type ServerContext } from "./server.ts";
-import { defaultConfig, loadLocalConfig, mergeConfig, type ArgusConfig, type ConfigOverrides } from "./config.ts";
 import {
-  startPoller,
-  stopPoller,
-  reconcileOnce,
-  refreshPr,
-  trackByNumber,
-  getPollerStatus,
-  type PollerContext,
+    startServer,
+    stopInstance,
+    startIngestServer,
+    type Instance,
+    type ServerContext,
+} from "./server.ts";
+import {
+    defaultConfig,
+    loadLocalConfig,
+    mergeConfig,
+    type ArgusConfig,
+    type ConfigOverrides,
+} from "./config.ts";
+import {
+    startPoller,
+    stopPoller,
+    reconcileOnce,
+    refreshPr,
+    trackByNumber,
+    getPollerStatus,
+    type PollerContext,
 } from "./ado/poller.ts";
 import { setSession, log } from "./log.ts";
 
@@ -25,10 +37,10 @@ const BOOT_AT = new Date().toISOString();
 // Store lives on OneDrive by default so it survives devbox resets; overridable.
 const ONEDRIVE_ROOT = process.env.OneDriveCommercial || process.env.OneDrive;
 const DB_FILE =
-  process.env.ARGUS_DB_FILE ||
-  (ONEDRIVE_ROOT
-    ? path.join(ONEDRIVE_ROOT, "Desktop", "argus.db")
-    : path.join(__dirname, "data", "argus.db"));
+    process.env.ARGUS_DB_FILE ||
+    (ONEDRIVE_ROOT
+        ? path.join(ONEDRIVE_ROOT, "Desktop", "argus.db")
+        : path.join(__dirname, "data", "argus.db"));
 
 // Legacy pr-tracker archive: read-only input for the one-time migration, only
 // when explicitly pointed at a file. No default, so a shared install doesn't look
@@ -39,24 +51,36 @@ const INVOLVEMENT_FILE = process.env.ARGUS_INVOLVEMENT_FILE;
 const LEGACY_STATE_FILE = process.env.ARGUS_LEGACY_STATE_FILE;
 
 const store = new ArgusStore(DB_FILE);
-const migrated = INVOLVEMENT_FILE ? store.importInvolvement(INVOLVEMENT_FILE) : { imported: 0 };
+const migrated = INVOLVEMENT_FILE
+    ? store.importInvolvement(INVOLVEMENT_FILE)
+    : { imported: 0 };
 
 // Effective config = env defaults + saved overrides, read fresh on every call so
 // any store write (Settings save, or the poller backfilling `me`) is reflected.
-const LOCAL_CONFIG_FILE = process.env.ARGUS_CONFIG_FILE || path.join(__dirname, "argus.config.json");
+const LOCAL_CONFIG_FILE =
+    process.env.ARGUS_CONFIG_FILE || path.join(__dirname, "argus.config.json");
 const getConfig = (): ArgusConfig =>
-  mergeConfig(mergeConfig(defaultConfig(), loadLocalConfig(LOCAL_CONFIG_FILE)), store.getConfigOverrides());
+    mergeConfig(
+        mergeConfig(defaultConfig(), loadLocalConfig(LOCAL_CONFIG_FILE)),
+        store.getConfigOverrides(),
+    );
 const saveConfig = (overrides: ConfigOverrides): ArgusConfig => {
-  store.saveConfigOverrides(overrides);
-  return getConfig();
+    store.saveConfigOverrides(overrides);
+    return getConfig();
 };
 
-const legacyImported = LEGACY_STATE_FILE ? store.importLegacyState(LEGACY_STATE_FILE, getConfig().teamPatterns) : { imported: 0 };
+const legacyImported = LEGACY_STATE_FILE
+    ? store.importLegacyState(LEGACY_STATE_FILE, getConfig().teamPatterns)
+    : { imported: 0 };
 
 // Backfill the first-run gate for installs that predate it: anyone with saved
 // config or tracked PRs has already set things up, so don't show them setup.
-if (!store.isSetupComplete() && (store.counts().prs > 0 || Object.keys(store.getConfigOverrides()).length > 0)) {
-  store.markSetupComplete();
+if (
+    !store.isSetupComplete() &&
+    (store.counts().prs > 0 ||
+        Object.keys(store.getConfigOverrides()).length > 0)
+) {
+    store.markSetupComplete();
 }
 
 const pollerCtx: PollerContext = { store, getConfig };
@@ -68,143 +92,185 @@ let pollerRunning = false;
 // Count the comments I authored on a PR (one az call), right after I record a
 // verdict. Best-effort: on failure the count stays null and the poller retries.
 async function countMyComments(canonical: string): Promise<void> {
-  try {
-    const cfg = getConfig();
-    const pr = store.getPr(canonical);
-    if (!cfg.me || !pr) return;
-    const threads = await fetchPrThreads(cfg.orgUrl, pr.project, pr.repo, pr.number);
-    const comments = countReviewComments(threads, cfg.me);
-    store.setCommentCounts(canonical, comments.mine, comments.others);
-  } catch {
-    /* left null; the poller backfill retries */
-  }
+    try {
+        const cfg = getConfig();
+        const pr = store.getPr(canonical);
+        if (!cfg.me || !pr) return;
+        const threads = await fetchPrThreads(
+            cfg.orgUrl,
+            pr.project,
+            pr.repo,
+            pr.number,
+        );
+        const comments = countReviewComments(threads, cfg.me);
+        store.setCommentCounts(canonical, comments.mine, comments.others);
+    } catch {
+        /* left null; the poller backfill retries */
+    }
 }
 
 // Record a verdict and kick off the comment count. Shared by the canvas action
 // and the headless HTTP ingest endpoint so both paths behave identically.
-function doRecordReview(canonical: string, opts: { verdict?: string; sha?: string; sessionId?: string }): void {
-  store.recordReview(canonical, opts);
-  void countMyComments(canonical);
+function doRecordReview(
+    canonical: string,
+    opts: { verdict?: string; sha?: string; sessionId?: string },
+): void {
+    store.recordReview(canonical, opts);
+    void countMyComments(canonical);
 }
 
 // Install the bundled baseline pr-review skill into the user's skills directory,
 // so the first-run setup can offer it. Never overwrites an existing pr-review
 // skill (the user may have their own tailored one).
 function installBaselineSkill(): { installed: boolean; reason?: string } {
-  const src = path.join(__dirname, "skills", "pr-review");
-  if (!existsSync(src)) return { installed: false, reason: "bundled skill not found" };
-  const skillsRoot = path.join(process.env.COPILOT_HOME || path.join(homedir(), ".copilot"), "skills");
-  const dest = path.join(skillsRoot, "pr-review");
-  if (existsSync(dest)) return { installed: false, reason: "a pr-review skill already exists; left it untouched" };
-  try {
-    cpSync(src, dest, { recursive: true });
-    return { installed: true };
-  } catch (err) {
-    return { installed: false, reason: (err as Error).message };
-  }
+    const src = path.join(__dirname, "skills", "pr-review");
+    if (!existsSync(src))
+        return { installed: false, reason: "bundled skill not found" };
+    const skillsRoot = path.join(
+        process.env.COPILOT_HOME || path.join(homedir(), ".copilot"),
+        "skills",
+    );
+    const dest = path.join(skillsRoot, "pr-review");
+    if (existsSync(dest))
+        return {
+            installed: false,
+            reason: "a pr-review skill already exists; left it untouched",
+        };
+    try {
+        cpSync(src, dest, { recursive: true });
+        return { installed: true };
+    } catch (err) {
+        return { installed: false, reason: (err as Error).message };
+    }
 }
 
 const serverCtx = (): ServerContext => ({
-  store,
-  bootAt: BOOT_AT,
-  migrated,
-  distDir: DIST_DIR,
-  reconcile: () => reconcileOnce(pollerCtx),
-  refreshPr: (canonical: string) => refreshPr(pollerCtx, canonical),
-  trackPr: (number: number) => trackByNumber(pollerCtx, number),
-  recordReview: doRecordReview,
-  dispatch: (message: string) => session.send(message),
-  pollerStatus: getPollerStatus,
-  getConfig,
-  saveConfig,
-  markSetupComplete: () => store.markSetupComplete(),
-  installBaselineSkill,
+    store,
+    bootAt: BOOT_AT,
+    migrated,
+    distDir: DIST_DIR,
+    reconcile: () => reconcileOnce(pollerCtx),
+    refreshPr: (canonical: string) => refreshPr(pollerCtx, canonical),
+    trackPr: (number: number) => trackByNumber(pollerCtx, number),
+    recordReview: doRecordReview,
+    dispatch: (message: string) => session.send(message),
+    pollerStatus: getPollerStatus,
+    getConfig,
+    saveConfig,
+    markSetupComplete: () => store.markSetupComplete(),
+    installBaselineSkill,
 });
 
 const session = await joinSession({
-  canvases: [
-    createCanvas({
-      id: "argus",
-      displayName: "Argus",
-      description: "React + TanStack canvas served by its own Node process.",
-      inputSchema: { type: "object", properties: {}, additionalProperties: false },
-      actions: [
-        {
-          name: "linkReviewSession",
-          description:
-            "Link the child session reviewing a PR so re-reviews can re-engage it. Call after spawning the review session.",
-          inputSchema: {
-            type: "object",
-            properties: { canonical: { type: "string" }, sessionId: { type: "string" } },
-            required: ["canonical", "sessionId"],
-            additionalProperties: false,
-          },
-          handler: async (ctx) => {
-            const { canonical, sessionId } = (ctx.input ?? {}) as { canonical?: string; sessionId?: string };
-            if (canonical && sessionId) store.setReviewSession(canonical, sessionId);
-            return { ok: !!(canonical && sessionId) };
-          },
-        },
-        {
-          name: "recordReview",
-          description:
-            "Record a review outcome for a PR: the verdict, the reviewed commit sha (for re-push detection), and optionally the session that did it.",
-          inputSchema: {
-            type: "object",
-            properties: {
-              canonical: { type: "string" },
-              verdict: { type: "string", description: "approved | suggestions | rejected | waiting | reviewed" },
-              sha: { type: "string", description: "head commit sha reviewed" },
-              sessionId: { type: "string" },
+    canvases: [
+        createCanvas({
+            id: "argus",
+            displayName: "Argus",
+            description:
+                "React + TanStack canvas served by its own Node process.",
+            inputSchema: {
+                type: "object",
+                properties: {},
+                additionalProperties: false,
             },
-            required: ["canonical"],
-            additionalProperties: false,
-          },
-          handler: async (ctx) => {
-            const { canonical, verdict, sha, sessionId } = (ctx.input ?? {}) as {
-              canonical?: string;
-              verdict?: string;
-              sha?: string;
-              sessionId?: string;
-            };
-            if (!canonical) return { ok: false };
-            doRecordReview(canonical, { verdict, sha, sessionId });
-            return { ok: true };
-          },
-        },
-      ],
-      open: async (ctx) => {
-        let instance = instances.get(ctx.instanceId);
-        if (!instance) {
-          instance = { instanceId: ctx.instanceId, server: null, url: null };
-          instances.set(ctx.instanceId, instance);
-          await startServer(instance, serverCtx());
-        }
-        // The poller runs only in a host that actually has the canvas open, so it
-        // doesn't run in every session's background host. Start it when the first
-        // canvas instance opens here.
-        if (!pollerRunning) {
-          pollerRunning = true;
-          log("argus: canvas opened; starting poller in this host");
-          startPoller(pollerCtx);
-        }
-        return { title: "Argus", url: instance.url! };
-      },
-      onClose: async (ctx) => {
-        const instance = instances.get(ctx.instanceId);
-        if (!instance) return;
-        instances.delete(ctx.instanceId);
-        await stopInstance(instance);
-        // Stop polling once this host has no canvas open — nothing here is
-        // watching, and headless verdict ingest keeps working independently.
-        if (instances.size === 0 && pollerRunning) {
-          pollerRunning = false;
-          log("argus: last canvas closed; stopping poller in this host");
-          stopPoller();
-        }
-      },
-    }),
-  ],
+            actions: [
+                {
+                    name: "linkReviewSession",
+                    description:
+                        "Link the child session reviewing a PR so re-reviews can re-engage it. Call after spawning the review session.",
+                    inputSchema: {
+                        type: "object",
+                        properties: {
+                            canonical: { type: "string" },
+                            sessionId: { type: "string" },
+                        },
+                        required: ["canonical", "sessionId"],
+                        additionalProperties: false,
+                    },
+                    handler: async (ctx) => {
+                        const { canonical, sessionId } = (ctx.input ?? {}) as {
+                            canonical?: string;
+                            sessionId?: string;
+                        };
+                        if (canonical && sessionId)
+                            store.setReviewSession(canonical, sessionId);
+                        return { ok: !!(canonical && sessionId) };
+                    },
+                },
+                {
+                    name: "recordReview",
+                    description:
+                        "Record a review outcome for a PR: the verdict, the reviewed commit sha (for re-push detection), and optionally the session that did it.",
+                    inputSchema: {
+                        type: "object",
+                        properties: {
+                            canonical: { type: "string" },
+                            verdict: {
+                                type: "string",
+                                description:
+                                    "approved | suggestions | rejected | waiting | reviewed",
+                            },
+                            sha: {
+                                type: "string",
+                                description: "head commit sha reviewed",
+                            },
+                            sessionId: { type: "string" },
+                        },
+                        required: ["canonical"],
+                        additionalProperties: false,
+                    },
+                    handler: async (ctx) => {
+                        const { canonical, verdict, sha, sessionId } =
+                            (ctx.input ?? {}) as {
+                                canonical?: string;
+                                verdict?: string;
+                                sha?: string;
+                                sessionId?: string;
+                            };
+                        if (!canonical) return { ok: false };
+                        doRecordReview(canonical, { verdict, sha, sessionId });
+                        return { ok: true };
+                    },
+                },
+            ],
+            open: async (ctx) => {
+                let instance = instances.get(ctx.instanceId);
+                if (!instance) {
+                    instance = {
+                        instanceId: ctx.instanceId,
+                        server: null,
+                        url: null,
+                    };
+                    instances.set(ctx.instanceId, instance);
+                    await startServer(instance, serverCtx());
+                }
+                // The poller runs only in a host that actually has the canvas open, so it
+                // doesn't run in every session's background host. Start it when the first
+                // canvas instance opens here.
+                if (!pollerRunning) {
+                    pollerRunning = true;
+                    log("argus: canvas opened; starting poller in this host");
+                    startPoller(pollerCtx);
+                }
+                return { title: "Argus", url: instance.url! };
+            },
+            onClose: async (ctx) => {
+                const instance = instances.get(ctx.instanceId);
+                if (!instance) return;
+                instances.delete(ctx.instanceId);
+                await stopInstance(instance);
+                // Stop polling once this host has no canvas open — nothing here is
+                // watching, and headless verdict ingest keeps working independently.
+                if (instances.size === 0 && pollerRunning) {
+                    pollerRunning = false;
+                    log(
+                        "argus: last canvas closed; stopping poller in this host",
+                    );
+                    stopPoller();
+                }
+            },
+        }),
+    ],
 });
 
 setSession(session);
@@ -216,22 +282,24 @@ setSession(session);
 const INGEST_PORT = Number(process.env.ARGUS_INGEST_PORT ?? 48100);
 const ingestServer = startIngestServer(serverCtx(), INGEST_PORT);
 
-log(`argus loaded; store ${JSON.stringify(store.counts())}, migrated ${migrated.imported}, legacy ${legacyImported.imported}`);
+log(
+    `argus loaded; store ${JSON.stringify(store.counts())}, migrated ${migrated.imported}, legacy ${legacyImported.imported}`,
+);
 
 // Release loopback ports and close the store cleanly on teardown.
 let shuttingDown = false;
 async function gracefulShutdown(signal: string): Promise<void> {
-  if (shuttingDown) return;
-  shuttingDown = true;
-  log(`argus shutting down on ${signal}`);
-  stopPoller();
-  if (ingestServer) ingestServer.close();
-  await Promise.race([
-    Promise.all([...instances.values()].map(stopInstance)),
-    new Promise((resolve) => setTimeout(resolve, 1000)),
-  ]);
-  store.close();
-  process.exit(0);
+    if (shuttingDown) return;
+    shuttingDown = true;
+    log(`argus shutting down on ${signal}`);
+    stopPoller();
+    if (ingestServer) ingestServer.close();
+    await Promise.race([
+        Promise.all([...instances.values()].map(stopInstance)),
+        new Promise((resolve) => setTimeout(resolve, 1000)),
+    ]);
+    store.close();
+    process.exit(0);
 }
 process.on("SIGTERM", () => void gracefulShutdown("SIGTERM"));
 process.on("SIGINT", () => void gracefulShutdown("SIGINT"));

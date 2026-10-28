@@ -3,51 +3,57 @@
 import type { PrReviewState, PrRole } from "../types.ts";
 
 export interface AdoRawPr {
-  pullRequestId: number;
-  title: string;
-  description?: string;
-  status: string;
-  isDraft: boolean;
-  creationDate: string;
-  closedDate?: string;
-  createdBy?: { displayName?: string; uniqueName?: string; id?: string };
-  reviewers?: {
-    id?: string;
-    uniqueName?: string;
-    displayName?: string;
-    vote?: number;
-    isContainer?: boolean;
-    hasDeclined?: boolean;
-  }[];
-  repository?: { name?: string; id?: string };
-  mergeStatus?: string;
-  lastMergeSourceCommit?: { commitId?: string };
-  lastMergeCommit?: { commitId?: string };
-  targetRefName?: string;
-  sourceRefName?: string;
+    pullRequestId: number;
+    title: string;
+    description?: string;
+    status: string;
+    isDraft: boolean;
+    creationDate: string;
+    closedDate?: string;
+    createdBy?: { displayName?: string; uniqueName?: string; id?: string };
+    reviewers?: {
+        id?: string;
+        uniqueName?: string;
+        displayName?: string;
+        vote?: number;
+        isContainer?: boolean;
+        hasDeclined?: boolean;
+    }[];
+    repository?: { name?: string; id?: string };
+    mergeStatus?: string;
+    lastMergeSourceCommit?: { commitId?: string };
+    lastMergeCommit?: { commitId?: string };
+    targetRefName?: string;
+    sourceRefName?: string;
 }
 
 export interface CurrentPr {
-  canonical: string;
-  org: string;
-  project: string;
-  repo: string;
-  repoId: string;
-  number: number;
-  title: string;
-  description: string;
-  author: string | null;
-  isVendor: boolean;
-  role: PrRole;
-  teams: string[];
-  reviewState: PrReviewState | null;
-  otherVotes: { name: string; vote: number }[];
-  isDraft: boolean;
-  status: string;
-  mergeStatus: string;
-  createdAt: string;
-  sha: string | null;
-  targetBranch: string;
-  sourceBranch: string;
-  reviewers: { id: string; vote: number; displayName: string | null; isContainer: boolean; uniqueName?: string | null }[];
+    canonical: string;
+    org: string;
+    project: string;
+    repo: string;
+    repoId: string;
+    number: number;
+    title: string;
+    description: string;
+    author: string | null;
+    isVendor: boolean;
+    role: PrRole;
+    teams: string[];
+    reviewState: PrReviewState | null;
+    otherVotes: { name: string; vote: number }[];
+    isDraft: boolean;
+    status: string;
+    mergeStatus: string;
+    createdAt: string;
+    sha: string | null;
+    targetBranch: string;
+    sourceBranch: string;
+    reviewers: {
+        id: string;
+        vote: number;
+        displayName: string | null;
+        isContainer: boolean;
+        uniqueName?: string | null;
+    }[];
 }
