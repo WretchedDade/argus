@@ -49,12 +49,34 @@ is gitignored, so it never reaches the repo. Copy the example and edit it:
 Copy-Item argus.config.example.json argus.config.json
 ```
 
-It accepts any setting from the Configuration section, plus two that have no
-environment variable:
+Use JSON field names, not environment variable names:
 
-- `teamLabels` — maps a reviewer group name to a short label.
-- `repoPipelines` — maps a repo name to its build pipeline definition id, for the
-  deploy timeline.
+| JSON fields                                        | Value                                                                                   |
+| -------------------------------------------------- | --------------------------------------------------------------------------------------- |
+| `orgUrl`, `orgSlug`, `project`                     | Strings identifying the Azure DevOps organization and project                           |
+| `me`                                               | Identity string, or `null` to detect the identity from `az`                             |
+| `avatarUrl`, `reviewSkillName`                     | Strings for the custom avatar URL and review skill name                                 |
+| `teamPatterns`                                     | Array of reviewer-group glob strings                                                    |
+| `teamLabels`                                       | Object mapping reviewer-group names to short label strings                              |
+| `repoPipelines`                                    | Object mapping repo names to numeric build pipeline definition IDs                      |
+| `periods`                                          | Array of objects with string fields `label`, `start`, and `end`; dates use `YYYY-MM-DD` |
+| `deployWindowDays`, `recencyDays`, `retentionDays` | Numbers of days                                                                         |
+| `workStartHour`, `workEndHour`                     | Numeric hours, for example `9` and `17`                                                 |
+| `workDays`                                         | Array of weekday numbers, Sunday=`0` through Saturday=`6`                               |
+
+For example, the JSON equivalent of `ARGUS_WORK_HOURS=9-17` and
+`ARGUS_WORK_DAYS=1-5` is:
+
+```json
+{
+    "workStartHour": 9,
+    "workEndHour": 17,
+    "workDays": [1, 2, 3, 4, 5]
+}
+```
+
+`ARGUS_DB_FILE` is environment-only. Neither this file nor Settings can change the
+database path. Set `ARGUS_DB_FILE` before starting the extension.
 
 Set `ARGUS_CONFIG_FILE` to read the file from another path. Values saved in
 Settings override this file, and this file overrides the environment variables.
