@@ -18,7 +18,7 @@ export function normalizePr(
   const repo = raw.repository?.name ?? "";
   const author = raw.createdBy?.displayName ?? null;
   return {
-    canonical: `https://worldwidelearning.visualstudio.com/${project}/_git/${repo}/pullrequest/${raw.pullRequestId}`,
+    canonical: `https://${org}.visualstudio.com/${project}/_git/${repo}/pullrequest/${raw.pullRequestId}`,
     org,
     project,
     repo,

@@ -36,8 +36,26 @@ npm run build      # rebuild after source changes: vite -> dist/, esbuild -> ext
 4. Open the Argus canvas.
 
 Run the build from the real folder path before creating the symlink. Vite fails
-to resolve `index.html` when the project root is a symlink. The dotfiles setup
-script handles this automatically.
+to resolve `index.html` when the project root is a symlink.
+
+## Local config
+
+Org-specific values live in `argus.config.json` in the extension folder. The file
+is gitignored, so it never reaches the repo. Copy the example and edit it:
+
+```powershell
+Copy-Item argus.config.example.json argus.config.json
+```
+
+It accepts any setting from the Configuration section, plus two that have no
+environment variable:
+
+- `teamLabels` — maps a reviewer group name to a short label.
+- `repoPipelines` — maps a repo name to its build pipeline definition id, for the
+  deploy timeline.
+
+Set `ARGUS_CONFIG_FILE` to read the file from another path. Values saved in
+Settings override this file, and this file overrides the environment variables.
 
 ## First run
 
@@ -113,10 +131,10 @@ Settings persist in the store. Environment variables set the defaults:
 | Variable | Purpose | Default |
 | --- | --- | --- |
 | `ARGUS_ME` | identity override | auto from `az` |
-| `ARGUS_ORG_URL` | Azure DevOps org URL | `https://dev.azure.com/worldwidelearning` |
-| `ARGUS_ORG_SLUG` | org slug | `worldwidelearning` |
-| `ARGUS_PROJECT` | project | `LPE` |
-| `ARGUS_TEAM_PATTERNS` | reviewer-group globs, comma-separated | (one team's default) |
+| `ARGUS_ORG_URL` | Azure DevOps org URL | none, or built from `ARGUS_ORG_SLUG` |
+| `ARGUS_ORG_SLUG` | org slug | none |
+| `ARGUS_PROJECT` | project | none |
+| `ARGUS_TEAM_PATTERNS` | reviewer-group globs, comma-separated | none |
 | `ARGUS_RECENCY_DAYS` | days before an idle PR goes stale | `7` |
 | `ARGUS_WORK_HOURS` | work hours, `start-end` | `9-17` |
 | `ARGUS_WORK_DAYS` | work days, `start-end` (Mon=1) | `1-5` |

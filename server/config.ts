@@ -1,3 +1,5 @@
+import { existsSync, readFileSync } from "node:fs";
+
 // A named date range (e.g. "Hackathon", "Team week") shown as a shaded band on
 // the Load & capacity chart, for context on why load dipped/spiked that period.
 export interface Period {
@@ -30,33 +32,40 @@ export interface ArgusConfig {
 
 export type ConfigOverrides = Partial<ArgusConfig>;
 
+// Read the optional local config file (argus.config.json). It is gitignored and
+// holds org-specific values. A missing or invalid file gives no overrides.
+// Precedence: env/defaults < local file < Settings overrides in the store.
+export function loadLocalConfig(file: string): ConfigOverrides {
+  if (!existsSync(file)) return {};
+  try {
+    const parsed: unknown = JSON.parse(readFileSync(file, "utf-8"));
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {};
+    const { $schema: _ignored, ...rest } = parsed as Record<string, unknown>;
+    return rest as ConfigOverrides;
+  } catch (err) {
+    console.error(`argus: cannot read ${file}: ${(err as Error).message}`);
+    return {};
+  }
+}
+
 export function defaultConfig(): ArgusConfig {
   const [startHour, endHour] = parseRange(process.env.ARGUS_WORK_HOURS, 9, 17);
   const [dayStart, dayEnd] = parseRange(process.env.ARGUS_WORK_DAYS, 1, 5);
+  const orgSlug = process.env.ARGUS_ORG_SLUG ?? "";
   return {
     me: process.env.ARGUS_ME ?? null,
     avatarUrl: process.env.ARGUS_AVATAR_URL ?? "",
-    orgUrl: process.env.ARGUS_ORG_URL ?? "https://dev.azure.com/worldwidelearning",
-    orgSlug: process.env.ARGUS_ORG_SLUG ?? "worldwidelearning",
-    project: process.env.ARGUS_PROJECT ?? "LPE",
-    teamPatterns: splitList(process.env.ARGUS_TEAM_PATTERNS ?? "*Content Lifecycle Engg*,*ASN UI stewards*"),
-    teamLabels: {
-      "[TEAM FOUNDATION]\\ASN UI stewards": "stewards",
-      "[TEAM FOUNDATION]\\MCAPS E&O WWL LPT - Content Lifecycle Engg": "content FTE",
-    },
+    orgUrl: process.env.ARGUS_ORG_URL ?? (orgSlug ? `https://dev.azure.com/${orgSlug}` : ""),
+    orgSlug,
+    project: process.env.ARGUS_PROJECT ?? "",
+    teamPatterns: splitList(process.env.ARGUS_TEAM_PATTERNS ?? ""),
+    teamLabels: {},
     periods: [],
     reviewSkillName: process.env.ARGUS_REVIEW_SKILL ?? "pr-review",
     deployWindowDays: Number(process.env.ARGUS_DEPLOY_WINDOW_DAYS ?? 14),
-    // Seeded repo -> Official build-pipeline definition id, for deploy tracking.
-    // Update when a tracked repo gains or loses a deploy pipeline. LPE-specific.
-    repoPipelines: {
-      "LPE.UI": 4573,
-      "LPE.Starfleet.ContentService": 4686,
-      "LPE.AdminConsole": 4553,
-      "LPE.AdminService": 4544,
-      "LPE.Starfleet.ContentRecommendations": 4652,
-      "LPE.FeatureFlags": 4594,
-    },
+    // Repo name -> build pipeline definition id, for deploy tracking. Set it in
+    // argus.config.json.
+    repoPipelines: {},
     recencyDays: Number(process.env.ARGUS_RECENCY_DAYS ?? 7),
     retentionDays: Number(process.env.ARGUS_LOG_RETENTION_DAYS ?? 2),
     workStartHour: startHour,

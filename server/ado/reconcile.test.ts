@@ -11,9 +11,9 @@ import type { CurrentPr } from "./types.ts";
 // Minimal PR factory; override only what a case cares about.
 function pr(overrides: Partial<CurrentPr> = {}): CurrentPr {
   return {
-    canonical: "https://worldwidelearning.visualstudio.com/LPE/_git/r/pullrequest/1",
-    org: "worldwidelearning",
-    project: "LPE",
+    canonical: "https://example-org.visualstudio.com/Project/_git/r/pullrequest/1",
+    org: "example-org",
+    project: "Project",
     repo: "r",
     repoId: "repo-guid",
     number: 1,
@@ -101,8 +101,8 @@ assert.equal(countBlobChanges([
       if (i < 25) newPrs.add(canonical);
       store.upsertPr({
         canonical,
-        org: "worldwidelearning",
-        project: "LPE",
+        org: "example-org",
+        project: "Project",
         repo: "r",
         number: i + 1,
         title: "t",
@@ -138,8 +138,8 @@ assert.equal(countBlobChanges([
     const store = new ArgusStore(dbFile);
     store.upsertPr({
       canonical: key,
-      org: "worldwidelearning",
-      project: "LPE",
+      org: "example-org",
+      project: "Project",
       repo: "r",
       number: 1,
       title: "t",
@@ -177,8 +177,8 @@ assert.equal(countBlobChanges([
     const store = new ArgusStore(path.join(dir, "argus.db"));
     store.upsertPr({
       canonical: key,
-      org: "worldwidelearning",
-      project: "LPE",
+      org: "example-org",
+      project: "Project",
       repo: "r",
       number: 1,
       title: "t",

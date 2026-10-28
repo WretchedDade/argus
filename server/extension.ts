@@ -6,7 +6,7 @@ import { joinSession, createCanvas } from "@github/copilot-sdk/extension";
 import { ArgusStore } from "./db.ts";
 import { countReviewComments, fetchPrThreads } from "./ado/client.ts";
 import { startServer, stopInstance, startIngestServer, type Instance, type ServerContext } from "./server.ts";
-import { defaultConfig, mergeConfig, type ArgusConfig, type ConfigOverrides } from "./config.ts";
+import { defaultConfig, loadLocalConfig, mergeConfig, type ArgusConfig, type ConfigOverrides } from "./config.ts";
 import {
   startPoller,
   stopPoller,
@@ -43,7 +43,9 @@ const migrated = INVOLVEMENT_FILE ? store.importInvolvement(INVOLVEMENT_FILE) : 
 
 // Effective config = env defaults + saved overrides, read fresh on every call so
 // any store write (Settings save, or the poller backfilling `me`) is reflected.
-const getConfig = (): ArgusConfig => mergeConfig(defaultConfig(), store.getConfigOverrides());
+const LOCAL_CONFIG_FILE = process.env.ARGUS_CONFIG_FILE || path.join(__dirname, "argus.config.json");
+const getConfig = (): ArgusConfig =>
+  mergeConfig(mergeConfig(defaultConfig(), loadLocalConfig(LOCAL_CONFIG_FILE)), store.getConfigOverrides());
 const saveConfig = (overrides: ConfigOverrides): ArgusConfig => {
   store.saveConfigOverrides(overrides);
   return getConfig();

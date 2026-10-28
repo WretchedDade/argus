@@ -9,7 +9,7 @@ assert.equal(shouldShowAutomaticReview({ lane: "quick" }), true);
 assert.equal(shouldShowAutomaticReview({ lane: "review" }), false);
 
 const prompt = automaticReviewPrompt({
-  repo: "LPE.UI",
+  repo: "Example.UI",
   number: 123,
   title: "Test automatic review",
   canonical: "https://example.test/pr/123",
@@ -26,7 +26,7 @@ assert.match(prompt, /complete and confident with zero findings/);
 assert.doesNotMatch(prompt, /validation is complete and confident|incomplete validation/);
 
 const interactivePrompt = reviewPrompt({
-  repo: "LPE.UI",
+  repo: "Example.UI",
   number: 123,
   title: "Test interactive review",
   canonical: "https://example.test/pr/123",
@@ -35,7 +35,6 @@ const interactivePrompt = reviewPrompt({
 assert.doesNotMatch(interactivePrompt, /Review mode: automatic|kickoff\.mode: "autopilot"/);
 
 for (const path of [
-  "../../../skills/pr-review/SKILL.md",
   "../skills/pr-review/SKILL.md",
 ]) {
   const skill = readFileSync(fileURLToPath(new URL(path, import.meta.url)), "utf8").replace(/\s+/g, " ");

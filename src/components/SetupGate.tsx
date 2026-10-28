@@ -108,7 +108,7 @@ export function SetupGate() {
 
           <label className="block">
             <div className="text-fg text-sm font-medium">Project</div>
-            <input className={inputCls} placeholder="LPE" value={project} onChange={(e) => setProject(e.target.value)} />
+            <input className={inputCls} placeholder="YourProject" value={project} onChange={(e) => setProject(e.target.value)} />
           </label>
 
           <label className="block">

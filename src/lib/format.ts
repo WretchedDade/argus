@@ -48,10 +48,9 @@ export function fmtHours(h: number | null | undefined): string {
   return `${(h / 24).toFixed(h / 24 < 10 ? 1 : 0)}d`;
 }
 
-// Drop the LPE.* / LPE.Starfleet.* repo prefix for compact display, matching the
-// subproject folder-naming convention.
+// Display name for a repo. Kept as a single seam so a prefix-stripping rule can be added later.
 export function shortRepo(name: string): string {
-  return name.replace(/^LPE\.Starfleet\./, "").replace(/^LPE\./, "");
+  return name;
 }
 
 // Author-type classifier — kept in lockstep with the server AUTOMATED_RE so the
