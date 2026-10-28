@@ -59,6 +59,10 @@ environment variable:
 Set `ARGUS_CONFIG_FILE` to read the file from another path. Values saved in
 Settings override this file, and this file overrides the environment variables.
 
+Unknown fields are ignored. If the file contains invalid JSON or a supported field
+has the wrong type, Argus logs the error and uses no overrides from that file.
+Setup is complete only while the effective org URL, org slug, and project are set.
+
 ## First run
 
 The first time you open Argus, a setup screen asks for four things:

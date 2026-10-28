@@ -2,6 +2,7 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import type { ArgusStore } from "./db.ts";
 import type { ArchivableSession, Pr } from "./types.ts";
 import type { ArgusConfig, ConfigOverrides } from "./config.ts";
+import { hasRequiredSetup, mergeConfig } from "./config.ts";
 import type { PollerStatus, ReconcileSummary } from "./ado/poller.ts";
 import { fetchAdoImage, isAllowedImageHost } from "./ado/images.ts";
 import { sendJson } from "./respond.ts";
@@ -126,7 +127,9 @@ export async function handleApi(
             store: ctx.store.counts(),
             migrated: ctx.migrated,
             poller: ctx.pollerStatus(),
-            setup_complete: ctx.store.isSetupComplete(),
+            setup_complete:
+                ctx.store.isSetupComplete() &&
+                hasRequiredSetup(ctx.getConfig()),
         });
         return true;
     }
@@ -352,6 +355,12 @@ export async function handleApi(
             installPrReviewSkill?: boolean;
         };
         const { installPrReviewSkill, ...overrides } = body;
+        if (!hasRequiredSetup(mergeConfig(ctx.getConfig(), overrides))) {
+            sendJson(res, 400, {
+                error: "Valid org URL, org slug, and project required",
+            });
+            return true;
+        }
         const config = ctx.saveConfig(overrides);
         ctx.markSetupComplete();
         const skill = installPrReviewSkill

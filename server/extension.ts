@@ -15,6 +15,7 @@ import {
 import {
     defaultConfig,
     loadLocalConfig,
+    hasRequiredSetup,
     mergeConfig,
     type ArgusConfig,
     type ConfigOverrides,
@@ -77,6 +78,7 @@ const legacyImported = LEGACY_STATE_FILE
 // config or tracked PRs has already set things up, so don't show them setup.
 if (
     !store.isSetupComplete() &&
+    hasRequiredSetup(getConfig()) &&
     (store.counts().prs > 0 ||
         Object.keys(store.getConfigOverrides()).length > 0)
 ) {

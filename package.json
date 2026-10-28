@@ -10,7 +10,7 @@
         "build:server": "esbuild server/extension.ts --bundle --platform=node --format=esm --outfile=extension.mjs --external:@github/copilot-sdk",
         "build": "npm run build:client && npm run build:server",
         "prepare": "husky && npm run build",
-        "test": "node server/ado/reconcile.test.ts && node server/automatic-review.test.ts && node server/load-detail.test.ts && node server/weekly-review-facts.test.ts",
+        "test": "node server/ado/reconcile.test.ts && node server/automatic-review.test.ts && node server/load-detail.test.ts && node server/weekly-review-facts.test.ts && node server/config.test.ts",
         "typecheck": "tsc --noEmit",
         "format": "prettier --write .",
         "format:check": "prettier --check ."
