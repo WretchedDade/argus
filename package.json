@@ -9,8 +9,9 @@
         "build:client": "vite build",
         "build:server": "esbuild server/extension.ts --bundle --platform=node --format=esm --outfile=extension.mjs --external:@github/copilot-sdk",
         "build": "npm run build:client && npm run build:server",
+        "standalone": "node server/standalone.ts",
         "prepare": "husky && npm run build",
-        "test": "node server/ado/reconcile.test.ts && node server/automatic-review.test.ts && node server/load-detail.test.ts && node server/weekly-review-facts.test.ts && node server/config.test.ts",
+        "test": "node server/db.test.ts && node server/standalone.test.ts && node server/ado/reconcile.test.ts && node server/ado/normalize.test.ts && node src/lib/queue-filters.test.ts && node server/automatic-review.test.ts && node server/load-detail.test.ts && node server/weekly-review-facts.test.ts && node server/config.test.ts",
         "typecheck": "tsc --noEmit",
         "format": "prettier --write .",
         "format:check": "prettier --check ."
@@ -19,6 +20,7 @@
         "*": "prettier --write --ignore-unknown"
     },
     "dependencies": {
+        "@headlessui/react": "^2.2.10",
         "@tanstack/react-form": "^1.33.5",
         "@tanstack/react-query": "^5.62.0",
         "@tanstack/react-router": "^1.87.0",

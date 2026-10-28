@@ -40,6 +40,87 @@ npm run build      # rebuild after source changes: vite -> dist/, esbuild -> ext
 Run the build from the real folder path before creating the symlink. Vite fails
 to resolve `index.html` when the project root is a symlink.
 
+## Standalone browser preview
+
+Run a branch in your browser without changing the installed Copilot extension.
+Use the Azure CLI sign-in from Requirements. Run these commands from the branch
+checkout or worktree:
+
+```powershell
+npm ci
+$env:ARGUS_DB_FILE = Join-Path $PWD "data\standalone.db"
+npm run standalone
+```
+
+`npm ci` builds the client through the prepare script. Open the URL printed as
+`Argus standalone`. The default instance prefers `http://127.0.0.1:48530/`.
+If that port is in use, the server selects another port and prints its URL.
+After client changes, run `npm run build:client` in another terminal, then
+refresh the browser. After server changes, stop and restart the runner.
+
+This is not a mock or a read-only preview. It polls live Azure DevOps and saves
+PR data, settings, and local actions in the preview database. The default database
+is `data\standalone.db` in this checkout, not the installed extension's store.
+Do not point `ARGUS_DB_FILE` at your normal Argus database for branch testing.
+The `data` directory and SQLite database files are gitignored, but they contain
+private PR data. Do not share them.
+
+The board, filters, settings, Insights, and Recap work without the Copilot app.
+Review, re-review, and review-session archive actions do not work because they
+dispatch messages to a Copilot session. The standalone runner also does not
+install the baseline review skill or count your comments after a recorded review.
+
+### Multiple previews
+
+Each checkout has its own default database and `argus.config.json`. Settings saved
+in the preview database override that config file. Environment variables can
+override the paths and ports:
+
+| Variable              | Purpose                                     | Standalone default                    |
+| --------------------- | ------------------------------------------- | ------------------------------------- |
+| `ARGUS_DB_FILE`       | Preview database path                       | `data\standalone.db` in this checkout |
+| `ARGUS_CONFIG_FILE`   | Local config file path                      | `argus.config.json` in this checkout  |
+| `ARGUS_STANDALONE_ID` | Instance ID used to derive the browser port | `argus-standalone`                    |
+| `ARGUS_INGEST_PORT`   | Local API port for verdict recording        | `48199`                               |
+
+Use a different instance ID and ingest port for each concurrent preview. Use a
+separate database for each preview, even if they run from the same checkout:
+
+```powershell
+$env:ARGUS_STANDALONE_ID = "argus-feature-a"
+$env:ARGUS_INGEST_PORT = "48198"
+$env:ARGUS_DB_FILE = Join-Path $PWD "data\feature-a.db"
+npm run standalone
+```
+
+Changing the instance ID does not change the database path or ingest port. Keep
+the ingest port different from the installed extension's `48100`. Two previews
+must not share an ingest port: only one can receive requests on it. Use the
+preview's ingest port for manual verdict recording, not `48100`.
+
+### Stop or reset a preview
+
+Press Ctrl+C in the terminal that runs `npm run standalone`. Closing the browser
+tab does not stop the runner or its poller. Shutdown stops the poller and waits
+up to one second for active browser requests before closing the database and
+exiting. It keeps the database for the next run.
+
+To reset the default preview, first stop every runner that uses its database.
+Then run this command from the checkout:
+
+```powershell
+Remove-Item -LiteralPath .\data\standalone.db
+```
+
+If present, also delete `data\standalone.db-wal`, `data\standalone.db-shm`, and
+`data\standalone.db-journal`. If you set `ARGUS_DB_FILE`, use that exact database
+path and its matching sidecar files instead. Do not delete the whole `data`
+directory.
+
+A reset deletes the preview's PR history and database settings. It does not
+delete `argus.config.json`, so values from that file still apply on the next run.
+No cleanup script is needed for normal use.
+
 ## Local config
 
 Org-specific values live in `argus.config.json` in the extension folder. The file
@@ -94,16 +175,39 @@ The first time you open Argus, a setup screen asks for four things:
 - **Org URL and slug** — for example `https://dev.azure.com/your-org` and
   `your-org`.
 - **Project** — for example `LPE`.
-- **Your reviewer groups** — comma-separated globs matched against the ADO team
+- **Your reviewer groups (optional)** — comma-separated globs matched against the ADO team
   reviewer names you belong to, for example `*My Team Name*`. A PR counts as
   yours when one of these groups is a reviewer on it.
 
 Select **Start watching** to save. Argus then polls Azure DevOps and fills the
 board. You can change any of these values later under Settings.
 
-The reviewer-group globs are the important part. They decide which PRs Argus
-treats as yours. On first run you must type the names by memory, but once PRs load
-you can refine the globs against the real team names in the Settings picker.
+Leave reviewer groups blank to track PRs you author or review directly. Add group
+globs to also track PRs assigned to your teams. Once PRs load, you can refine the
+globs against the real team names in the Settings picker.
+
+## Board filters
+
+Select **Filters** beside the queue counts to filter by required approver group,
+PR creator, or repository. You can search each dropdown. Multiple filters must
+all match a PR for it to stay visible.
+
+Select **Apply** to save the filters and close the popover. Click outside to
+discard changes. Escape closes an open dropdown first, then the popover.
+**Reset** clears only the draft; select **Apply** to use it. **Clear Filters**
+clears the applied filters immediately.
+
+Applied filters stay in the page URL and survive a refresh. They apply to all
+board sections, including snoozed, stale, and out-of-scope PRs.
+
+The required approver group filter matches groups that ADO marks as required
+reviewers. It does not match optional groups. A required group still matches
+after it approves. This filter narrows the existing queue; it does not change
+ownership, discover more PRs, or change which reviews need you.
+
+PR cards also show **My reviews**, the number of completed reviews recorded in
+this Argus database for that PR. Starting a review without recording a verdict
+does not increase the count.
 
 ## How it works
 
@@ -118,7 +222,8 @@ you can refine the globs against the real team names in the Settings picker.
   queue until it closes, a teammate covers it, or you record a verdict (it leaves
   the next day). Click a day to see which PRs were new, reviewed, or existing.
 - **Poller** — a background poll runs on a clock-aligned cadence during your work
-  hours. It runs only in a host that has the canvas open.
+  hours. In the Copilot app, it runs only in a host that has the canvas open.
+  In standalone mode, it runs while the runner is active.
 
 ## Recording a review verdict
 
@@ -200,6 +305,7 @@ before the checks.
 ## Stack
 
 - React 18 + TanStack Router + TanStack Query
+- Headless UI for the board filter popover and comboboxes
 - Tailwind v4 (follows the app light/dark theme)
 - Recharts for the insights charts
 - Vite (client) and esbuild (server bundle)

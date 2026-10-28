@@ -30,6 +30,15 @@ export function normalizePr(
         isVendor: isVendorName(author),
         role: ownership.role ?? "reviewer",
         teams: ownership.teams,
+        requiredApproverGroups: [
+            ...new Set(
+                (raw.reviewers ?? [])
+                    .filter(
+                        (r) => r.isContainer && r.isRequired && r.displayName,
+                    )
+                    .map((r) => r.displayName!),
+            ),
+        ],
         reviewState: ownership.reviewState,
         otherVotes: ownership.otherVotes,
         isDraft: !!raw.isDraft,

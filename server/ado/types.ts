@@ -17,7 +17,7 @@ export interface AdoRawPr {
         displayName?: string;
         vote?: number;
         isContainer?: boolean;
-        hasDeclined?: boolean;
+        isRequired?: boolean;
     }[];
     repository?: { name?: string; id?: string };
     mergeStatus?: string;
@@ -40,6 +40,7 @@ export interface CurrentPr {
     isVendor: boolean;
     role: PrRole;
     teams: string[];
+    requiredApproverGroups: string[];
     reviewState: PrReviewState | null;
     otherVotes: { name: string; vote: number }[];
     isDraft: boolean;
