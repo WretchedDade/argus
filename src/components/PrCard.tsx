@@ -599,6 +599,13 @@ export function PrCard({
                 </span>
                 <SizeChip files={pr.changedFiles} />
                 <StatePill pr={pr} small />
+                <span
+                    className="text-muted inline-flex shrink-0 items-center gap-1"
+                    title="Completed reviews by me"
+                >
+                    <ListChecks size={11} />
+                    {pr.reviewCount}
+                </span>
                 {snoozed && pr.snoozeMode === "fte" ? (
                     <span className="text-muted inline-flex shrink-0 items-center gap-1">
                         <AlarmClock size={11} /> until FTE
@@ -689,6 +696,13 @@ export function PrCard({
                     <span className="inline-flex shrink-0 items-center gap-1">
                         <Clock size={11} />
                         {shortAge(pr.updatedAt)}
+                    </span>
+                    <span
+                        className="inline-flex shrink-0 items-center gap-1"
+                        title="Completed reviews by me"
+                    >
+                        <ListChecks size={11} />
+                        My reviews: {pr.reviewCount}
                     </span>
                     {pr.teams.length > 0 && (
                         <div className="ml-auto flex items-center gap-1">

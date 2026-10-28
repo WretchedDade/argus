@@ -39,11 +39,7 @@ export function SetupGate() {
         .map((s) => s.trim())
         .filter(Boolean);
     const canSave =
-        orgUrl.trim() &&
-        orgSlug.trim() &&
-        project.trim() &&
-        patterns.length > 0 &&
-        !saving;
+        orgUrl.trim() && orgSlug.trim() && project.trim() && !saving;
 
     const submit = async () => {
         if (!canSave) return;
@@ -97,9 +93,9 @@ export function SetupGate() {
                 </div>
                 <p className="text-muted mb-5 text-sm">
                     Argus watches the Azure DevOps pull requests that need your
-                    review. Point it at your org and the reviewer groups you
-                    belong to, and it will track what is on your plate. You can
-                    change any of this later in Settings.
+                    review. Point it at your org, and optionally the reviewer
+                    groups you belong to, and it will track what is on your
+                    plate. You can change any of this later in Settings.
                 </p>
 
                 <div className="flex flex-col gap-4">
@@ -163,7 +159,10 @@ export function SetupGate() {
 
                     <label className="block">
                         <div className="text-fg text-sm font-medium">
-                            Your reviewer groups
+                            Your reviewer groups{" "}
+                            <span className="text-muted font-normal">
+                                (optional)
+                            </span>
                         </div>
                         <input
                             className={inputCls}
@@ -178,9 +177,10 @@ export function SetupGate() {
                             on the group "MCAPS E&amp;O WWL LPT - Content
                             Lifecycle Engg", enter{" "}
                             <code>*Content Lifecycle Engg*</code>. A PR counts
-                            as yours when one of these groups is a reviewer. You
-                            can refine these against the real names in Settings
-                            once PRs load.
+                            as yours when one of these groups is a reviewer.
+                            Leave this blank to track only PRs where you are a
+                            direct reviewer or the author. You can add groups in
+                            Settings once PRs load.
                         </div>
                     </label>
 

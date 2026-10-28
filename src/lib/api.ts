@@ -263,6 +263,7 @@ export interface Pr {
     isVendor: boolean;
     role: PrRole;
     teams: string[];
+    requiredApproverGroups: string[];
     reviewState: PrReviewState | null;
     otherVotes: { name: string; vote: number }[];
     lane: Lane;
@@ -273,6 +274,7 @@ export interface Pr {
     snoozeMode: "time" | "fte" | null;
     reviewSessionId: string | null;
     reviewedSha: string | null;
+    reviewCount: number;
     changedFiles: number | null;
     authorMeta: AuthorMeta | null;
     prCreatedAt: string | null;

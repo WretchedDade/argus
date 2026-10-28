@@ -155,6 +155,7 @@ async function runReconcile(
                 m.description,
                 m.isVendor,
                 m.otherVotes,
+                m.requiredApproverGroups,
             );
 
         // Enrich my authored PRs with ADO's completability signal + comment counts.
@@ -445,6 +446,7 @@ export async function refreshPr(
         norm.description,
         norm.isVendor,
         own.otherVotes,
+        norm.requiredApproverGroups,
     );
     // `show` returns the full description (the bulk list truncates it), so store it
     // authoritatively here.
@@ -504,6 +506,7 @@ export async function trackByNumber(
         norm.description,
         norm.isVendor,
         effective.otherVotes,
+        norm.requiredApproverGroups,
     );
     ctx.store.setDescription(norm.canonical, norm.description);
     if (!existed)

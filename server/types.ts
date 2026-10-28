@@ -296,6 +296,7 @@ export interface Pr {
     isVendor: boolean;
     role: PrRole;
     teams: string[];
+    requiredApproverGroups: string[];
     reviewState: PrReviewState | null;
     otherVotes: { name: string; vote: number }[];
     lane: Lane;
@@ -314,6 +315,7 @@ export interface Pr {
     updatedAt: string;
     reviewSessionId: string | null;
     reviewedSha: string | null;
+    reviewCount: number;
     changedFiles: number | null;
     authorMeta: AuthorMeta | null;
 }

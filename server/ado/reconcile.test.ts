@@ -24,6 +24,7 @@ function pr(overrides: Partial<CurrentPr> = {}): CurrentPr {
         isVendor: false,
         role: "reviewer",
         teams: [],
+        requiredApproverGroups: [],
         reviewState: "needs",
         otherVotes: [],
         isDraft: false,

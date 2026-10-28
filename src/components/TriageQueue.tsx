@@ -21,6 +21,11 @@ import {
 import { PrCard } from "./PrCard";
 import { pushToast } from "../lib/toast";
 import { byRecent, isSnoozed, isStale, needsAction } from "../lib/triage";
+import { QueueFilters } from "./QueueFilters";
+import {
+    matchesQueueFilters,
+    type QueueFilters as Filters,
+} from "../lib/queue-filters";
 
 const LANE_LABEL: Record<Lane, string> = {
     review: "Full review",
@@ -218,7 +223,13 @@ function PollBanner({
     );
 }
 
-export function TriageQueue() {
+export function TriageQueue({
+    filters,
+    onFiltersChange,
+}: {
+    filters: Filters;
+    onFiltersChange: (filters: Filters) => void;
+}) {
     const prs = useQuery(prsQuery);
     const cfg = useQuery(configQuery);
     const health = useQuery(healthQuery);
@@ -255,17 +266,16 @@ export function TriageQueue() {
             <PollBanner authOk={poller.authOk} error={poller.lastError} />
         ) : null;
 
-    const review = (prs.data ?? []).filter((p: Pr) => p.role !== "author");
-    if (review.length === 0) {
-        return (
-            <div className="flex flex-col gap-4">
-                {banner}
-                <p className="text-muted text-sm">
-                    Nothing to review right now.
-                </p>
-            </div>
-        );
-    }
+    const allReview = (prs.data ?? []).filter((p: Pr) => p.role !== "author");
+    const filterControls = (
+        <QueueFilters
+            prs={allReview}
+            value={filters}
+            labels={labels}
+            onChange={onFiltersChange}
+        />
+    );
+    const review = allReview.filter((pr) => matchesQueueFilters(pr, filters));
 
     const now = Date.now();
     const inScope = review.filter((p) => !p.outOfScope);
@@ -301,18 +311,32 @@ export function TriageQueue() {
         <div className="flex flex-col gap-6">
             <SectionRail entries={rail} />
             {banner}
-
-            <div className="text-muted text-sm">
-                {needs > 0 ? (
-                    <>
-                        <span className="text-fg font-semibold">{needs}</span>{" "}
-                        need{needs === 1 ? "s" : ""} you
-                    </>
-                ) : (
-                    "nothing needs you"
-                )}
-                <span className="mx-1.5">·</span>
-                {active.length} open
+            <div className="flex flex-wrap items-center justify-between gap-3">
+                <div role="status" className="text-muted text-sm tabular-nums">
+                    {review.length === 0 ? (
+                        allReview.length === 0 ? (
+                            "Nothing to review right now."
+                        ) : (
+                            "No PRs match these filters. Change or clear the filters to see more PRs."
+                        )
+                    ) : (
+                        <>
+                            {needs > 0 ? (
+                                <>
+                                    <span className="text-fg font-semibold">
+                                        {needs}
+                                    </span>{" "}
+                                    need{needs === 1 ? "s" : ""} you
+                                </>
+                            ) : (
+                                "nothing needs you"
+                            )}
+                            <span className="mx-1.5">·</span>
+                            {active.length} open
+                        </>
+                    )}
+                </div>
+                {filterControls}
             </div>
 
             {lanes.map((l) => {
