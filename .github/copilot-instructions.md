@@ -22,6 +22,28 @@ If the user chooses a bump:
 
 Never create or push a tag unless the user explicitly asks.
 
+### Release notes
+
+GitHub generates the release notes from the PRs merged since the previous tag (`--generate-notes`). Each PR title becomes one line in the notes, and the PR labels choose its section (see `.github/release.yml`). Write both for the user who reads the release.
+
+PR title rules:
+
+- Start with an imperative verb: "Add", "Fix", "Change", "Remove". Example: "Add update notices to the bell".
+- Describe the user-visible result, not the implementation. Do not use a type prefix (`feat:`, `fix:`).
+- Keep the title under 70 characters, with no trailing period.
+- Use a title that makes sense without the PR body. Do not use "WIP", "updates", or "misc fixes".
+
+PR label rules (apply exactly one category label):
+
+- `enhancement`: a new feature or an improvement to an existing one.
+- `bug`: a fix for incorrect behavior.
+- `documentation`: docs-only changes.
+- `maintenance`: CI, tests, dependencies, refactors, and other changes users do not see.
+- `breaking`: add this label as well when users must act on upgrade (config, database schema, setup flow, archive layout). Describe the required action in the PR body.
+- `skip-changelog`: the PR does not appear in the release notes.
+
+When you open a PR, set the title and labels with `gh pr create --label <label>` (or `gh pr edit --add-label`). The release notes are only as good as these two fields.
+
 ### How to release (after the bump PR is merged)
 
 ```powershell
