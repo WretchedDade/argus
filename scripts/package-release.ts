@@ -82,6 +82,12 @@ execFileSync("npm", ["ci", "--omit=dev", "--no-audit", "--no-fund"], {
 });
 writeFileSync(path.join(ext, "package.json"), stagedManifest);
 rmSync(path.join(ext, "package-lock.json"), { force: true });
+// The lockfile links the workspace package, which esbuild already bundles. The
+// link points outside the ZIP, so remove it.
+rmSync(path.join(ext, "node_modules", "@devstart"), {
+    recursive: true,
+    force: true,
+});
 
 cpSync(path.join(root, "docs", "INSTALL.md"), path.join(stage, "INSTALL.md"));
 cpSync(path.join(root, "LICENSE"), path.join(stage, "LICENSE"));
