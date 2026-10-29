@@ -35,5 +35,10 @@ assert.deepEqual(
     normalize({ ...raw, reviewers: undefined }).requiredApproverGroups,
     [],
 );
+assert.equal(normalize(raw).projectId, "");
+assert.equal(
+    normalize({ ...raw, repository: { project: { id: "p-guid" } } }).projectId,
+    "p-guid",
+);
 
 console.log("required approver group self-check OK");

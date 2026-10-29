@@ -19,7 +19,7 @@ export interface AdoRawPr {
         isContainer?: boolean;
         isRequired?: boolean;
     }[];
-    repository?: { name?: string; id?: string };
+    repository?: { name?: string; id?: string; project?: { id?: string } };
     mergeStatus?: string;
     lastMergeSourceCommit?: { commitId?: string };
     lastMergeCommit?: { commitId?: string };
@@ -33,6 +33,7 @@ export interface CurrentPr {
     project: string;
     repo: string;
     repoId: string;
+    projectId: string;
     number: number;
     title: string;
     description: string;

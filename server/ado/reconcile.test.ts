@@ -17,6 +17,7 @@ function pr(overrides: Partial<CurrentPr> = {}): CurrentPr {
         project: "Project",
         repo: "r",
         repoId: "repo-guid",
+        projectId: "project-guid",
         number: 1,
         title: "t",
         description: "",

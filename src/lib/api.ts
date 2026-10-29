@@ -304,6 +304,29 @@ export interface Health {
     store: { prs: number; events: number };
     poller: PollerStatus;
     setup_complete: boolean;
+    auth: AuthStatus | null;
+}
+
+export interface AuthRegistration {
+    clientId: string;
+    tenantId: string;
+    fromEnv?: boolean;
+}
+
+export interface AuthStatus {
+    provider: "az" | "broker";
+    configured: boolean;
+    supported: boolean;
+    interactionRequired: boolean;
+    account: { username: string } | null;
+    error: string | null;
+}
+
+async function postAuth(path: string): Promise<AuthStatus> {
+    const res = await fetch(path, { method: "POST" });
+    const body = await res.json();
+    if (!res.ok) throw new Error(body.error ?? `${path} -> ${res.status}`);
+    return body as AuthStatus;
 }
 
 export interface ActivityEntry {
@@ -361,6 +384,21 @@ async function getJson<T>(path: string): Promise<T> {
 export const api = {
     prs: () => getJson<{ prs: Pr[] }>("/api/prs").then((r) => r.prs),
     health: () => getJson<Health>("/api/health"),
+    authStatus: () => getJson<AuthStatus>("/api/auth/status"),
+    authRegistration: () => getJson<AuthRegistration>("/api/auth/registration"),
+    saveAuthRegistration: async (reg: AuthRegistration) => {
+        const res = await fetch("/api/auth/registration", {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify(reg),
+        });
+        const body = await res.json();
+        if (!res.ok) throw new Error(body.error ?? `save failed ${res.status}`);
+        return body as AuthRegistration;
+    },
+    signIn: () => postAuth("/api/auth/sign-in"),
+    switchAccount: () => postAuth("/api/auth/switch-account"),
+    signOut: () => postAuth("/api/auth/sign-out"),
     activity: (limit = 100) =>
         getJson<{ entries: ActivityEntry[] }>(
             `/api/activity?limit=${limit}`,
@@ -597,6 +635,7 @@ export interface Period {
 
 export interface ArgusConfig {
     me: string | null;
+    adoAuth: "az" | "broker";
     avatarUrl: string;
     orgUrl: string;
     orgSlug: string;

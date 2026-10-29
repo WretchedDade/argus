@@ -12,7 +12,8 @@ export interface Period {
 // from the Settings screen (persisted in the store). `me` overrides the az
 // identity when set. `defaultConfig() + saved overrides` = the effective config.
 export interface ArgusConfig {
-    me: string | null; // identity override; null = use az account
+    me: string | null; // identity override; null = use the signed-in account
+    adoAuth: "az" | "broker"; // how Argus authenticates to Azure DevOps
     avatarUrl: string; // optional custom avatar image for your own PRs (else initials)
     orgUrl: string;
     orgSlug: string;
@@ -66,6 +67,7 @@ const localConfigValidators: Record<
     (value: unknown) => boolean
 > = {
     me: (value) => value === null || isString(value),
+    adoAuth: (value) => value === "az" || value === "broker",
     avatarUrl: isString,
     orgUrl: isString,
     orgSlug: isString,
@@ -123,6 +125,7 @@ export function defaultConfig(): ArgusConfig {
     const orgSlug = process.env.ARGUS_ORG_SLUG ?? "";
     return {
         me: process.env.ARGUS_ME ?? null,
+        adoAuth: process.env.ARGUS_ADO_AUTH === "broker" ? "broker" : "az",
         avatarUrl: process.env.ARGUS_AVATAR_URL ?? "",
         orgUrl:
             process.env.ARGUS_ORG_URL ??

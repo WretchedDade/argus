@@ -7,11 +7,11 @@
     "scripts": {
         "dev": "vite build --watch",
         "build:client": "vite build",
-        "build:server": "esbuild server/extension.ts --bundle --platform=node --format=esm --outfile=extension.mjs --external:@github/copilot-sdk",
+        "build:server": "esbuild server/extension.ts --bundle --platform=node --format=esm --outfile=extension.mjs --external:@github/copilot-sdk --external:@azure/identity --external:@azure/identity-broker",
         "build": "npm run build:client && npm run build:server",
         "standalone": "node server/standalone.ts",
         "prepare": "husky && npm run build",
-        "test": "node server/db.test.ts && node server/standalone.test.ts && node server/ado/reconcile.test.ts && node server/ado/normalize.test.ts && node src/lib/queue-filters.test.ts && node server/automatic-review.test.ts && node server/load-detail.test.ts && node server/weekly-review-facts.test.ts && node server/config.test.ts",
+        "test": "node server/db.test.ts && node server/standalone.test.ts && node server/ado/reconcile.test.ts && node server/ado/normalize.test.ts && node src/lib/queue-filters.test.ts && node server/automatic-review.test.ts && node server/load-detail.test.ts && node server/weekly-review-facts.test.ts && node server/config.test.ts && npm test --prefix packages/ado-client",
         "typecheck": "tsc --noEmit",
         "format": "prettier --write .",
         "format:check": "prettier --check ."
@@ -20,6 +20,9 @@
         "*": "prettier --write --ignore-unknown"
     },
     "dependencies": {
+        "@azure/identity": "^4.14.0",
+        "@azure/identity-broker": "^1.4.2",
+        "@devstart/ado-client": "file:./packages/ado-client",
         "@headlessui/react": "^2.2.10",
         "@tanstack/react-form": "^1.33.5",
         "@tanstack/react-query": "^5.62.0",

@@ -108,15 +108,15 @@ export function SetupGate() {
                             placeholder={
                                 detected
                                     ? `auto: ${detected}`
-                                    : "auto from az account"
+                                    : "auto from signed-in account"
                             }
                             value={me}
                             onChange={(e) => setMe(e.target.value)}
                         />
                         <div className="text-muted mt-1 text-xs">
                             {detected
-                                ? `Signed in as ${detected} via az. Leave blank to use it.`
-                                : "Detected from your signed-in az account. Leave blank to auto-detect, or set an override email."}
+                                ? `Signed in as ${detected} account. Leave blank to use it.`
+                                : "Detected from your signed-in account. Leave blank to auto-detect, or set an override email."}
                         </div>
                     </label>
 

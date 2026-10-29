@@ -4,7 +4,19 @@ import type { ArchivableSession, Pr } from "./types.ts";
 import type { ArgusConfig, ConfigOverrides } from "./config.ts";
 import { hasRequiredSetup, mergeConfig } from "./config.ts";
 import type { PollerStatus, ReconcileSummary } from "./ado/poller.ts";
+import { resetIdentity } from "./ado/poller.ts";
 import { fetchAdoImage, isAllowedImageHost } from "./ado/images.ts";
+import {
+    authStatus,
+    getRegistration,
+    saveRegistration,
+    type AdoRegistration,
+    setAuthProvider,
+    signIn,
+    signOut,
+    switchAccount,
+    useBroker,
+} from "./ado/client.ts";
 import { sendJson } from "./respond.ts";
 
 // Chat message asking to archive the review sessions of PRs that closed/merged.
@@ -97,6 +109,19 @@ async function readJsonBody(req: IncomingMessage): Promise<ConfigOverrides> {
     return text ? (JSON.parse(text) as ConfigOverrides) : {};
 }
 
+// Browsers send Origin on cross-site POSTs. Reject any that is not loopback.
+function isTrustedOrigin(req: IncomingMessage): boolean {
+    const origin = req.headers.origin;
+    if (!origin) return true;
+    try {
+        return ["127.0.0.1", "localhost", "[::1]"].includes(
+            new URL(origin).hostname,
+        );
+    } catch {
+        return false;
+    }
+}
+
 function isMondayKey(key: string | null): key is string {
     if (!key || !/^\d{4}-\d{2}-\d{2}$/.test(key)) return false;
     const [year, month, day] = key.split("-").map(Number);
@@ -120,6 +145,62 @@ export async function handleApi(
     const route = url.pathname;
     if (!route.startsWith("/api/")) return false;
 
+    if (route === "/api/health" || route.startsWith("/api/auth/"))
+        setAuthProvider(ctx.getConfig().adoAuth); // another host may have saved a change
+
+    if (
+        route.startsWith("/api/auth/") &&
+        req.method !== "GET" &&
+        !isTrustedOrigin(req)
+    ) {
+        sendJson(res, 403, { error: "Untrusted origin." });
+        return true;
+    }
+
+    if (route === "/api/auth/registration") {
+        if (req.method === "POST") {
+            try {
+                saveRegistration(
+                    (await readJsonBody(req)) as unknown as AdoRegistration,
+                );
+                resetIdentity(ctx.store);
+            } catch (error) {
+                sendJson(res, 400, { error: (error as Error).message });
+                return true;
+            }
+        }
+        sendJson(res, 200, getRegistration());
+        return true;
+    }
+
+    if (route === "/api/auth/status") {
+        sendJson(res, 200, await authStatus());
+        return true;
+    }
+
+    if (
+        (route === "/api/auth/sign-in" ||
+            route === "/api/auth/switch-account" ||
+            route === "/api/auth/sign-out") &&
+        req.method === "POST"
+    ) {
+        try {
+            const status = await (route === "/api/auth/sign-in"
+                ? signIn()
+                : route === "/api/auth/sign-out"
+                  ? signOut()
+                  : switchAccount());
+            resetIdentity(ctx.store);
+            sendJson(res, 200, status);
+        } catch (error) {
+            sendJson(res, 502, {
+                error:
+                    error instanceof Error ? error.message : "Sign-in failed.",
+            });
+        }
+        return true;
+    }
+
     if (route === "/api/health") {
         sendJson(res, 200, {
             ok: true,
@@ -127,6 +208,7 @@ export async function handleApi(
             store: ctx.store.counts(),
             migrated: ctx.migrated,
             poller: ctx.pollerStatus(),
+            auth: useBroker() ? await authStatus() : null,
             setup_complete:
                 ctx.store.isSetupComplete() &&
                 hasRequiredSetup(ctx.getConfig()),
@@ -339,11 +421,16 @@ export async function handleApi(
     }
 
     if (route === "/api/config") {
-        if (req.method === "POST")
-            sendJson(res, 200, {
-                config: ctx.saveConfig(await readJsonBody(req)),
+        if (req.method === "POST") {
+            const before = ctx.getConfig().adoAuth;
+            const config = ctx.saveConfig({
+                ...ctx.store.getConfigOverrides(),
+                ...(await readJsonBody(req)),
             });
-        else sendJson(res, 200, { config: ctx.getConfig() });
+            setAuthProvider(config.adoAuth);
+            if (config.adoAuth !== before) resetIdentity(ctx.store);
+            sendJson(res, 200, { config });
+        } else sendJson(res, 200, { config: ctx.getConfig() });
         return true;
     }
 

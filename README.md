@@ -18,11 +18,40 @@ with its own Node process.
 
 ## Requirements
 
-- The Azure CLI (`az`) on your PATH, signed in with `az login`.
+- A way to sign in to Azure DevOps: either the Azure CLI (`az`) on your PATH, signed
+  in with `az login` (default), or the Windows account broker (see below).
 - Access to the Azure DevOps organization and project you want to track.
 
-Argus gets an Azure DevOps token from `az account get-access-token` at runtime. It
-stores no secret and no password.
+Argus stores no secret and no password. With `az`, it gets a token from
+`az account get-access-token` at runtime.
+
+### Sign-in method
+
+Choose the method under **Settings > Sign-in method**. The change applies without a
+restart. If Argus cannot reach Azure DevOps, a sign-in screen explains what to do and
+lets you switch method.
+
+- **Azure CLI** (default): run `az login`, then select **Check again**.
+- **Windows account** (experimental, Windows only): Argus signs in through the Windows
+  account broker (WAM) and calls the Azure DevOps REST API directly. It needs the
+  client ID and tenant ID of an Entra app registration. Create one with the steps in
+  [packages/ado-client/README.md](packages/ado-client/README.md), or get the IDs from
+  a teammate. The IDs are not secret.
+
+To set up the Windows account method, paste the IDs as JSON into the sign-in screen:
+
+```json
+{ "clientId": "<application-client-id>", "tenantId": "<microsoft-tenant-id>" }
+```
+
+Argus saves them to `%LOCALAPPDATA%\devstart\ado-auth-config.json`. The environment
+variables `DEVSTART_ADO_CLIENT_ID` and `DEVSTART_ADO_TENANT_ID` override that file. To
+share your setup, copy it from **Settings > Share Windows account setup**. Under
+**Settings > Account** you can switch account or sign out.
+
+`ARGUS_ADO_AUTH=broker` only sets the default method for a fresh install. A saved
+Settings choice overrides it. The broker path first tries your `az` login silently,
+then the Windows account broker.
 
 ## Install
 
@@ -43,7 +72,7 @@ to resolve `index.html` when the project root is a symlink.
 ## Standalone browser preview
 
 Run a branch in your browser without changing the installed Copilot extension.
-Use the Azure CLI sign-in from Requirements. Run these commands from the branch
+Use a sign-in method from Requirements. Run these commands from the branch
 checkout or worktree:
 
 ```powershell
