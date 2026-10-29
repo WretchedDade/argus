@@ -5,7 +5,12 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { readFileSync } from "node:fs";
 import { buildNotices } from "./notices.ts";
-import { fetchLatestRelease, type ReleaseInfo } from "./update-check.ts";
+import type { UpdateCheckResult } from "./api.ts";
+import {
+    fetchLatestRelease,
+    isNewerVersion,
+    type ReleaseInfo,
+} from "./update-check.ts";
 import { ArgusStore } from "./db.ts";
 import {
     startServer,
@@ -74,6 +79,19 @@ async function checkForUpdate(): Promise<void> {
 void checkForUpdate();
 setInterval(() => void checkForUpdate(), 24 * 60 * 60 * 1000).unref();
 
+async function checkForUpdatesNow(): Promise<UpdateCheckResult> {
+    const release = fakeRelease ?? (await fetchLatestRelease());
+    if (release) latestRelease = release;
+    const current = release ?? latestRelease;
+    return {
+        ok: release !== null,
+        latest: current?.version ?? null,
+        updateAvailable: current
+            ? isNewerVersion(current.version, APP_VERSION)
+            : false,
+    };
+}
+
 const unavailable = async (): Promise<void> => {
     throw new Error("Needs the Copilot app. Not available in standalone mode.");
 };
@@ -97,6 +115,7 @@ const ctx: ServerContext = {
         reason: "not available in standalone mode",
     }),
     appVersion: APP_VERSION,
+    checkForUpdatesNow,
     getNotices: () =>
         buildNotices({
             appVersion: APP_VERSION,

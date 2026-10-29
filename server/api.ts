@@ -103,6 +103,13 @@ export interface ApiContext {
     installBaselineSkill: () => { installed: boolean; reason?: string };
     getNotices?: () => Notice[];
     appVersion?: string;
+    checkForUpdatesNow?: () => Promise<UpdateCheckResult>;
+}
+
+export interface UpdateCheckResult {
+    ok: boolean;
+    latest: string | null;
+    updateAvailable: boolean;
 }
 
 async function readJsonBody(req: IncomingMessage): Promise<ConfigOverrides> {
@@ -530,6 +537,15 @@ export async function handleApi(
             .filter((n) => !dismissed.has(n.id))
             .map(({ prompt: _prompt, ...rest }) => rest);
         sendJson(res, 200, { notices });
+        return true;
+    }
+
+    if (route === "/api/notices/check" && req.method === "POST") {
+        if (!ctx.checkForUpdatesNow) {
+            sendJson(res, 501, { error: "Update check is not available." });
+            return true;
+        }
+        sendJson(res, 200, await ctx.checkForUpdatesNow());
         return true;
     }
 

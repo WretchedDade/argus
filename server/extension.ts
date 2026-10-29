@@ -3,7 +3,12 @@ import { fileURLToPath } from "node:url";
 import { existsSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { acknowledgeSkill, installSkill, syncSkill } from "./skill-sync.ts";
-import { fetchLatestRelease, type ReleaseInfo } from "./update-check.ts";
+import type { UpdateCheckResult } from "./api.ts";
+import {
+    fetchLatestRelease,
+    isNewerVersion,
+    type ReleaseInfo,
+} from "./update-check.ts";
 import { buildNotices, type Notice } from "./notices.ts";
 import { joinSession, createCanvas } from "@github/copilot-sdk/extension";
 import { ArgusStore } from "./db.ts";
@@ -193,6 +198,23 @@ async function checkForUpdate(): Promise<void> {
     store.setUpdateCheck({ checkedAt: Date.now(), release: latestRelease });
 }
 
+// Manual check: skips the daily limit and keeps the cached release if GitHub fails.
+async function checkForUpdatesNow(): Promise<UpdateCheckResult> {
+    const release = await fetchLatestRelease();
+    if (release) {
+        latestRelease = release;
+        store.setUpdateCheck({ checkedAt: Date.now(), release });
+    }
+    const current = release ?? latestRelease;
+    return {
+        ok: release !== null,
+        latest: current?.version ?? null,
+        updateAvailable: current
+            ? isNewerVersion(current.version, APP_VERSION)
+            : false,
+    };
+}
+
 let updateTimer: NodeJS.Timeout | null = null;
 
 // Runs only while this host has a canvas open, like the poller. The shared
@@ -244,6 +266,7 @@ const serverCtx = (): ServerContext => ({
     installBaselineSkill,
     getNotices,
     appVersion: APP_VERSION,
+    checkForUpdatesNow,
 });
 
 const session = await joinSession({
