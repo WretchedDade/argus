@@ -15,7 +15,9 @@ export class AdoHttpError extends Error {
 
 export function isAllowedAdoHost(rawUrl: string): boolean {
     try {
-        const host = new URL(rawUrl).hostname.toLowerCase();
+        const url = new URL(rawUrl);
+        if (url.protocol !== "https:") return false;
+        const host = url.hostname.toLowerCase();
         return (
             host === "dev.azure.com" ||
             host.endsWith(".dev.azure.com") ||

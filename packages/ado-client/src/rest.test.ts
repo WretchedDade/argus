@@ -10,6 +10,7 @@ test("allows only Azure DevOps hosts", () => {
         true,
     );
     assert.equal(isAllowedAdoHost("https://example.com/steal"), false);
+    assert.equal(isAllowedAdoHost("http://dev.azure.com/org/project"), false);
 });
 
 test("adds a bearer token to authenticated requests", async (t) => {

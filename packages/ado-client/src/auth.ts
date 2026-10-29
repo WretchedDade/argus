@@ -17,7 +17,7 @@ const nodeRequire = createRequire(import.meta.url);
 
 export const ADO_RESOURCE_ID = "499b84ac-1321-427f-aa17-267ca6975798";
 export const ADO_SCOPES = [`${ADO_RESOURCE_ID}/.default`];
-const INTERACTIVE_AUTH_TIMEOUT_MS = 15_000;
+const INTERACTIVE_AUTH_TIMEOUT_MS = 5 * 60_000;
 
 export interface AuthAccount {
     homeAccountId: string;
@@ -243,7 +243,7 @@ async function withInteractiveTimeout<T>(operation: Promise<T>): Promise<T> {
                     () =>
                         reject(
                             new AuthInteractionRequiredError(
-                                "Windows sign-in did not open. Retry from the desktop app; if it persists, use the fallback sign-in flow.",
+                                "Windows sign-in timed out before it finished. Try again.",
                             ),
                         ),
                     INTERACTIVE_AUTH_TIMEOUT_MS,
@@ -264,9 +264,10 @@ export class AdoAuth {
         options: BrokerCredentialOptions,
     ) => BrokerCredential;
     private readonly parentWindowHandle: Uint8Array;
-    private readonly silentCredential: SilentCredential;
+    private silentCredential: SilentCredential | undefined;
     private lastError: string | null = null;
     private needsInteraction = false;
+    private signedOut = false;
     private currentAccount: AuthAccount | null = null;
     private brokerRecord: AuthenticationRecord | null = null;
 
@@ -298,8 +299,7 @@ export class AdoAuth {
             (options.credentialFactory
                 ? new Uint8Array(0)
                 : resolveParentWindowHandle());
-        this.silentCredential =
-            options.silentCredential ?? createSilentCredential(this.tenantId);
+        this.silentCredential = options.silentCredential;
         const stored = this.readStoredAuth();
         this.currentAccount = stored?.account ?? null;
         this.brokerRecord = stored?.brokerRecord ?? null;
@@ -435,31 +435,24 @@ export class AdoAuth {
                 "Windows Web Account Manager is not available.",
             );
         }
+        if (this.signedOut) throw new AuthInteractionRequiredError();
         try {
-            const result = await this.silentCredential.getToken(ADO_SCOPES);
+            // A selected broker account wins; developer credentials are only the fallback.
+            const result = this.brokerRecord
+                ? await this.credential(false).getToken(ADO_SCOPES)
+                : await (this.silentCredential ??= createSilentCredential(
+                      this.tenantId,
+                  )).getToken(ADO_SCOPES);
             if (!result?.token) throw new AuthInteractionRequiredError();
-            this.rememberAccessToken(result.token);
+            if (!this.brokerRecord) this.rememberAccessToken(result.token);
             this.lastError = null;
             this.needsInteraction = false;
             return result.token;
-        } catch (silentError) {
-            if (this.brokerRecord) {
-                try {
-                    const result =
-                        await this.credential(false).getToken(ADO_SCOPES);
-                    if (!result?.token)
-                        throw new AuthInteractionRequiredError();
-                    this.lastError = null;
-                    this.needsInteraction = false;
-                    return result.token;
-                } catch (brokerError) {
-                    if (!isInteractionRequired(brokerError)) throw brokerError;
-                }
-            }
-            this.lastError = isInteractionRequired(silentError)
+        } catch (error) {
+            this.lastError = isInteractionRequired(error)
                 ? "Your Azure DevOps session needs attention."
-                : silentError instanceof Error
-                  ? silentError.message
+                : error instanceof Error
+                  ? error.message
                   : "Azure DevOps authentication failed.";
             this.needsInteraction = true;
             throw new AuthInteractionRequiredError(this.lastError);
@@ -467,12 +460,14 @@ export class AdoAuth {
     }
 
     // Forget the stored account. The Windows account itself is not touched.
+    // Stay signed out until signIn(), even if developer credentials still work.
     async signOut(): Promise<AuthStatus> {
         fs.rmSync(this.accountStorePath, { force: true });
         this.currentAccount = null;
         this.brokerRecord = null;
         this.lastError = null;
         this.needsInteraction = false;
+        this.signedOut = true;
         return this.status();
     }
 
@@ -487,11 +482,15 @@ export class AdoAuth {
                 "Windows Web Account Manager is not available.",
             );
         }
-        if (!selectAccount) {
+        const wasSignedOut = this.signedOut;
+        // A 401 already proved the cached token is bad, so skip the silent shortcut.
+        if (!selectAccount && !this.needsInteraction) {
+            this.signedOut = false;
             try {
                 await this.getAccessToken();
                 return this.status();
             } catch (error) {
+                this.signedOut = wasSignedOut;
                 if (!(error instanceof AuthInteractionRequiredError))
                     throw error;
             }
@@ -519,6 +518,7 @@ export class AdoAuth {
         });
         this.lastError = null;
         this.needsInteraction = false;
+        this.signedOut = false;
         return this.status();
     }
 

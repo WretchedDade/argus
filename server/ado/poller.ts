@@ -44,6 +44,7 @@ export interface PollerStatus {
 
 let me: string | null = null; // identity used on the last run (for status)
 let whoamiCache: string | null = null; // cached az identity (when no override set)
+let autoMe: string | null = null; // "Me" we backfilled ourselves, not typed by the user
 let authOk = true;
 let inFlight: Promise<ReconcileSummary | null> | null = null;
 let currentRunId: number | null = null;
@@ -96,8 +97,10 @@ async function runReconcile(
             identity = whoamiCache;
             // Backfill into settings so "Me" is populated after the first run.
             const overrides = ctx.store.getConfigOverrides();
-            if (!overrides.me)
+            if (!overrides.me) {
                 ctx.store.saveConfigOverrides({ ...overrides, me: identity });
+                autoMe = identity;
+            }
         }
         me = identity;
         note("info", `identity: ${identity}`);
@@ -383,6 +386,18 @@ async function closeDeparted(
 function numberFromCanonical(canonical: string): number | null {
     const m = canonical.match(/pullrequest\/(\d+)/);
     return m ? Number(m[1]) : null;
+}
+
+// Call after the signed-in account or provider changes. Drops the cached and
+// backfilled identity; an explicit "Me" override is kept.
+export function resetIdentity(store: ArgusStore): void {
+    whoamiCache = null;
+    const overrides = store.getConfigOverrides();
+    if (autoMe && overrides.me === autoMe) {
+        const { me: _me, ...rest } = overrides;
+        store.saveConfigOverrides(rest);
+    }
+    autoMe = null;
 }
 
 // Resolve the effective identity (config override, else cached az whoami).

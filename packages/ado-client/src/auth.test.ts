@@ -62,6 +62,25 @@ function testAuth(
     };
 }
 
+test("stays signed out after sign-out even if developer credentials work", async () => {
+    const { auth, dir } = testAuth(mockCredential(), {
+        getToken: async () => ({ token: "access-token" }),
+    });
+    await auth.signOut();
+    await assert.rejects(auth.getAccessToken(), AuthInteractionRequiredError);
+    fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test("uses the selected broker account instead of developer credentials", async () => {
+    const { auth, dir } = testAuth(
+        mockCredential({ getToken: async () => ({ token: "broker-token" }) }),
+        { getToken: async () => ({ token: "cli-token" }) },
+    );
+    await auth.signIn(true);
+    assert.equal(await auth.getAccessToken(), "broker-token");
+    fs.rmSync(dir, { recursive: true, force: true });
+});
+
 test("reports missing app registration configuration", async () => {
     const auth = new AdoAuth({
         platform: "win32",

@@ -4,6 +4,7 @@ import type { ArchivableSession, Pr } from "./types.ts";
 import type { ArgusConfig, ConfigOverrides } from "./config.ts";
 import { hasRequiredSetup, mergeConfig } from "./config.ts";
 import type { PollerStatus, ReconcileSummary } from "./ado/poller.ts";
+import { resetIdentity } from "./ado/poller.ts";
 import { fetchAdoImage, isAllowedImageHost } from "./ado/images.ts";
 import {
     authStatus,
@@ -108,6 +109,19 @@ async function readJsonBody(req: IncomingMessage): Promise<ConfigOverrides> {
     return text ? (JSON.parse(text) as ConfigOverrides) : {};
 }
 
+// Browsers send Origin on cross-site POSTs. Reject any that is not loopback.
+function isTrustedOrigin(req: IncomingMessage): boolean {
+    const origin = req.headers.origin;
+    if (!origin) return true;
+    try {
+        return ["127.0.0.1", "localhost", "[::1]"].includes(
+            new URL(origin).hostname,
+        );
+    } catch {
+        return false;
+    }
+}
+
 function isMondayKey(key: string | null): key is string {
     if (!key || !/^\d{4}-\d{2}-\d{2}$/.test(key)) return false;
     const [year, month, day] = key.split("-").map(Number);
@@ -134,12 +148,22 @@ export async function handleApi(
     if (route === "/api/health" || route.startsWith("/api/auth/"))
         setAuthProvider(ctx.getConfig().adoAuth); // another host may have saved a change
 
+    if (
+        route.startsWith("/api/auth/") &&
+        req.method !== "GET" &&
+        !isTrustedOrigin(req)
+    ) {
+        sendJson(res, 403, { error: "Untrusted origin." });
+        return true;
+    }
+
     if (route === "/api/auth/registration") {
         if (req.method === "POST") {
             try {
                 saveRegistration(
                     (await readJsonBody(req)) as unknown as AdoRegistration,
                 );
+                resetIdentity(ctx.store);
             } catch (error) {
                 sendJson(res, 400, { error: (error as Error).message });
                 return true;
@@ -161,15 +185,13 @@ export async function handleApi(
         req.method === "POST"
     ) {
         try {
-            sendJson(
-                res,
-                200,
-                await (route === "/api/auth/sign-in"
-                    ? signIn()
-                    : route === "/api/auth/sign-out"
-                      ? signOut()
-                      : switchAccount()),
-            );
+            const status = await (route === "/api/auth/sign-in"
+                ? signIn()
+                : route === "/api/auth/sign-out"
+                  ? signOut()
+                  : switchAccount());
+            resetIdentity(ctx.store);
+            sendJson(res, 200, status);
         } catch (error) {
             sendJson(res, 502, {
                 error:
@@ -400,11 +422,13 @@ export async function handleApi(
 
     if (route === "/api/config") {
         if (req.method === "POST") {
+            const before = ctx.getConfig().adoAuth;
             const config = ctx.saveConfig({
                 ...ctx.store.getConfigOverrides(),
                 ...(await readJsonBody(req)),
             });
             setAuthProvider(config.adoAuth);
+            if (config.adoAuth !== before) resetIdentity(ctx.store);
             sendJson(res, 200, { config });
         } else sendJson(res, 200, { config: ctx.getConfig() });
         return true;
