@@ -139,11 +139,11 @@ function RootLayout() {
 
     const authBlocked =
         !!health &&
-        (health.poller.authOk === false ||
-            (!!health.auth &&
-                (!health.auth.configured ||
-                    !health.auth.account ||
-                    health.auth.interactionRequired)));
+        (health.auth
+            ? !health.auth.configured ||
+              !health.auth.account ||
+              health.auth.interactionRequired
+            : health.poller.authOk === false);
     if (authBlocked && !authDismissed) {
         return (
             <>

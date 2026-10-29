@@ -406,7 +406,7 @@ export function fetchPrThreads(
 ): Promise<PrThread[]> {
     if (useBroker())
         return restJson<{ value?: PrThread[] }>(
-            `${orgRoot(orgUrl)}/_apis/git/repositories/${enc(repoId)}/pullRequests/${prId}/threads?api-version=7.1`,
+            `${orgRoot(orgUrl)}/${enc(project)}/_apis/git/repositories/${enc(repoId)}/pullRequests/${prId}/threads?api-version=7.1`,
         ).then((j) => j.value ?? []);
     return azJson<{ value?: PrThread[] }>([
         "devops",
