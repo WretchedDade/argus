@@ -66,8 +66,13 @@ let latestRelease: ReleaseInfo | null = process.env.ARGUS_FAKE_RELEASE
           url: "https://github.com/WretchedDade/argus/releases",
       }
     : null;
-if (!latestRelease && getConfig().checkForUpdates)
-    void fetchLatestRelease().then((r) => (latestRelease = r));
+const fakeRelease = latestRelease;
+async function checkForUpdate(): Promise<void> {
+    if (fakeRelease || !getConfig().checkForUpdates) return;
+    latestRelease = await fetchLatestRelease();
+}
+void checkForUpdate();
+setInterval(() => void checkForUpdate(), 24 * 60 * 60 * 1000).unref();
 
 const unavailable = async (): Promise<void> => {
     throw new Error("Needs the Copilot app. Not available in standalone mode.");

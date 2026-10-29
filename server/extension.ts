@@ -183,7 +183,14 @@ try {
 
 async function checkForUpdate(): Promise<void> {
     if (!getConfig().checkForUpdates) return;
+    // Session hosts share the store, so the last-check time limits GitHub calls to one a day.
+    const last = Number(store.getUpdateCheck()?.checkedAt ?? 0);
+    if (Date.now() - last < UPDATE_CHECK_INTERVAL_MS) {
+        latestRelease = store.getUpdateCheck()?.release ?? null;
+        return;
+    }
     latestRelease = await fetchLatestRelease();
+    store.setUpdateCheck({ checkedAt: Date.now(), release: latestRelease });
 }
 
 void checkForUpdate();

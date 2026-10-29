@@ -80,7 +80,7 @@ export function NotificationsBell() {
                         onClick={() => setOpen(false)}
                     />
                     <div
-                        className="border-line text-fg absolute right-0 top-full z-50 mt-2 max-h-[70vh] w-96 overflow-hidden rounded-lg border shadow-lg"
+                        className="border-line text-fg absolute right-0 top-full z-50 mt-2 max-h-[70vh] w-96 overflow-y-auto rounded-lg border shadow-lg"
                         style={{ background: "var(--card-bg)" }}
                     >
                         <div className="border-line flex items-center justify-between border-b px-3 py-2">

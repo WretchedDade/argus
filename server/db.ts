@@ -29,6 +29,7 @@ import type { Plan, Snapshot } from "./ado/reconcile.ts";
 import type { ConfigOverrides } from "./config.ts";
 import { isVendorName } from "./ado/normalize.ts";
 import { log } from "./log.ts";
+import type { ReleaseInfo } from "./update-check.ts";
 
 // Operational log rows returned to the activity/runs routes.
 export interface ActivityEntry {
@@ -2837,9 +2838,33 @@ export class ArgusStore {
     }
 
     dismissNotice(id: string): void {
-        const ids = new Set(this.getDismissedNotices());
-        ids.add(id);
-        this.#setSetting("dismissed_notices", JSON.stringify([...ids]));
+        // Session hosts share one database, so lock before the read-modify-write.
+        this.#db.exec("BEGIN IMMEDIATE");
+        try {
+            const ids = new Set(this.getDismissedNotices());
+            ids.add(id);
+            this.#setSetting("dismissed_notices", JSON.stringify([...ids]));
+            this.#db.exec("COMMIT");
+        } catch (err) {
+            this.#db.exec("ROLLBACK");
+            throw err;
+        }
+    }
+
+    // Shared across session hosts so the daily GitHub check runs once a day.
+    getUpdateCheck(): {
+        checkedAt: number;
+        release: ReleaseInfo | null;
+    } | null {
+        const raw = this.#getSetting("update_check");
+        return raw ? JSON.parse(raw) : null;
+    }
+
+    setUpdateCheck(value: {
+        checkedAt: number;
+        release: ReleaseInfo | null;
+    }): void {
+        this.#setSetting("update_check", JSON.stringify(value));
     }
 
     #getSetting(key: string): string | null {

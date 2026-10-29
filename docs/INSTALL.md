@@ -9,7 +9,7 @@ Windows x64 is tested. The ZIP is built on Windows and its `node_modules` includ
 ## Prerequisites
 
 - The Copilot app, with canvas extensions enabled.
-- Node.js 22 or later on your PATH. The Copilot app runs `extension.mjs` with it.
+- Node.js 22.13 or later on your PATH. The Copilot app runs `extension.mjs` with it.
 - Azure CLI (`az`) signed in with `az login`, or the Windows account sign-in setup described in the README.
 - Access to the Azure DevOps organization and project you want to track.
 
@@ -35,8 +35,8 @@ argus-vX.Y.Z/
 
     ```powershell
     $dest = "$env:USERPROFILE\.copilot\extensions\argus"
-    New-Item -ItemType Directory -Force -Path (Split-Path $dest) | Out-Null
-    Copy-Item -Recurse -Force .\argus-vX.Y.Z\extension $dest
+    New-Item -ItemType Directory -Force -Path $dest | Out-Null
+    Copy-Item -Recurse -Force .\argus-vX.Y.Z\extension\* $dest
     ```
 
 3. Reload extensions in the Copilot app, or restart it.
@@ -64,10 +64,10 @@ Enter your Azure DevOps org URL, org slug, and project, and choose a sign-in met
 
 Once a day, Argus checks GitHub for a new release. When one exists, the bell shows a notice. Select **Update with Copilot**. Copilot downloads the ZIP, copies it over your install, merges your edited `pr-review` skill if needed, and asks you to reload extensions. To stop the check, clear **Check for new versions** in Settings. Argus sends no data about you.
 
-To upgrade by hand, extract the new ZIP and copy its `extension` folder over the installed folder. Do not delete the installed folder first. Your `argus.config.json` and database are not in the ZIP, so the copy keeps them. Then reload extensions.
+To upgrade by hand, extract the new ZIP and copy the contents of its `extension` folder over the installed folder, with the same `Copy-Item` command as the install. Do not delete the installed folder first. Your `argus.config.json` and database are not in the ZIP, so the copy keeps them. Then reload extensions.
 
 An unedited `pr-review` skill that Argus installed updates by itself. If you edited it, Argus leaves it and shows a notice with **Merge with Copilot**.
 
 ## Uninstall
 
-Delete `%USERPROFILE%\.copilot\extensions\argus`. Your database stays where it was. Delete it too if you want to remove your stored history.
+Delete `%USERPROFILE%\.copilot\extensions\argus`. Your database stays where it was, unless it is in the extension folder. That is the case when neither OneDrive nor `ARGUS_DB_FILE` is set: the database is then `data\argus.db` in the extension folder. Move it out first if you want to keep your history. Delete the database too if you want to remove your stored history.

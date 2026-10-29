@@ -52,8 +52,7 @@ const dependencies = Object.fromEntries(
         return [dep, entry.version];
     }),
 );
-writeFileSync(
-    path.join(ext, "package.json"),
+const stagedManifest =
     JSON.stringify(
         {
             name: "argus",
@@ -64,14 +63,25 @@ writeFileSync(
         },
         null,
         4,
-    ) + "\n",
-);
+    ) + "\n";
 
-execFileSync("npm", ["install", "--omit=dev", "--no-audit", "--no-fund"], {
+// Install from the root lockfile so the production tree matches the tested
+// one. The manifest has no scripts, so the root "prepare" hook does not run.
+writeFileSync(
+    path.join(ext, "package.json"),
+    JSON.stringify({ ...pkg, scripts: undefined }, null, 4) + "\n",
+);
+cpSync(
+    path.join(root, "package-lock.json"),
+    path.join(ext, "package-lock.json"),
+);
+execFileSync("npm", ["ci", "--omit=dev", "--no-audit", "--no-fund"], {
     cwd: ext,
     stdio: "inherit",
     shell: true,
 });
+writeFileSync(path.join(ext, "package.json"), stagedManifest);
+rmSync(path.join(ext, "package-lock.json"), { force: true });
 
 cpSync(path.join(root, "docs", "INSTALL.md"), path.join(stage, "INSTALL.md"));
 cpSync(path.join(root, "LICENSE"), path.join(stage, "LICENSE"));
