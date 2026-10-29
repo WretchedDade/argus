@@ -103,6 +103,13 @@ export interface ApiContext {
     installBaselineSkill: () => { installed: boolean; reason?: string };
     getNotices?: () => Notice[];
     appVersion?: string;
+    checkForUpdatesNow?: () => Promise<UpdateCheckResult>;
+}
+
+export interface UpdateCheckResult {
+    ok: boolean;
+    latest: string | null;
+    updateAvailable: boolean;
 }
 
 async function readJsonBody(req: IncomingMessage): Promise<ConfigOverrides> {
@@ -530,6 +537,24 @@ export async function handleApi(
             .filter((n) => !dismissed.has(n.id))
             .map(({ prompt: _prompt, ...rest }) => rest);
         sendJson(res, 200, { notices });
+        return true;
+    }
+
+    if (route === "/api/notices/check" && req.method === "POST") {
+        if (!ctx.checkForUpdatesNow) {
+            sendJson(res, 501, { error: "Update check is not available." });
+            return true;
+        }
+        if (!ctx.getConfig().checkForUpdates) {
+            sendJson(res, 409, { error: "Update checks are turned off." });
+            return true;
+        }
+        const result = await ctx.checkForUpdatesNow();
+        // A manual check brings back a notice the user dismissed earlier.
+        if (result.updateAvailable && result.latest) {
+            ctx.store.restoreNotice(`app-update:${result.latest}`);
+        }
+        sendJson(res, 200, result);
         return true;
     }
 

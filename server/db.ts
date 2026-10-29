@@ -2851,6 +2851,20 @@ export class ArgusStore {
         }
     }
 
+    restoreNotice(id: string): void {
+        this.#db.exec("BEGIN IMMEDIATE");
+        try {
+            const ids = new Set(this.getDismissedNotices());
+            if (ids.delete(id)) {
+                this.#setSetting("dismissed_notices", JSON.stringify([...ids]));
+            }
+            this.#db.exec("COMMIT");
+        } catch (err) {
+            this.#db.exec("ROLLBACK");
+            throw err;
+        }
+    }
+
     // Shared across session hosts so the daily GitHub check runs once a day.
     getUpdateCheck(): {
         checkedAt: number;

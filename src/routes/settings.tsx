@@ -1,7 +1,9 @@
 import { createFileRoute, useRouter } from "@tanstack/react-router";
+import { useState } from "react";
 import { useForm } from "@tanstack/react-form";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
+    api,
     configApi,
     configQuery,
     teamsQuery,
@@ -56,6 +58,28 @@ function Settings() {
     const cfg = useQuery(configQuery).data as ArgusConfig;
     const teamOptions = useQuery(teamsQuery).data ?? [];
     const version = useQuery(versionQuery).data;
+    const [checking, setChecking] = useState(false);
+
+    const checkNow = async () => {
+        setChecking(true);
+        try {
+            const r = await api.checkForUpdatesNow();
+            if (!r.ok) pushToast("Couldn't reach GitHub", "error");
+            else if (r.updateAvailable)
+                pushToast(`Version ${r.latest} is available. See the bell.`);
+            else pushToast("You're up to date");
+            void qc.invalidateQueries({ queryKey: ["notices"] });
+        } catch (err) {
+            pushToast(
+                (err as Error).message === "off"
+                    ? "Update checks are turned off"
+                    : "Couldn't check for updates",
+                "error",
+            );
+        } finally {
+            setChecking(false);
+        }
+    };
 
     const form = useForm({
         defaultValues: {
@@ -113,7 +137,22 @@ function Settings() {
             className="mx-auto flex max-w-xl flex-col gap-5 pb-24"
         >
             {version && (
-                <div className="text-muted text-xs">Argus v{version}</div>
+                <div className="text-muted flex items-center gap-3 text-xs">
+                    <span>Argus v{version}</span>
+                    <button
+                        type="button"
+                        disabled={checking || !cfg.checkForUpdates}
+                        title={
+                            cfg.checkForUpdates
+                                ? undefined
+                                : "Turn on update checks to use this"
+                        }
+                        onClick={() => void checkNow()}
+                        className="border-line text-muted hover:text-fg rounded-md border px-2 py-0.5 disabled:opacity-60"
+                    >
+                        {checking ? "Checking…" : "Check for updates"}
+                    </button>
+                </div>
             )}
             <section className="flex flex-col gap-3">
                 <h2 className="text-muted text-xs font-medium uppercase tracking-wide">
