@@ -96,7 +96,12 @@ export function syncSkill(src: string, dest: string): SkillSyncResult {
     const bundledHash = hashDir(src);
     if (bundledHash === sidecar.bundledHash) return { state: "none" };
 
-    if (hashDir(dest) !== sidecar.installedHash)
+    // Only a copy that equals the bundled version Argus last recorded is safe
+    // to replace. A merged copy records different hashes, so it stays pending.
+    if (
+        sidecar.installedHash !== sidecar.bundledHash ||
+        hashDir(dest) !== sidecar.installedHash
+    )
         return { state: "pending", bundledHash };
 
     rmSync(dest, { recursive: true, force: true });

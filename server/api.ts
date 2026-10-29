@@ -151,7 +151,7 @@ export async function handleApi(
         setAuthProvider(ctx.getConfig().adoAuth); // another host may have saved a change
 
     if (
-        route.startsWith("/api/auth/") &&
+        (route.startsWith("/api/auth/") || route.startsWith("/api/notices/")) &&
         req.method !== "GET" &&
         !isTrustedOrigin(req)
     ) {

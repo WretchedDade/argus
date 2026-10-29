@@ -11,6 +11,7 @@ import path from "node:path";
 import { buildNotices } from "./notices.ts";
 import { fetchLatestRelease, isNewerVersion } from "./update-check.ts";
 import {
+    acknowledgeSkill,
     hashDir,
     installSkill,
     SKILL_SIDECAR,
@@ -93,6 +94,12 @@ const pending = syncSkill(src, dest);
 assert.equal(pending.state, "pending");
 assert.equal(readFileSync(path.join(dest, "SKILL.md"), "utf-8"), "my edit\n");
 
+// After a merge is acknowledged, the next baseline update must not replace it.
+acknowledgeSkill(src, dest);
+assert.deepEqual(syncSkill(src, dest), { state: "none" });
+writeFileSync(path.join(src, "SKILL.md"), "v4\n");
+assert.equal(syncSkill(src, dest).state, "pending");
+assert.equal(readFileSync(path.join(dest, "SKILL.md"), "utf-8"), "my edit\n");
 rmSync(path.join(dest, SKILL_SIDECAR));
 assert.deepEqual(syncSkill(src, dest), { state: "none" }); // not ours
 
