@@ -102,6 +102,7 @@ export interface ApiContext {
     markSetupComplete: () => void;
     installBaselineSkill: () => { installed: boolean; reason?: string };
     getNotices?: () => Notice[];
+    appVersion?: string;
 }
 
 async function readJsonBody(req: IncomingMessage): Promise<ConfigOverrides> {
@@ -515,6 +516,11 @@ export async function handleApi(
         sendJson(res, 200, {
             archivable: ctx.store.getArchivable(ctx.getConfig().recencyDays),
         });
+        return true;
+    }
+
+    if (route === "/api/version" && req.method === "GET") {
+        sendJson(res, 200, { version: ctx.appVersion ?? null });
         return true;
     }
 

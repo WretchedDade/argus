@@ -96,6 +96,7 @@ const ctx: ServerContext = {
         installed: false,
         reason: "not available in standalone mode",
     }),
+    appVersion: APP_VERSION,
     getNotices: () =>
         buildNotices({
             appVersion: APP_VERSION,
