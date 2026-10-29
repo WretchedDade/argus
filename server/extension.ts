@@ -193,8 +193,23 @@ async function checkForUpdate(): Promise<void> {
     store.setUpdateCheck({ checkedAt: Date.now(), release: latestRelease });
 }
 
-void checkForUpdate();
-setInterval(() => void checkForUpdate(), UPDATE_CHECK_INTERVAL_MS).unref();
+let updateTimer: NodeJS.Timeout | null = null;
+
+// Runs only while this host has a canvas open, like the poller. The shared
+// last-check time still limits GitHub calls if two hosts have a canvas open.
+function startUpdateChecks(): void {
+    void checkForUpdate();
+    updateTimer = setInterval(
+        () => void checkForUpdate(),
+        UPDATE_CHECK_INTERVAL_MS,
+    );
+    updateTimer.unref();
+}
+
+function stopUpdateChecks(): void {
+    if (updateTimer) clearInterval(updateTimer);
+    updateTimer = null;
+}
 
 function getNotices(): Notice[] {
     return buildNotices({
@@ -335,6 +350,7 @@ const session = await joinSession({
                     pollerRunning = true;
                     log("argus: canvas opened; starting poller in this host");
                     startPoller(pollerCtx);
+                    startUpdateChecks();
                 }
                 return { title: "Argus", url: instance.url! };
             },
@@ -351,6 +367,7 @@ const session = await joinSession({
                         "argus: last canvas closed; stopping poller in this host",
                     );
                     stopPoller();
+                    stopUpdateChecks();
                 }
             },
         }),
