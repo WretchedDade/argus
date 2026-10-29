@@ -18,6 +18,7 @@ import {
     useBroker,
 } from "./ado/client.ts";
 import { sendJson } from "./respond.ts";
+import type { Notice } from "./notices.ts";
 
 // Chat message asking to archive the review sessions of PRs that closed/merged.
 function archivePrompt(items: ArchivableSession[]): string {
@@ -100,6 +101,7 @@ export interface ApiContext {
     saveConfig: (overrides: ConfigOverrides) => ArgusConfig;
     markSetupComplete: () => void;
     installBaselineSkill: () => { installed: boolean; reason?: string };
+    getNotices?: () => Notice[];
 }
 
 async function readJsonBody(req: IncomingMessage): Promise<ConfigOverrides> {
@@ -436,6 +438,7 @@ export async function handleApi(
             return true;
         }
         const config = ctx.saveConfig(overrides);
+        setAuthProvider(config.adoAuth);
         ctx.markSetupComplete();
         const skill = installPrReviewSkill
             ? ctx.installBaselineSkill()
@@ -512,6 +515,26 @@ export async function handleApi(
         sendJson(res, 200, {
             archivable: ctx.store.getArchivable(ctx.getConfig().recencyDays),
         });
+        return true;
+    }
+
+    if (route === "/api/notices" && req.method === "GET") {
+        const dismissed = new Set(ctx.store.getDismissedNotices());
+        const notices = (ctx.getNotices?.() ?? []).filter(
+            (n) => !dismissed.has(n.id),
+        );
+        sendJson(res, 200, { notices });
+        return true;
+    }
+
+    if (route === "/api/notices/dismiss" && req.method === "POST") {
+        const body = (await readJsonBody(req)) as { id?: unknown };
+        if (typeof body.id !== "string" || body.id.length === 0) {
+            sendJson(res, 400, { error: "id is required" });
+            return true;
+        }
+        ctx.store.dismissNotice(body.id);
+        sendJson(res, 200, { ok: true });
         return true;
     }
 

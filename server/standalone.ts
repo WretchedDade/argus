@@ -3,6 +3,9 @@
 // is unavailable here.
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { readFileSync } from "node:fs";
+import { buildNotices } from "./notices.ts";
+import { fetchLatestRelease, type ReleaseInfo } from "./update-check.ts";
 import { ArgusStore } from "./db.ts";
 import {
     startServer,
@@ -50,6 +53,22 @@ const saveConfig = (overrides: ConfigOverrides): ArgusConfig => {
 
 const pollerCtx: PollerContext = { store, getConfig };
 
+const APP_VERSION = (
+    JSON.parse(readFileSync(path.join(root, "package.json"), "utf-8")) as {
+        version: string;
+    }
+).version;
+
+// ARGUS_FAKE_RELEASE=9.9.9 shows an update notice without a published release.
+let latestRelease: ReleaseInfo | null = process.env.ARGUS_FAKE_RELEASE
+    ? {
+          version: process.env.ARGUS_FAKE_RELEASE,
+          url: "https://github.com/WretchedDade/argus/releases",
+      }
+    : null;
+if (!latestRelease && getConfig().checkForUpdates)
+    void fetchLatestRelease().then((r) => (latestRelease = r));
+
 const unavailable = async (): Promise<void> => {
     throw new Error("Needs the Copilot app. Not available in standalone mode.");
 };
@@ -72,6 +91,19 @@ const ctx: ServerContext = {
         installed: false,
         reason: "not available in standalone mode",
     }),
+    getNotices: () =>
+        buildNotices({
+            appVersion: APP_VERSION,
+            release: latestRelease,
+            checkForUpdates: getConfig().checkForUpdates,
+            skill: process.env.ARGUS_FAKE_SKILL_UPDATE
+                ? {
+                      bundledHash: "fake",
+                      bundledPath: "extension\\skills\\pr-review",
+                      installedPath: "~\\.copilot\\skills\\pr-review",
+                  }
+                : null,
+        }),
 };
 
 const instance: Instance = {

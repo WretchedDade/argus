@@ -14,6 +14,14 @@ export interface AuthorMeta {
     mergeStatus: string;
 }
 
+export interface Notice {
+    id: string;
+    kind: "app-update" | "skill-update";
+    title: string;
+    detail: string;
+    href?: string;
+}
+
 export interface ArchivableSession {
     repo: string;
     number: number;
@@ -490,6 +498,16 @@ export const api = {
         return res.json();
     },
     changes: () => getJson<ChangeFeed>("/api/changes"),
+    notices: () =>
+        getJson<{ notices: Notice[] }>("/api/notices").then((r) => r.notices),
+    dismissNotice: async (id: string): Promise<void> => {
+        const res = await fetch("/api/notices/dismiss", {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ id }),
+        });
+        if (!res.ok) throw new Error(`notices/dismiss -> ${res.status}`);
+    },
     insights: () =>
         getJson<{ insights: Insights }>("/api/insights").then(
             (r) => r.insights,
@@ -526,6 +544,11 @@ export const archivableQuery = queryOptions({
     queryKey: ["archivable"],
     queryFn: api.archivable,
     refetchInterval: 15_000,
+});
+export const noticesQuery = queryOptions({
+    queryKey: ["notices"],
+    queryFn: api.notices,
+    refetchInterval: 60_000,
 });
 export const changesQuery = queryOptions({
     queryKey: ["changes"],
@@ -610,6 +633,7 @@ export interface ArgusConfig {
     workStartHour: number;
     workEndHour: number;
     workDays: number[];
+    checkForUpdates: boolean;
 }
 
 export const configApi = {

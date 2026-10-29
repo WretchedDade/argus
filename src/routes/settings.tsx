@@ -72,6 +72,7 @@ function Settings() {
             workStartHour: cfg.workStartHour,
             workEndHour: cfg.workEndHour,
             workDays: cfg.workDays as number[],
+            checkForUpdates: cfg.checkForUpdates ?? true,
         },
         onSubmit: async ({ value }) => {
             await configApi.save({
@@ -92,6 +93,7 @@ function Settings() {
                 workStartHour: Number(value.workStartHour),
                 workEndHour: Number(value.workEndHour),
                 workDays: value.workDays,
+                checkForUpdates: value.checkForUpdates,
             });
             for (const key of ["config", "prs", "health"])
                 void qc.invalidateQueries({ queryKey: [key] });
@@ -354,6 +356,31 @@ function Settings() {
                                     );
                                 })}
                             </div>
+                        </Row>
+                    )}
+                </form.Field>
+            </section>
+
+            <section className="flex flex-col gap-3">
+                <h2 className="text-muted text-xs font-medium uppercase tracking-wide">
+                    Updates
+                </h2>
+                <form.Field name="checkForUpdates">
+                    {(field) => (
+                        <Row
+                            label="Check for new versions"
+                            hint="Once a day, Argus asks GitHub for the latest release and shows a notice in the bell. It sends no data about you."
+                        >
+                            <label className="mt-1 flex items-center gap-2 text-sm">
+                                <input
+                                    type="checkbox"
+                                    checked={field.state.value}
+                                    onChange={(e) =>
+                                        field.handleChange(e.target.checked)
+                                    }
+                                />
+                                Enabled
+                            </label>
                         </Row>
                     )}
                 </form.Field>

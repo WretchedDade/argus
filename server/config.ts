@@ -27,6 +27,7 @@ export interface ArgusConfig {
     workStartHour: number;
     workEndHour: number;
     workDays: number[];
+    checkForUpdates: boolean; // ask GitHub for new Argus releases
 }
 
 export type ConfigOverrides = Partial<ArgusConfig>;
@@ -93,6 +94,7 @@ const localConfigValidators: Record<
             (day: unknown) =>
                 isNumber(day) && Number.isInteger(day) && day >= 0 && day <= 6,
         ),
+    checkForUpdates: (value) => typeof value === "boolean",
 };
 
 export function hasRequiredSetup(config: ArgusConfig): boolean {
@@ -136,6 +138,7 @@ export function defaultConfig(): ArgusConfig {
         workStartHour: startHour,
         workEndHour: endHour,
         workDays: inclusiveRange(dayStart, dayEnd),
+        checkForUpdates: process.env.ARGUS_CHECK_UPDATES !== "0",
     };
 }
 

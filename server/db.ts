@@ -2829,6 +2829,19 @@ export class ArgusStore {
         this.#setSetting("setup_complete", "1");
     }
 
+    // Notice ids the user dismissed from the bell. An id changes when there is
+    // something new to say, so a dismissed notice does not return unchanged.
+    getDismissedNotices(): string[] {
+        const raw = this.#getSetting("dismissed_notices");
+        return raw ? (JSON.parse(raw) as string[]) : [];
+    }
+
+    dismissNotice(id: string): void {
+        const ids = new Set(this.getDismissedNotices());
+        ids.add(id);
+        this.#setSetting("dismissed_notices", JSON.stringify([...ids]));
+    }
+
     #getSetting(key: string): string | null {
         const row = this.#prep("SELECT value FROM settings WHERE key = ?").get(
             key,

@@ -1,7 +1,10 @@
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { existsSync, cpSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
+import { installSkill, syncSkill } from "./skill-sync.ts";
+import { fetchLatestRelease, type ReleaseInfo } from "./update-check.ts";
+import { buildNotices, type Notice } from "./notices.ts";
 import { joinSession, createCanvas } from "@github/copilot-sdk/extension";
 import { ArgusStore } from "./db.ts";
 import { countReviewComments, fetchPrThreads } from "./ado/client.ts";
@@ -124,26 +127,81 @@ function doRecordReview(
 // Install the bundled baseline pr-review skill into the user's skills directory,
 // so the first-run setup can offer it. Never overwrites an existing pr-review
 // skill (the user may have their own tailored one).
+const BUNDLED_SKILL = path.join(__dirname, "skills", "pr-review");
+const INSTALLED_SKILL = path.join(
+    process.env.COPILOT_HOME || path.join(homedir(), ".copilot"),
+    "skills",
+    "pr-review",
+);
+
 function installBaselineSkill(): { installed: boolean; reason?: string } {
-    const src = path.join(__dirname, "skills", "pr-review");
+    const src = BUNDLED_SKILL;
     if (!existsSync(src))
         return { installed: false, reason: "bundled skill not found" };
-    const skillsRoot = path.join(
-        process.env.COPILOT_HOME || path.join(homedir(), ".copilot"),
-        "skills",
-    );
-    const dest = path.join(skillsRoot, "pr-review");
+    const dest = INSTALLED_SKILL;
     if (existsSync(dest))
         return {
             installed: false,
             reason: "a pr-review skill already exists; left it untouched",
         };
     try {
-        cpSync(src, dest, { recursive: true });
+        installSkill(src, dest);
         return { installed: true };
     } catch (err) {
         return { installed: false, reason: (err as Error).message };
     }
+}
+
+// The release ZIP has package.json beside extension.mjs; a repo checkout has it one level up.
+function readAppVersion(): string {
+    for (const dir of [__dirname, path.join(__dirname, "..")]) {
+        try {
+            const pkg = JSON.parse(
+                readFileSync(path.join(dir, "package.json"), "utf-8"),
+            ) as { version?: string };
+            if (pkg.version) return pkg.version;
+        } catch {
+            /* try the next location */
+        }
+    }
+    return "0.0.0";
+}
+
+const APP_VERSION = readAppVersion();
+const UPDATE_CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000;
+
+let latestRelease: ReleaseInfo | null = null;
+let pendingSkillHash: string | null = null;
+
+try {
+    const sync = syncSkill(BUNDLED_SKILL, INSTALLED_SKILL);
+    if (sync.state === "pending") pendingSkillHash = sync.bundledHash;
+    if (sync.state === "updated") log("baseline pr-review skill updated");
+} catch (err) {
+    log(`skill sync failed: ${(err as Error).message}`);
+}
+
+async function checkForUpdate(): Promise<void> {
+    if (!getConfig().checkForUpdates) return;
+    latestRelease = await fetchLatestRelease();
+}
+
+void checkForUpdate();
+setInterval(() => void checkForUpdate(), UPDATE_CHECK_INTERVAL_MS).unref();
+
+function getNotices(): Notice[] {
+    return buildNotices({
+        appVersion: APP_VERSION,
+        release: latestRelease,
+        checkForUpdates: getConfig().checkForUpdates,
+        skill: pendingSkillHash
+            ? {
+                  bundledHash: pendingSkillHash,
+                  bundledPath: BUNDLED_SKILL,
+                  installedPath: INSTALLED_SKILL,
+              }
+            : null,
+    });
 }
 
 const serverCtx = (): ServerContext => ({
@@ -161,6 +219,7 @@ const serverCtx = (): ServerContext => ({
     saveConfig,
     markSetupComplete: () => store.markSetupComplete(),
     installBaselineSkill,
+    getNotices,
 });
 
 const session = await joinSession({
