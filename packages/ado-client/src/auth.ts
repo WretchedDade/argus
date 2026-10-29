@@ -11,7 +11,9 @@ import {
     useIdentityPlugin,
     type AuthenticationRecord,
 } from "@azure/identity";
-import { nativeBrokerPlugin } from "@azure/identity-broker";
+import { createRequire } from "node:module";
+
+const nodeRequire = createRequire(import.meta.url);
 
 export const ADO_RESOURCE_ID = "499b84ac-1321-427f-aa17-267ca6975798";
 export const ADO_SCOPES = [`${ADO_RESOURCE_ID}/.default`];
@@ -90,6 +92,8 @@ let brokerRegistered = false;
 
 function ensureBrokerRegistered(): void {
     if (brokerRegistered) return;
+    // Lazy load: the broker pulls in native libs (keytar) that fail on Linux without libsecret.
+    const { nativeBrokerPlugin } = nodeRequire("@azure/identity-broker");
     useIdentityPlugin(nativeBrokerPlugin);
     brokerRegistered = true;
 }
