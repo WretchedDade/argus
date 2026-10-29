@@ -8,3 +8,4 @@ dist/
 extension.mjs
 src/routeTree.gen.ts
 argus.config.json
+release/
