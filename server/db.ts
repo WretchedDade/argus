@@ -7,7 +7,6 @@ import type {
     ActivityVerdict,
     ArchivableSession,
     AuthorMeta,
-    DeployTimelinePr,
     Insights,
     InsightsCount,
     InsightsLoadBucket,
@@ -16,7 +15,6 @@ import type {
     LoadDayPr,
     LoadDetail,
     Pr,
-    PrDeploy,
     PrEvent,
     PrEventType,
     PrReviewState,
@@ -466,10 +464,6 @@ export class ArgusStore {
         this.#ensureColumn("prs", "other_comments", "INTEGER"); // # of non-system comments authored by others
         this.#ensureColumn("prs", "approvals_json", "TEXT"); // individuals who approved (name + vote), for card display
         this.#ensureColumn("prs", "author_meta_json", "TEXT"); // completability + comment counts for authored PRs
-        this.#ensureColumn("prs", "merge_commit", "TEXT"); // the merge commit sha (for deploy tracking); captured on close
-        this.#ensureColumn("prs", "merged_at", "TEXT"); // ADO's real closedDate (merge time), for build time-bounding
-        this.#ensureColumn("prs", "deploy_json", "TEXT"); // cached PrDeploy: where this merged PR has shipped
-        this.#ensureColumn("prs", "deploy_resolved_at", "TEXT"); // when deploy_json was last resolved
         this.#ensureColumn("prs", "source_branch", "TEXT"); // PR source branch (for the diff/file-count call)
         this.#ensureColumn("prs", "target_branch", "TEXT"); // PR target branch
         this.#ensureColumn("prs", "changed_files", "INTEGER"); // # of files changed in the PR (from ADO branch diff)
@@ -488,15 +482,6 @@ export class ArgusStore {
                 "UPDATE prs SET changed_files = NULL, changed_files_sha = NULL",
             );
             this.#setSetting("changed_files_blob_count_reset", now());
-        }
-        // One-time: clear cached not-found deploy results, so they re-resolve. Covers
-        // the pre-`reason` rows and the pre-`merged_at` rows whose build search used
-        // Argus's detection time (often days after the real merge) and missed the build.
-        if (!this.#getSetting("deploy_time_migrated")) {
-            this.#db.exec(
-                "UPDATE prs SET deploy_json = NULL WHERE deploy_json IS NOT NULL AND json_extract(deploy_json, '$.found') = 0",
-            );
-            this.#setSetting("deploy_time_migrated", now());
         }
         // Backfill reviewed_at (verdict time) for reviews recorded before that column
         // existed, from the latest recorded 'reviewed' verdict event.
@@ -1108,163 +1093,6 @@ export class ArgusStore {
         this.#prep(
             "UPDATE prs SET my_comments = ?, other_comments = ? WHERE canonical = ?",
         ).run(mine, others, canonical);
-    }
-
-    // --- Deploy tracking (where a merged PR shipped) ---
-
-    // Merge commit + real merge time (ADO closedDate), captured on close so we can
-    // pin the exact build and bound the build search to the actual merge moment.
-    setMergeInfo(
-        canonical: string,
-        sha: string,
-        mergedAt: string | null,
-    ): void {
-        this.#prep(
-            "UPDATE prs SET merge_commit = ?, merged_at = COALESCE(?, merged_at) WHERE canonical = ?",
-        ).run(sha, mergedAt ?? null, canonical);
-    }
-
-    // ISO cutoff for the deploy window: PRs merged on/after this are in scope.
-    #deployCutoff(windowDays: number): string {
-        return new Date(Date.now() - windowDays * 86_400_000).toISOString();
-    }
-
-    // Merged-in-window PRs (configured repos) missing the merge commit or its real
-    // merge time. The poller backfills a bounded batch via `az pr show`.
-    prsNeedingMergeInfo(
-        windowDays: number,
-        repos: string[],
-        limit = 30,
-    ): { canonical: string; number: number }[] {
-        if (repos.length === 0) return [];
-        const ph = repos.map(() => "?").join(",");
-        return this.#prep(
-            `
-      SELECT p.canonical, p.number
-      FROM prs p
-      WHERE p.state = 'closed' AND (p.merge_commit IS NULL OR p.merged_at IS NULL) AND p.repo IN (${ph})
-        AND EXISTS (
-          SELECT 1 FROM pr_events e
-          WHERE e.canonical = p.canonical AND e.type = 'closed'
-            AND json_extract(e.payload, '$.reason') = 'completed' AND e.ts >= ?
-        )
-      LIMIT ?
-    `,
-        ).all(...repos, this.#deployCutoff(windowDays), limit) as unknown as {
-            canonical: string;
-            number: number;
-        }[];
-    }
-
-    // Merged-in-window PRs (configured repos) with a known merge commit whose deploy
-    // state is unresolved or not yet terminal (still rolling out) — refreshed by the
-    // poller until prod finishes.
-    prsNeedingDeploy(
-        windowDays: number,
-        repos: string[],
-        limit = 20,
-    ): {
-        canonical: string;
-        repo: string;
-        project: string;
-        mergeCommit: string;
-        mergedAt: string;
-    }[] {
-        if (repos.length === 0) return [];
-        const ph = repos.map(() => "?").join(",");
-        return this.#prep(
-            `
-      SELECT p.canonical, p.repo, p.project, p.merge_commit AS mergeCommit,
-             COALESCE(p.merged_at, (SELECT MIN(e.ts) FROM pr_events e
-              WHERE e.canonical = p.canonical AND e.type = 'closed'
-                AND json_extract(e.payload, '$.reason') = 'completed')) AS mergedAt
-      FROM prs p
-      WHERE p.merge_commit IS NOT NULL AND p.repo IN (${ph})
-        AND (p.deploy_json IS NULL OR json_extract(p.deploy_json, '$.terminal') IS NOT 1)
-        AND EXISTS (
-          SELECT 1 FROM pr_events e
-          WHERE e.canonical = p.canonical AND e.type = 'closed'
-            AND json_extract(e.payload, '$.reason') = 'completed' AND e.ts >= ?
-        )
-      ORDER BY (p.deploy_json IS NULL) DESC, mergedAt DESC
-      LIMIT ?
-    `,
-        ).all(...repos, this.#deployCutoff(windowDays), limit) as unknown as {
-            canonical: string;
-            repo: string;
-            project: string;
-            mergeCommit: string;
-            mergedAt: string;
-        }[];
-    }
-
-    setDeploy(canonical: string, deploy: PrDeploy): void {
-        this.#prep(
-            "UPDATE prs SET deploy_json = ?, deploy_resolved_at = ? WHERE canonical = ?",
-        ).run(JSON.stringify(deploy), now(), canonical);
-    }
-
-    // The deploy timeline: PRs merged within the window, newest first, each with its
-    // resolved deploy state (or an unresolved placeholder if the poller hasn't gotten
-    // to it yet). Drives the Deploys view and the detail-page "Shipped" line.
-    deployTimeline(windowDays: number, repos: string[]): DeployTimelinePr[] {
-        if (repos.length === 0) return [];
-        const ph = repos.map(() => "?").join(",");
-        const rows = this.#prep(
-            `
-      SELECT p.canonical, p.repo, p.number, p.title, p.author AS author, p.role AS role, p.deploy_json AS deployJson,
-             COALESCE(p.merged_at, (SELECT MIN(e.ts) FROM pr_events e
-              WHERE e.canonical = p.canonical AND e.type = 'closed'
-                AND json_extract(e.payload, '$.reason') = 'completed')) AS mergedAt
-      FROM prs p
-      WHERE p.state = 'closed' AND p.repo IN (${ph})
-        AND EXISTS (
-          SELECT 1 FROM pr_events e
-          WHERE e.canonical = p.canonical AND e.type = 'closed'
-            AND json_extract(e.payload, '$.reason') = 'completed' AND e.ts >= ?
-        )
-      ORDER BY mergedAt DESC
-    `,
-        ).all(...repos, this.#deployCutoff(windowDays)) as unknown as {
-            canonical: string;
-            repo: string;
-            number: number;
-            title: string;
-            author: string | null;
-            role: string | null;
-            deployJson: string | null;
-            mergedAt: string;
-        }[];
-        const pending: PrDeploy = {
-            found: false,
-            reason: null,
-            buildId: null,
-            buildNumber: null,
-            buildUrl: null,
-            dev: null,
-            ppe: null,
-            prod: null,
-            terminal: false,
-        };
-        return rows.map((r) => ({
-            canonical: r.canonical,
-            repo: r.repo,
-            number: r.number,
-            title: r.title,
-            author: r.author,
-            mine: r.role === "author",
-            mergedAt: r.mergedAt,
-            deploy: r.deployJson
-                ? (JSON.parse(r.deployJson) as PrDeploy)
-                : pending,
-        }));
-    }
-
-    getDeploy(canonical: string): PrDeploy | null {
-        const row = this.#prep(
-            "SELECT deploy_json AS j FROM prs WHERE canonical = ?",
-        ).get(canonical) as { j: string | null } | undefined;
-        return row?.j ? (JSON.parse(row.j) as PrDeploy) : null;
     }
 
     // --- PR size (files changed) ---

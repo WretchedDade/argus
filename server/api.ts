@@ -228,20 +228,7 @@ export async function handleApi(
             sendJson(res, 200, {
                 pr: ctx.store.getPr(canonical),
                 events: ctx.store.listEvents(canonical),
-                deploy: ctx.store.getDeploy(canonical),
             });
-        return true;
-    }
-
-    if (route === "/api/deploys") {
-        const cfg = ctx.getConfig();
-        sendJson(res, 200, {
-            window: cfg.deployWindowDays,
-            timeline: ctx.store.deployTimeline(
-                cfg.deployWindowDays,
-                Object.keys(cfg.repoPipelines),
-            ),
-        });
         return true;
     }
 
