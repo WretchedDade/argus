@@ -74,7 +74,8 @@ let latestRelease: ReleaseInfo | null = process.env.ARGUS_FAKE_RELEASE
 const fakeRelease = latestRelease;
 async function checkForUpdate(): Promise<void> {
     if (fakeRelease || !getConfig().checkForUpdates) return;
-    latestRelease = await fetchLatestRelease();
+    const release = await fetchLatestRelease();
+    if (release) latestRelease = release;
 }
 void checkForUpdate();
 setInterval(() => void checkForUpdate(), 24 * 60 * 60 * 1000).unref();

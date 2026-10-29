@@ -194,8 +194,10 @@ async function checkForUpdate(): Promise<void> {
         latestRelease = store.getUpdateCheck()?.release ?? null;
         return;
     }
-    latestRelease = await fetchLatestRelease();
-    store.setUpdateCheck({ checkedAt: Date.now(), release: latestRelease });
+    const release = await fetchLatestRelease();
+    if (!release) return;
+    latestRelease = release;
+    store.setUpdateCheck({ checkedAt: Date.now(), release });
 }
 
 // Manual check: skips the daily limit and keeps the cached release if GitHub fails.
