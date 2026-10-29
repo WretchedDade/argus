@@ -15,6 +15,7 @@ import { NotificationsBell } from "../components/NotificationsBell";
 import { PrSearch } from "../components/PrSearch";
 import { RefreshButton } from "../components/RefreshButton";
 import { StatusCluster } from "../components/StatusCluster";
+import { AuthGate } from "../components/AuthGate";
 import { SetupGate } from "../components/SetupGate";
 import { Toaster } from "../components/Toaster";
 
@@ -123,6 +124,7 @@ function RootLayout() {
     const health = useQuery(healthQuery).data;
     const prs = useQuery(prsQuery).data ?? [];
     const recencyDays = useQuery(configQuery).data?.recencyDays ?? 7;
+    const [authDismissed, setAuthDismissed] = useState(false);
 
     // First-run gate: until the user confirms their org/project/reviewer groups,
     // the board would be empty and mis-classified, so show setup instead.
@@ -130,6 +132,22 @@ function RootLayout() {
         return (
             <>
                 <SetupGate />
+                <Toaster />
+            </>
+        );
+    }
+
+    const authBlocked =
+        !!health &&
+        (health.poller.authOk === false ||
+            (!!health.auth &&
+                (!health.auth.configured ||
+                    !health.auth.account ||
+                    health.auth.interactionRequired)));
+    if (authBlocked && !authDismissed) {
+        return (
+            <>
+                <AuthGate onDismiss={() => setAuthDismissed(true)} />
                 <Toaster />
             </>
         );

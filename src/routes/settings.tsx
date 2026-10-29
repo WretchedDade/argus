@@ -8,6 +8,8 @@ import {
     type ArgusConfig,
     type Period,
 } from "../lib/api";
+import { RegistrationShare } from "../components/AuthRegistration";
+import { SegToggle } from "../components/SegToggle";
 import { TeamMultiSelect } from "../components/TeamMultiSelect";
 import { TeamLabelEditor } from "../components/TeamLabelEditor";
 import { pushToast } from "../lib/toast";
@@ -53,6 +55,7 @@ function Settings() {
     const form = useForm({
         defaultValues: {
             me: cfg.me ?? "",
+            adoAuth: cfg.adoAuth ?? "az",
             avatarUrl: cfg.avatarUrl ?? "",
             project: cfg.project,
             orgUrl: cfg.orgUrl,
@@ -70,6 +73,7 @@ function Settings() {
         onSubmit: async ({ value }) => {
             await configApi.save({
                 me: value.me.trim() || null,
+                adoAuth: value.adoAuth,
                 avatarUrl: value.avatarUrl.trim(),
                 project: value.project.trim(),
                 orgUrl: value.orgUrl.trim(),
@@ -105,15 +109,44 @@ function Settings() {
                 <h2 className="text-muted text-xs font-medium uppercase tracking-wide">
                     Identity
                 </h2>
+                <form.Field name="adoAuth">
+                    {(field) => (
+                        <div>
+                            <div className="text-fg text-sm font-medium">
+                                Sign-in method
+                            </div>
+                            <div className="mt-1">
+                                <SegToggle
+                                    value={field.state.value}
+                                    onChange={field.handleChange}
+                                    options={[
+                                        { v: "az", label: "Azure CLI" },
+                                        {
+                                            v: "broker",
+                                            label: "Windows account",
+                                        },
+                                    ]}
+                                />
+                            </div>
+                            <div className="text-muted mt-1 text-xs">
+                                Azure CLI uses your az login. Windows account
+                                uses the Windows account broker and needs an
+                                Entra app registration (Windows only). Applies
+                                without a restart.
+                            </div>
+                        </div>
+                    )}
+                </form.Field>
+                <RegistrationShare />
                 <form.Field name="me">
                     {(field) => (
                         <Row
                             label="Me"
-                            hint="Your ADO account email. Leave blank to use the signed-in az account."
+                            hint="Your ADO account email. Leave blank to use the signed-in account."
                         >
                             <input
                                 className={inputCls}
-                                placeholder="auto from az"
+                                placeholder="auto-detect"
                                 value={field.state.value}
                                 onChange={(e) =>
                                     field.handleChange(e.target.value)

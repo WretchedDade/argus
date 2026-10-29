@@ -9,6 +9,7 @@ import {
     countReviewComments,
     fetchPrThreads,
     prChangedFileCount,
+    setAuthProvider,
 } from "./client.ts";
 import { classifyOwnership } from "./ownership.ts";
 import { normalizePr } from "./normalize.ts";
@@ -84,11 +85,12 @@ async function runReconcile(
     const note = (level: string, msg: string, data?: Record<string, unknown>) =>
         ctx.store.recordActivity(level, msg, data, runId);
     try {
+        setAuthProvider(cfg.adoAuth);
         note("info", "reconcile started");
         let identity = cfg.me;
         if (!identity) {
             if (!whoamiCache) {
-                note("info", "resolving identity via az…");
+                note("info", "resolving identity…");
                 whoamiCache = await whoami();
             }
             identity = whoamiCache;
@@ -187,7 +189,7 @@ async function runReconcile(
                 `backfilling author on ${needAuthor.length} migrated PR(s)`,
             );
             for (const p of needAuthor) {
-                const raw = await showPr(p.number, cfg.orgUrl);
+                const raw = await showPr(p.number, cfg.orgUrl, cfg.project);
                 const name = raw?.createdBy?.displayName;
                 if (name) ctx.store.setAuthor(p.canonical, name);
             }
@@ -252,6 +254,7 @@ async function runReconcile(
         const { closed } = await closeDeparted(
             ctx.store,
             cfg.orgUrl,
+            cfg.project,
             mine.map((m) => m.canonical),
             snapshots,
             runId,
@@ -274,7 +277,7 @@ async function runReconcile(
             deployRepos,
         );
         for (const p of needMerge) {
-            const raw = await showPr(p.number, cfg.orgUrl);
+            const raw = await showPr(p.number, cfg.orgUrl, cfg.project);
             if (raw?.lastMergeCommit?.commitId)
                 ctx.store.setMergeInfo(
                     p.canonical,
@@ -338,6 +341,7 @@ async function runReconcile(
 async function closeDeparted(
     store: ArgusStore,
     orgUrl: string,
+    project: string,
     mineCanonicals: string[],
     snapshots: Map<string, { state: string; dismissed: boolean }>,
     runId: number,
@@ -349,7 +353,7 @@ async function closeDeparted(
         if (snap.state === "closed" || snap.dismissed || mineSet.has(canonical))
             continue;
         const id = numberFromCanonical(canonical);
-        const pr = id ? await showPr(id, orgUrl) : null;
+        const pr = id ? await showPr(id, orgUrl, project) : null;
         if (pr && (pr.status === "completed" || pr.status === "abandoned")) {
             const rec = store.getPr(canonical);
             store.markClosed(canonical, pr.status, undefined, runId);
@@ -399,7 +403,7 @@ export async function refreshPr(
     const cfg = ctx.getConfig();
     const id = numberFromCanonical(canonical);
     if (!id) return;
-    const raw = await showPr(id, cfg.orgUrl);
+    const raw = await showPr(id, cfg.orgUrl, cfg.project);
     if (!raw) return;
     if (raw.status === "completed" || raw.status === "abandoned") {
         ctx.store.markClosed(canonical, raw.status);
@@ -463,7 +467,7 @@ export async function trackByNumber(
     id: number,
 ): Promise<{ ok: boolean; canonical?: string; reason?: string }> {
     const cfg = ctx.getConfig();
-    const raw = await showPr(id, cfg.orgUrl);
+    const raw = await showPr(id, cfg.orgUrl, cfg.project);
     if (!raw) return { ok: false, reason: "not-found" };
     if (raw.status === "completed" || raw.status === "abandoned")
         return { ok: false, reason: "closed" };

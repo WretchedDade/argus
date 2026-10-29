@@ -23,6 +23,7 @@ export function normalizePr(
         project,
         repo,
         repoId: raw.repository?.id ?? "",
+        projectId: raw.repository?.project?.id ?? "",
         number: raw.pullRequestId,
         title: raw.title ?? "",
         description: raw.description ?? "",

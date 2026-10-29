@@ -20,7 +20,13 @@ export async function fetchAuthorMeta(
     };
 
     try {
-        const policies = (await listPrPolicies(orgUrl, pr.number)) ?? [];
+        const policies =
+            (await listPrPolicies(
+                orgUrl,
+                pr.project,
+                pr.projectId,
+                pr.number,
+            )) ?? [];
         meta.blockers = policies
             .filter(
                 (p) =>

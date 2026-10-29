@@ -24,6 +24,14 @@ with its own Node process.
 Argus gets an Azure DevOps token from `az account get-access-token` at runtime. It
 stores no secret and no password.
 
+### Optional: Windows account broker (experimental)
+
+Set `ARGUS_ADO_AUTH=broker` to skip `az` and use the Windows account broker with REST
+calls instead. This is Windows-only. It needs an Entra app registration: see
+[packages/ado-client/README.md](packages/ado-client/README.md). The header then shows a
+Sign in / switch account control. Auth by `az` stays the default until the broker path is
+verified against a real org.
+
 ## Install
 
 1. Clone this repo, then link or place it at `~/.copilot/extensions/argus`.

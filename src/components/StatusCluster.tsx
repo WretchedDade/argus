@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { healthQuery } from "../lib/api";
 import { timeAgo } from "../lib/format";
+import { AuthControl } from "./AuthControl";
 import { OcellusDot } from "./OcellusMark";
 
 // Right-side header cluster: live run state and auth warning. The manual refresh
@@ -14,11 +15,14 @@ export function StatusCluster() {
 
     return (
         <div className="flex items-center gap-3 text-xs text-white/85">
-            {poller && !poller.authOk && (
-                <span className="rounded-full border border-amber-300/60 bg-amber-400/20 px-2 py-0.5 text-amber-100">
-                    az login needed
-                </span>
-            )}
+            <AuthControl />
+            {poller &&
+                !poller.authOk &&
+                health.data?.auth?.provider !== "broker" && (
+                    <span className="rounded-full border border-amber-300/60 bg-amber-400/20 px-2 py-0.5 text-amber-100">
+                        az login needed
+                    </span>
+                )}
             {running && poller?.currentRunId ? (
                 <Link
                     to="/activity/$runId"

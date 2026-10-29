@@ -5,6 +5,16 @@ import type { ArgusConfig, ConfigOverrides } from "./config.ts";
 import { hasRequiredSetup, mergeConfig } from "./config.ts";
 import type { PollerStatus, ReconcileSummary } from "./ado/poller.ts";
 import { fetchAdoImage, isAllowedImageHost } from "./ado/images.ts";
+import {
+    authStatus,
+    getRegistration,
+    saveRegistration,
+    type AdoRegistration,
+    setAuthProvider,
+    signIn,
+    switchAccount,
+    useBroker,
+} from "./ado/client.ts";
 import { sendJson } from "./respond.ts";
 
 // Chat message asking to archive the review sessions of PRs that closed/merged.
@@ -120,6 +130,51 @@ export async function handleApi(
     const route = url.pathname;
     if (!route.startsWith("/api/")) return false;
 
+    if (route === "/api/health" || route.startsWith("/api/auth/"))
+        setAuthProvider(ctx.getConfig().adoAuth); // another host may have saved a change
+
+    if (route === "/api/auth/registration") {
+        if (req.method === "POST") {
+            try {
+                saveRegistration(
+                    (await readJsonBody(req)) as unknown as AdoRegistration,
+                );
+            } catch (error) {
+                sendJson(res, 400, { error: (error as Error).message });
+                return true;
+            }
+        }
+        sendJson(res, 200, getRegistration());
+        return true;
+    }
+
+    if (route === "/api/auth/status") {
+        sendJson(res, 200, await authStatus());
+        return true;
+    }
+
+    if (
+        (route === "/api/auth/sign-in" ||
+            route === "/api/auth/switch-account") &&
+        req.method === "POST"
+    ) {
+        try {
+            sendJson(
+                res,
+                200,
+                await (route === "/api/auth/sign-in"
+                    ? signIn()
+                    : switchAccount()),
+            );
+        } catch (error) {
+            sendJson(res, 502, {
+                error:
+                    error instanceof Error ? error.message : "Sign-in failed.",
+            });
+        }
+        return true;
+    }
+
     if (route === "/api/health") {
         sendJson(res, 200, {
             ok: true,
@@ -127,6 +182,7 @@ export async function handleApi(
             store: ctx.store.counts(),
             migrated: ctx.migrated,
             poller: ctx.pollerStatus(),
+            auth: useBroker() ? await authStatus() : null,
             setup_complete:
                 ctx.store.isSetupComplete() &&
                 hasRequiredSetup(ctx.getConfig()),
@@ -339,11 +395,11 @@ export async function handleApi(
     }
 
     if (route === "/api/config") {
-        if (req.method === "POST")
-            sendJson(res, 200, {
-                config: ctx.saveConfig(await readJsonBody(req)),
-            });
-        else sendJson(res, 200, { config: ctx.getConfig() });
+        if (req.method === "POST") {
+            const config = ctx.saveConfig(await readJsonBody(req));
+            setAuthProvider(config.adoAuth);
+            sendJson(res, 200, { config });
+        } else sendJson(res, 200, { config: ctx.getConfig() });
         return true;
     }
 

@@ -205,7 +205,7 @@ function PollBanner({
     error: string | null;
 }) {
     const msg = !authOk
-        ? "Not signed in to Azure CLI. Run `az login`, then Refresh."
+        ? "Not signed in to Azure DevOps. Sign in (or run `az login`), then Refresh."
         : `Last poll failed: ${error}`;
     return (
         <div
