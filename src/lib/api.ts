@@ -659,6 +659,10 @@ export const configApi = {
     },
     teams: () =>
         getJson<{ teams: string[] }>("/api/teams").then((r) => r.teams),
+    version: () =>
+        getJson<{ version: string | null }>("/api/version").then(
+            (r) => r.version,
+        ),
     setup: async (
         overrides: Partial<ArgusConfig> & { installPrReviewSkill?: boolean },
     ): Promise<{
@@ -679,6 +683,11 @@ export const configApi = {
 export const configQuery = queryOptions({
     queryKey: ["config"],
     queryFn: configApi.get,
+});
+export const versionQuery = queryOptions({
+    queryKey: ["version"],
+    queryFn: configApi.version,
+    staleTime: Infinity,
 });
 export const teamsQuery = queryOptions({
     queryKey: ["teams"],

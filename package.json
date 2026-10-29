@@ -1,7 +1,7 @@
 {
     "name": "argus",
     "private": true,
-    "version": "0.1.0",
+    "version": "0.1.1",
     "type": "module",
     "description": "Argus - PR triage canvas. React + TanStack, served by its own Node process.",
     "scripts": {

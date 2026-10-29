@@ -5,6 +5,7 @@ import {
     configApi,
     configQuery,
     teamsQuery,
+    versionQuery,
     type ArgusConfig,
     type Period,
 } from "../lib/api";
@@ -54,6 +55,7 @@ function Settings() {
     const router = useRouter();
     const cfg = useQuery(configQuery).data as ArgusConfig;
     const teamOptions = useQuery(teamsQuery).data ?? [];
+    const version = useQuery(versionQuery).data;
 
     const form = useForm({
         defaultValues: {
@@ -110,6 +112,9 @@ function Settings() {
             }}
             className="mx-auto flex max-w-xl flex-col gap-5 pb-24"
         >
+            {version && (
+                <div className="text-muted text-xs">Argus v{version}</div>
+            )}
             <section className="flex flex-col gap-3">
                 <h2 className="text-muted text-xs font-medium uppercase tracking-wide">
                     Identity

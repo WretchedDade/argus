@@ -243,6 +243,7 @@ const serverCtx = (): ServerContext => ({
     markSetupComplete: () => store.markSetupComplete(),
     installBaselineSkill,
     getNotices,
+    appVersion: APP_VERSION,
 });
 
 const session = await joinSession({
