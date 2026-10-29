@@ -8,6 +8,7 @@ import {
     type ArgusConfig,
 } from "../lib/api";
 import { BrandMark } from "./BrandMark";
+import { SegToggle } from "./SegToggle";
 import { pushToast } from "../lib/toast";
 
 const inputCls =
@@ -24,6 +25,9 @@ export function SetupGate() {
     const detected = useQuery(healthQuery).data?.poller.me ?? null;
 
     const [me, setMe] = useState(cfg?.me ?? "");
+    const [adoAuth, setAdoAuth] = useState<ArgusConfig["adoAuth"]>(
+        cfg?.adoAuth ?? "az",
+    );
     const [orgUrl, setOrgUrl] = useState(cfg?.orgUrl ?? "");
     const [orgSlug, setOrgSlug] = useState(cfg?.orgSlug ?? "");
     const [project, setProject] = useState(cfg?.project ?? "");
@@ -46,6 +50,7 @@ export function SetupGate() {
         setSaving(true);
         try {
             const { skill } = await configApi.setup({
+                adoAuth,
                 me: me.trim() || null,
                 orgUrl: orgUrl.trim(),
                 orgSlug: orgSlug.trim(),
@@ -99,6 +104,25 @@ export function SetupGate() {
                 </p>
 
                 <div className="flex flex-col gap-4">
+                    <div>
+                        <div className="text-fg mb-1 text-sm font-medium">
+                            Sign-in method
+                        </div>
+                        <SegToggle
+                            value={adoAuth}
+                            onChange={setAdoAuth}
+                            options={[
+                                { v: "az", label: "Azure CLI" },
+                                { v: "broker", label: "Windows account" },
+                            ]}
+                        />
+                        <div className="text-muted mt-1 text-xs">
+                            {adoAuth === "az"
+                                ? "Uses your az login. Run az login in a terminal if you have not."
+                                : "Windows only. Needs an Entra app registration; the next screen asks for its client and tenant IDs."}
+                        </div>
+                    </div>
+
                     <label className="block">
                         <div className="text-fg text-sm font-medium">
                             Identity

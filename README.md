@@ -55,6 +55,13 @@ then the Windows account broker.
 
 ## Install
 
+To install without building, download the ZIP from the latest GitHub Release and
+follow [docs/INSTALL.md](docs/INSTALL.md) (Windows x64). The ZIP is built when a
+maintainer pushes a tag `vX.Y.Z` that matches the version in `package.json`. To
+test the packaging locally, run `npm ci` then `node scripts/package-release.ts`.
+
+To build from source instead:
+
 1. Clone this repo, then link or place it at `~/.copilot/extensions/argus`.
 2. Build it (build output is not committed):
 
@@ -68,6 +75,27 @@ npm run build      # rebuild after source changes: vite -> dist/, esbuild -> ext
 
 Run the build from the real folder path before creating the symlink. Vite fails
 to resolve `index.html` when the project root is a symlink.
+
+## Releasing
+
+Argus uses semantic versioning. The version is in `package.json`. Only a pushed
+tag publishes a release; merges to `main` do not.
+
+1. In a PR, bump `version` in `package.json` (and the lockfile). While on `0.x`,
+   bump MINOR for features or disruptive changes, and PATCH for fixes.
+2. After the PR merges, tag the merge commit and push the tag:
+
+```powershell
+git checkout main
+git pull
+git tag v0.2.0
+git push origin v0.2.0
+```
+
+The Release workflow checks that the tag matches `package.json`, runs the checks,
+and publishes `argus-vX.Y.Z-windows.zip` on the GitHub Release. To undo a bad
+release, delete the GitHub Release and the tag (`git push origin :refs/tags/v0.2.0`),
+then tag again.
 
 ## Standalone browser preview
 
@@ -172,6 +200,7 @@ Use JSON field names, not environment variable names:
 | `recencyDays`, `retentionDays` | Numbers of days                                                                         |
 | `workStartHour`, `workEndHour` | Numeric hours, for example `9` and `17`                                                 |
 | `workDays`                     | Array of weekday numbers, Sunday=`0` through Saturday=`6`                               |
+| `checkForUpdates`              | Boolean; `false` stops the daily check for new releases                                 |
 
 For example, the JSON equivalent of `ARGUS_WORK_HOURS=9-17` and
 `ARGUS_WORK_DAYS=1-5` is:
@@ -196,8 +225,9 @@ Setup is complete only while the effective org URL, org slug, and project are se
 
 ## First run
 
-The first time you open Argus, a setup screen asks for four things:
+The first time you open Argus, a setup screen asks for five things:
 
+- **Sign-in method** — Azure CLI (default) or Windows account. See Requirements.
 - **Identity** — your Azure DevOps account. Argus detects this from `az`, so you
   can leave it blank.
 - **Org URL and slug** — for example `https://dev.azure.com/your-org` and

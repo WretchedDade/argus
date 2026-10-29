@@ -1,22 +1,44 @@
 import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Archive, Bell } from "lucide-react";
-import { api, archivableQuery } from "../lib/api";
+import { Archive, Bell, Download, RefreshCw } from "lucide-react";
+import { api, archivableQuery, noticesQuery } from "../lib/api";
 import { shortRepo } from "../lib/format";
 import { pushToast } from "../lib/toast";
 import { usePending } from "../lib/usePending";
 
-// The bell is a focused "ready to archive" queue: review sessions whose PR has
-// merged/closed with no further work. Archiving dispatches a request to chat,
-// which cleans up the finished worktree sessions in bulk.
+// The bell lists things that need attention: Argus notices (new release,
+// updated baseline skill) and review sessions whose PR has merged/closed with
+// no further work. Archiving dispatches a request to chat, which cleans up the
+// finished worktree sessions in bulk.
 export function NotificationsBell() {
     const qc = useQueryClient();
     const [open, setOpen] = useState(false);
     const { pending, run } = usePending();
 
     const archivable = useQuery(archivableQuery).data ?? [];
-    const badge = archivable.length;
+    const notices = useQuery(noticesQuery).data ?? [];
+    const badge = archivable.length + notices.length;
 
+    const act = (id: string) =>
+        run(async () => {
+            try {
+                await api.actOnNotice(id);
+                pushToast("Request sent to chat");
+                void qc.invalidateQueries({ queryKey: ["notices"] });
+                setOpen(false);
+            } catch {
+                pushToast("Couldn't send the request to chat", "error");
+            }
+        });
+
+    const dismiss = async (id: string) => {
+        try {
+            await api.dismissNotice(id);
+            void qc.invalidateQueries({ queryKey: ["notices"] });
+        } catch {
+            pushToast("Couldn't dismiss the notice", "error");
+        }
+    };
     const archive = () =>
         run(async () => {
             try {
@@ -34,7 +56,7 @@ export function NotificationsBell() {
             <button
                 type="button"
                 onClick={() => setOpen((o) => !o)}
-                aria-label="Ready to archive"
+                aria-label="Notifications"
                 className="relative text-white/80 transition-colors hover:text-white"
             >
                 <Bell size={18} />
@@ -58,26 +80,101 @@ export function NotificationsBell() {
                         onClick={() => setOpen(false)}
                     />
                     <div
-                        className="border-line text-fg absolute right-0 top-full z-50 mt-2 max-h-[70vh] w-96 overflow-hidden rounded-lg border shadow-lg"
+                        className="border-line text-fg absolute right-0 top-full z-50 mt-2 max-h-[70vh] w-96 overflow-y-auto rounded-lg border shadow-lg"
                         style={{ background: "var(--card-bg)" }}
                     >
                         <div className="border-line flex items-center justify-between border-b px-3 py-2">
                             <span className="text-sm font-semibold">
-                                Ready to archive
+                                Notifications
                             </span>
                             {badge === 0 && (
                                 <span className="text-muted text-xs">
-                                    Nothing to archive
+                                    All caught up
                                 </span>
                             )}
                         </div>
 
-                        {archivable.length === 0 ? (
+                        {badge === 0 && (
                             <p className="text-muted px-3 py-6 text-center text-sm">
-                                No finished review sessions to clean up.
+                                Nothing needs your attention.
                             </p>
-                        ) : (
-                            <div className="flex flex-col">
+                        )}
+
+                        {notices.length > 0 && (
+                            <div className="divide-line divide-y overflow-y-auto">
+                                {notices.map((n) => (
+                                    <div
+                                        key={n.id}
+                                        className="flex items-start gap-3 px-3.5 py-2.5"
+                                    >
+                                        <span
+                                            className="mt-px flex h-6 w-6 shrink-0 items-center justify-center rounded-full"
+                                            style={{
+                                                background:
+                                                    "color-mix(in srgb, var(--peacock-teal) 18%, transparent)",
+                                                color: "var(--peacock-teal)",
+                                            }}
+                                        >
+                                            {n.kind === "app-update" ? (
+                                                <Download size={12} />
+                                            ) : (
+                                                <RefreshCw size={12} />
+                                            )}
+                                        </span>
+                                        <div className="min-w-0 flex-1">
+                                            <div className="text-fg text-sm font-medium">
+                                                {n.title}
+                                            </div>
+                                            <div className="text-muted mt-1 whitespace-pre-line break-words text-xs leading-relaxed">
+                                                {n.detail}
+                                            </div>
+                                            <div className="mt-2.5 flex gap-2 text-xs">
+                                                {n.actionLabel && (
+                                                    <button
+                                                        type="button"
+                                                        onClick={() =>
+                                                            void act(n.id)
+                                                        }
+                                                        disabled={pending}
+                                                        className="rounded-md px-2.5 py-1 font-semibold text-white disabled:opacity-60"
+                                                        style={{
+                                                            background:
+                                                                "var(--peacock-teal)",
+                                                        }}
+                                                    >
+                                                        {pending
+                                                            ? "Sending…"
+                                                            : n.actionLabel}
+                                                    </button>
+                                                )}
+                                                {n.href && (
+                                                    <a
+                                                        href={n.href}
+                                                        target="_blank"
+                                                        rel="noreferrer"
+                                                        className="border-line text-muted hover:text-fg rounded-md border px-2.5 py-1 font-medium"
+                                                    >
+                                                        View release
+                                                    </a>
+                                                )}
+                                                <button
+                                                    type="button"
+                                                    onClick={() =>
+                                                        void dismiss(n.id)
+                                                    }
+                                                    className="border-line text-muted hover:text-fg rounded-md border px-2.5 py-1 font-medium"
+                                                >
+                                                    Dismiss
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+
+                        {archivable.length > 0 && (
+                            <div className="border-line flex flex-col border-t first:border-t-0">
                                 <div className="text-muted border-line border-b px-3.5 py-2.5 text-xs">
                                     {archivable.length} review session
                                     {archivable.length === 1 ? "" : "s"} from
