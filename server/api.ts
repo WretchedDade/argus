@@ -12,6 +12,7 @@ import {
     type AdoRegistration,
     setAuthProvider,
     signIn,
+    signOut,
     switchAccount,
     useBroker,
 } from "./ado/client.ts";
@@ -155,7 +156,8 @@ export async function handleApi(
 
     if (
         (route === "/api/auth/sign-in" ||
-            route === "/api/auth/switch-account") &&
+            route === "/api/auth/switch-account" ||
+            route === "/api/auth/sign-out") &&
         req.method === "POST"
     ) {
         try {
@@ -164,7 +166,9 @@ export async function handleApi(
                 200,
                 await (route === "/api/auth/sign-in"
                     ? signIn()
-                    : switchAccount()),
+                    : route === "/api/auth/sign-out"
+                      ? signOut()
+                      : switchAccount()),
             );
         } catch (error) {
             sendJson(res, 502, {
@@ -396,7 +400,10 @@ export async function handleApi(
 
     if (route === "/api/config") {
         if (req.method === "POST") {
-            const config = ctx.saveConfig(await readJsonBody(req));
+            const config = ctx.saveConfig({
+                ...ctx.store.getConfigOverrides(),
+                ...(await readJsonBody(req)),
+            });
             setAuthProvider(config.adoAuth);
             sendJson(res, 200, { config });
         } else sendJson(res, 200, { config: ctx.getConfig() });

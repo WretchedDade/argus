@@ -463,6 +463,16 @@ export class AdoAuth {
         }
     }
 
+    // Forget the stored account. The Windows account itself is not touched.
+    async signOut(): Promise<AuthStatus> {
+        fs.rmSync(this.accountStorePath, { force: true });
+        this.currentAccount = null;
+        this.brokerRecord = null;
+        this.lastError = null;
+        this.needsInteraction = false;
+        return this.status();
+    }
+
     async signIn(selectAccount = false): Promise<AuthStatus> {
         if (!this.configured) {
             throw new AuthConfigurationError(

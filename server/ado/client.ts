@@ -147,6 +147,11 @@ async function brokerSignIn(selectAccount: boolean): Promise<AdoAuthStatus> {
 }
 export const signIn = () => brokerSignIn(false);
 export const switchAccount = () => brokerSignIn(true);
+export async function signOut(): Promise<AdoAuthStatus> {
+    if (!useBroker())
+        throw new Error("Sign-out only applies to Windows account sign-in.");
+    return { ...(await (await broker()).auth.signOut()), provider: "broker" };
+}
 
 async function azJson<T>(args: string[]): Promise<T | null> {
     try {

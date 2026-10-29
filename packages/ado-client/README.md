@@ -1,6 +1,6 @@
 # Shared Azure DevOps authentication
 
-Argus and Athena use this package for Azure DevOps authentication and REST calls. It uses the official Azure Identity broker plugin to authenticate through Windows Web Account Manager (WAM). The extensions do not use Azure CLI credentials.
+Argus and Athena use this package for Azure DevOps authentication and REST calls. It uses the official Azure Identity broker plugin to authenticate through Windows Web Account Manager (WAM). Token acquisition first tries a silent Azure CLI or default credential, then the broker.
 
 ## Microsoft Entra app registration
 

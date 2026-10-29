@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { LogIn, UserRound } from "lucide-react";
+import { LogIn } from "lucide-react";
 import { api, healthQuery } from "../lib/api";
 
 export function AuthControl() {
@@ -7,7 +7,7 @@ export function AuthControl() {
     const health = useQuery(healthQuery);
     const auth = health.data?.auth;
     const action = useMutation({
-        mutationFn: () => (auth?.account ? api.switchAccount() : api.signIn()),
+        mutationFn: () => api.signIn(),
         onSuccess: async () => {
             await qc.invalidateQueries();
         },
@@ -25,20 +25,8 @@ export function AuthControl() {
         );
     }
 
-    if (auth.account && !auth.interactionRequired) {
-        return (
-            <button
-                type="button"
-                onClick={() => action.mutate()}
-                disabled={action.isPending}
-                className="flex items-center gap-1.5 rounded-full border border-white/25 px-2 py-0.5 text-xs text-white/85 hover:bg-white/10 disabled:opacity-60"
-                title="Switch Azure DevOps account"
-            >
-                <UserRound size={13} />
-                {auth.account.username}
-            </button>
-        );
-    }
+    // Signed in: nothing to show here. Account actions live in Settings.
+    if (auth.account && !auth.interactionRequired) return null;
 
     return (
         <span className="flex items-center gap-2">

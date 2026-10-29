@@ -8,7 +8,10 @@ import {
     type ArgusConfig,
     type Period,
 } from "../lib/api";
-import { RegistrationShare } from "../components/AuthRegistration";
+import {
+    AccountPanel,
+    RegistrationShare,
+} from "../components/AuthRegistration";
 import { SegToggle } from "../components/SegToggle";
 import { TeamMultiSelect } from "../components/TeamMultiSelect";
 import { TeamLabelEditor } from "../components/TeamLabelEditor";
@@ -137,6 +140,7 @@ function Settings() {
                         </div>
                     )}
                 </form.Field>
+                <AccountPanel />
                 <RegistrationShare />
                 <form.Field name="me">
                     {(field) => (

@@ -398,6 +398,7 @@ export const api = {
     },
     signIn: () => postAuth("/api/auth/sign-in"),
     switchAccount: () => postAuth("/api/auth/switch-account"),
+    signOut: () => postAuth("/api/auth/sign-out"),
     activity: (limit = 100) =>
         getJson<{ entries: ActivityEntry[] }>(
             `/api/activity?limit=${limit}`,

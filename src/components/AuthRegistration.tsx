@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { api, type AuthRegistration } from "../lib/api";
+import { api, healthQuery, type AuthRegistration } from "../lib/api";
 import { pushToast } from "../lib/toast";
 
 const asJson = (r: AuthRegistration) =>
@@ -85,6 +85,55 @@ export function RegistrationImport() {
             >
                 Save setup
             </button>
+        </div>
+    );
+}
+
+// Settings: who is signed in (Windows account mode), with switch and sign-out.
+export function AccountPanel() {
+    const qc = useQueryClient();
+    const auth = useQuery(healthQuery).data?.auth;
+    const act = useMutation({
+        mutationFn: (kind: "switch" | "out") =>
+            kind === "out" ? api.signOut() : api.switchAccount(),
+        onSettled: () => qc.invalidateQueries(),
+    });
+    if (!auth?.configured) return null;
+    const btn =
+        "border-line rounded-md border px-3 py-1 text-xs disabled:opacity-50";
+    return (
+        <div>
+            <div className="text-fg text-sm font-medium">Account</div>
+            <div className="text-muted mt-1 text-xs">
+                {auth.account
+                    ? `Signed in as ${auth.account.username}`
+                    : "Not signed in"}
+            </div>
+            {auth.account && (
+                <div className="mt-2 flex gap-2">
+                    <button
+                        type="button"
+                        className={btn}
+                        disabled={act.isPending}
+                        onClick={() => act.mutate("switch")}
+                    >
+                        Switch account
+                    </button>
+                    <button
+                        type="button"
+                        className={btn}
+                        disabled={act.isPending}
+                        onClick={() => act.mutate("out")}
+                    >
+                        Sign out
+                    </button>
+                </div>
+            )}
+            {act.error && (
+                <p className="mt-1 text-xs text-red-500" role="alert">
+                    {(act.error as Error).message}
+                </p>
+            )}
         </div>
     );
 }
