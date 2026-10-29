@@ -84,7 +84,19 @@ type Broker = {
     rest: import("@devstart/ado-client").AdoRestClient;
 };
 let brokerPromise: Promise<Broker> | null = null;
+let registrationStamp = -1;
 function broker(): Promise<Broker> {
+    // Another Argus host may have saved a new registration.
+    let stamp = -1;
+    try {
+        stamp = fs.statSync(registrationPath()).mtimeMs;
+    } catch {
+        // no registration file
+    }
+    if (stamp !== registrationStamp) {
+        registrationStamp = stamp;
+        brokerPromise = null;
+    }
     brokerPromise ??= import("@devstart/ado-client").then((m) => {
         const auth = m.createAdoAuth();
         return { auth, rest: new m.AdoRestClient(auth) };
@@ -304,14 +316,16 @@ export async function prChangedFileCount(
 }
 
 // Targeted read for a PR that dropped off the active list (to catch merge/abandon).
+// Org-wide on purpose (like `az repos pr show`): the stored PR may belong to a
+// project other than the currently configured one.
 export function showPr(
     id: number,
     org: string,
-    project: string,
+    _project?: string,
 ): Promise<AdoRawPr | null> {
     if (useBroker())
         return restJson<AdoRawPr>(
-            `${orgRoot(org)}/${enc(project)}/_apis/git/pullrequests/${id}?api-version=7.1`,
+            `${orgRoot(org)}/_apis/git/pullrequests/${id}?api-version=7.1`,
         );
     return azJson<AdoRawPr>([
         "repos",
@@ -332,7 +346,7 @@ export interface PolicyEval {
 }
 export function listPrPolicies(
     org: string,
-    project: string,
+    _project: string,
     projectId: string,
     id: number,
 ): Promise<PolicyEval[] | null> {
@@ -341,7 +355,7 @@ export function listPrPolicies(
             throw new AdoError("PR has no project id for policy lookup.");
         const artifactId = `vstfs:///CodeReview/CodeReviewId/${projectId}/${id}`;
         return restJson<{ value?: PolicyEval[] }>(
-            `${orgRoot(org)}/${enc(project)}/_apis/policy/evaluations?artifactId=${enc(artifactId)}&api-version=7.1-preview.1`,
+            `${orgRoot(org)}/${enc(projectId)}/_apis/policy/evaluations?artifactId=${enc(artifactId)}&api-version=7.1-preview.1`,
         ).then((j) => j.value ?? []);
     }
     return azJson<PolicyEval[]>([
@@ -392,7 +406,7 @@ export function fetchPrThreads(
 ): Promise<PrThread[]> {
     if (useBroker())
         return restJson<{ value?: PrThread[] }>(
-            `${orgRoot(orgUrl)}/${enc(project)}/_apis/git/repositories/${enc(repoId)}/pullRequests/${prId}/threads?api-version=7.1`,
+            `${orgRoot(orgUrl)}/_apis/git/repositories/${enc(repoId)}/pullRequests/${prId}/threads?api-version=7.1`,
         ).then((j) => j.value ?? []);
     return azJson<{ value?: PrThread[] }>([
         "devops",

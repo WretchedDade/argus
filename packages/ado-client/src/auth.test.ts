@@ -81,6 +81,62 @@ test("uses the selected broker account instead of developer credentials", async 
     fs.rmSync(dir, { recursive: true, force: true });
 });
 
+test("rejects a silent credential that is not a user account", async (t) => {
+    const { auth, dir } = testAuth(mockCredential(), {
+        getToken: async () => ({ token: "service-principal-token" }),
+    });
+    t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+    await assert.rejects(auth.getAccessToken(), AuthInteractionRequiredError);
+    const status = await auth.signIn();
+    assert.equal(status.account?.homeAccountId, account.homeAccountId);
+});
+
+test("drops a token request that finishes after sign-out", async (t) => {
+    const payload = Buffer.from(
+        JSON.stringify({ oid: "o", tid: "tenant", upn: "user@microsoft.com" }),
+    ).toString("base64url");
+    let release: () => void = () => {};
+    const gate = new Promise<void>((resolve) => (release = resolve));
+    const { auth, dir } = testAuth(mockCredential(), {
+        getToken: async () => {
+            await gate;
+            return { token: `header.${payload}.signature` };
+        },
+    });
+    t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+    const pending = assert.rejects(
+        auth.getAccessToken(),
+        AuthInteractionRequiredError,
+    );
+    await auth.signOut();
+    release();
+    await pending;
+    assert.equal(fs.existsSync(path.join(dir, "account.json")), false);
+});
+
+test("ignores a stored account from a different app registration", async (t) => {
+    const first = testAuth();
+    t.after(() => fs.rmSync(first.dir, { recursive: true, force: true }));
+    await first.auth.signIn();
+    const other = new AdoAuth({
+        clientId: "other-client",
+        tenantId: "tenant",
+        platform: "win32",
+        accountStorePath: path.join(first.dir, "account.json"),
+        credentialFactory: () => mockCredential(),
+    });
+    assert.equal((await other.status()).account, null);
+});
+
+test("picks up a sign-out done by another host", async (t) => {
+    const { auth, dir } = testAuth();
+    t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+    await auth.signIn();
+    fs.rmSync(path.join(dir, "account.json"));
+    assert.equal((await auth.status()).account, null);
+    await assert.rejects(auth.getAccessToken(), AuthInteractionRequiredError);
+});
+
 test("reports missing app registration configuration", async () => {
     const auth = new AdoAuth({
         platform: "win32",

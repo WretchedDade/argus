@@ -268,6 +268,8 @@ export class AdoAuth {
     private lastError: string | null = null;
     private needsInteraction = false;
     private signedOut = false;
+    private storeStamp = -1; // mtime of the shared account file when last read or written
+    private epoch = 0; // bumps on sign-in/out so in-flight token requests can be discarded
     private currentAccount: AuthAccount | null = null;
     private brokerRecord: AuthenticationRecord | null = null;
 
@@ -319,13 +321,26 @@ export class AdoAuth {
                 raw.account?.homeAccountId &&
                 raw.account.username
             ) {
+                const record = raw.brokerRecord;
+                if (
+                    record &&
+                    this.clientId &&
+                    record.clientId !== this.clientId
+                )
+                    return null;
+                if (
+                    record &&
+                    this.tenantId &&
+                    record.tenantId !== this.tenantId
+                )
+                    return null;
                 return {
                     account: {
                         homeAccountId: raw.account.homeAccountId,
                         username: raw.account.username,
                         name: raw.account.name ?? null,
                     },
-                    brokerRecord: raw.brokerRecord,
+                    brokerRecord: record,
                 };
             }
             if (
@@ -353,11 +368,40 @@ export class AdoAuth {
         }
     }
 
+    private statStore(): number {
+        try {
+            return fs.statSync(this.accountStorePath).mtimeMs;
+        } catch {
+            return -1;
+        }
+    }
+
+    // Other Argus hosts share the account file. Pick up their sign-in, switch or sign-out.
+    private syncFromDisk(): void {
+        const stamp = this.statStore();
+        if (stamp === this.storeStamp) return;
+        this.storeStamp = stamp;
+        const stored = stamp === -1 ? null : this.readStoredAuth();
+        const changed =
+            stored?.account.homeAccountId !==
+                this.currentAccount?.homeAccountId ||
+            stored?.brokerRecord?.homeAccountId !==
+                this.brokerRecord?.homeAccountId;
+        if (!changed) return;
+        this.currentAccount = stored?.account ?? null;
+        this.brokerRecord = stored?.brokerRecord ?? null;
+        this.signedOut = !stored;
+        this.lastError = null;
+        this.needsInteraction = false;
+        this.epoch++;
+    }
+
     private writeStoredAuth(stored: StoredAuth): void {
         fs.mkdirSync(path.dirname(this.accountStorePath), { recursive: true });
         const tmp = `${this.accountStorePath}.${process.pid}.tmp`;
         fs.writeFileSync(tmp, `${JSON.stringify(stored, null, 2)}\n`, "utf8");
         fs.renameSync(tmp, this.accountStorePath);
+        this.storeStamp = this.statStore();
     }
 
     private credential(selectAccount: boolean): BrokerCredential {
@@ -390,6 +434,7 @@ export class AdoAuth {
     }
 
     async status(): Promise<AuthStatus> {
+        this.syncFromDisk();
         if (!this.configured) {
             return {
                 configured: false,
@@ -435,7 +480,9 @@ export class AdoAuth {
                 "Windows Web Account Manager is not available.",
             );
         }
+        this.syncFromDisk();
         if (this.signedOut) throw new AuthInteractionRequiredError();
+        const epoch = this.epoch;
         try {
             // A selected broker account wins; developer credentials are only the fallback.
             const result = this.brokerRecord
@@ -444,11 +491,21 @@ export class AdoAuth {
                       this.tenantId,
                   )).getToken(ADO_SCOPES);
             if (!result?.token) throw new AuthInteractionRequiredError();
-            if (!this.brokerRecord) this.rememberAccessToken(result.token);
+            // Sign-out or sign-in ran while this request was waiting: drop the result.
+            if (epoch !== this.epoch) throw new AuthInteractionRequiredError();
+            if (!this.brokerRecord) {
+                // Silent tokens must belong to a user, or Sign in would never reach WAM.
+                if (!accountFromAccessToken(result.token))
+                    throw new AuthInteractionRequiredError(
+                        "The developer credential is not a user account.",
+                    );
+                this.rememberAccessToken(result.token);
+            }
             this.lastError = null;
             this.needsInteraction = false;
             return result.token;
         } catch (error) {
+            if (epoch !== this.epoch) throw new AuthInteractionRequiredError();
             this.lastError = isInteractionRequired(error)
                 ? "Your Azure DevOps session needs attention."
                 : error instanceof Error
@@ -463,11 +520,13 @@ export class AdoAuth {
     // Stay signed out until signIn(), even if developer credentials still work.
     async signOut(): Promise<AuthStatus> {
         fs.rmSync(this.accountStorePath, { force: true });
+        this.storeStamp = -1;
         this.currentAccount = null;
         this.brokerRecord = null;
         this.lastError = null;
         this.needsInteraction = false;
         this.signedOut = true;
+        this.epoch++;
         return this.status();
     }
 
@@ -519,6 +578,7 @@ export class AdoAuth {
         this.lastError = null;
         this.needsInteraction = false;
         this.signedOut = false;
+        this.epoch++;
         return this.status();
     }
 
