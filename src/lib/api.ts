@@ -20,6 +20,7 @@ export interface Notice {
     title: string;
     detail: string;
     href?: string;
+    actionLabel?: string;
 }
 
 export interface ArchivableSession {
@@ -500,6 +501,14 @@ export const api = {
     changes: () => getJson<ChangeFeed>("/api/changes"),
     notices: () =>
         getJson<{ notices: Notice[] }>("/api/notices").then((r) => r.notices),
+    actOnNotice: async (id: string): Promise<void> => {
+        const res = await fetch("/api/notices/act", {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ id }),
+        });
+        if (!res.ok) throw new Error(`notices/act -> ${res.status}`);
+    },
     dismissNotice: async (id: string): Promise<void> => {
         const res = await fetch("/api/notices/dismiss", {
             method: "POST",

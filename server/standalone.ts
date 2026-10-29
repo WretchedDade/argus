@@ -96,6 +96,7 @@ const ctx: ServerContext = {
             appVersion: APP_VERSION,
             release: latestRelease,
             checkForUpdates: getConfig().checkForUpdates,
+            installDir: root,
             skill: process.env.ARGUS_FAKE_SKILL_UPDATE
                 ? {
                       bundledHash: "fake",

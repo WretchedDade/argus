@@ -520,10 +520,23 @@ export async function handleApi(
 
     if (route === "/api/notices" && req.method === "GET") {
         const dismissed = new Set(ctx.store.getDismissedNotices());
-        const notices = (ctx.getNotices?.() ?? []).filter(
-            (n) => !dismissed.has(n.id),
-        );
+        const notices = (ctx.getNotices?.() ?? [])
+            .filter((n) => !dismissed.has(n.id))
+            .map(({ prompt: _prompt, ...rest }) => rest);
         sendJson(res, 200, { notices });
+        return true;
+    }
+
+    if (route === "/api/notices/act" && req.method === "POST") {
+        const body = (await readJsonBody(req)) as { id?: unknown };
+        const notice = (ctx.getNotices?.() ?? []).find((n) => n.id === body.id);
+        if (!notice?.prompt) {
+            sendJson(res, 404, { error: "no action for that notice" });
+            return true;
+        }
+        await ctx.dispatch(notice.prompt);
+        ctx.store.dismissNotice(notice.id);
+        sendJson(res, 200, { ok: true });
         return true;
     }
 

@@ -19,6 +19,18 @@ export function NotificationsBell() {
     const notices = useQuery(noticesQuery).data ?? [];
     const badge = archivable.length + notices.length;
 
+    const act = (id: string) =>
+        run(async () => {
+            try {
+                await api.actOnNotice(id);
+                pushToast("Request sent to chat");
+                void qc.invalidateQueries({ queryKey: ["notices"] });
+                setOpen(false);
+            } catch {
+                pushToast("Couldn't send the request to chat", "error");
+            }
+        });
+
     const dismiss = async (id: string) => {
         try {
             await api.dismissNotice(id);
@@ -117,16 +129,30 @@ export function NotificationsBell() {
                                                 {n.detail}
                                             </div>
                                             <div className="mt-2.5 flex gap-2 text-xs">
+                                                {n.actionLabel && (
+                                                    <button
+                                                        type="button"
+                                                        onClick={() =>
+                                                            void act(n.id)
+                                                        }
+                                                        disabled={pending}
+                                                        className="rounded-md px-2.5 py-1 font-semibold text-white disabled:opacity-60"
+                                                        style={{
+                                                            background:
+                                                                "var(--peacock-teal)",
+                                                        }}
+                                                    >
+                                                        {pending
+                                                            ? "Sending…"
+                                                            : n.actionLabel}
+                                                    </button>
+                                                )}
                                                 {n.href && (
                                                     <a
                                                         href={n.href}
                                                         target="_blank"
                                                         rel="noreferrer"
-                                                        className="rounded-md px-2.5 py-1 font-semibold text-white"
-                                                        style={{
-                                                            background:
-                                                                "var(--peacock-teal)",
-                                                        }}
+                                                        className="border-line text-muted hover:text-fg rounded-md border px-2.5 py-1 font-medium"
                                                     >
                                                         View release
                                                     </a>

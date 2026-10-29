@@ -2,7 +2,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { existsSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
-import { installSkill, syncSkill } from "./skill-sync.ts";
+import { acknowledgeSkill, installSkill, syncSkill } from "./skill-sync.ts";
 import { fetchLatestRelease, type ReleaseInfo } from "./update-check.ts";
 import { buildNotices, type Notice } from "./notices.ts";
 import { joinSession, createCanvas } from "@github/copilot-sdk/extension";
@@ -194,6 +194,7 @@ function getNotices(): Notice[] {
         appVersion: APP_VERSION,
         release: latestRelease,
         checkForUpdates: getConfig().checkForUpdates,
+        installDir: __dirname,
         skill: pendingSkillHash
             ? {
                   bundledHash: pendingSkillHash,
@@ -235,6 +236,21 @@ const session = await joinSession({
                 additionalProperties: false,
             },
             actions: [
+                {
+                    name: "acknowledgeSkillMerge",
+                    description:
+                        "Call after you merged the bundled pr-review skill into the installed one. Clears the skill-update notice.",
+                    inputSchema: {
+                        type: "object",
+                        properties: {},
+                        additionalProperties: false,
+                    },
+                    handler: async () => {
+                        acknowledgeSkill(BUNDLED_SKILL, INSTALLED_SKILL);
+                        pendingSkillHash = null;
+                        return { ok: true };
+                    },
+                },
                 {
                     name: "linkReviewSession",
                     description:

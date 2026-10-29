@@ -73,6 +73,12 @@ function readSidecar(dest: string): Sidecar | null {
     }
 }
 
+// Record the current bundled and installed hashes, so a skill the user merged
+// by hand stops showing as pending.
+export function acknowledgeSkill(src: string, dest: string): void {
+    writeSidecar(src, dest);
+}
+
 // Copy the bundled skill into place and record its hashes.
 export function installSkill(src: string, dest: string): void {
     cpSync(src, dest, { recursive: true });

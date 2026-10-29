@@ -47,8 +47,13 @@ const base = {
     appVersion: "0.1.0",
     release,
     checkForUpdates: true,
+    installDir: "C:\\ext",
     skill: null,
 };
+const update = buildNotices(base)[0];
+assert.equal(update.actionLabel, "Update with Copilot");
+assert.match(update.prompt ?? "", /argus-v0\.2\.0-windows\.zip/);
+assert.match(update.prompt ?? "", /C:\\ext/);
 assert.deepEqual(
     buildNotices(base).map((n) => n.id),
     ["app-update:0.2.0"],

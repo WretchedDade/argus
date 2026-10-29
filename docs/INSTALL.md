@@ -62,22 +62,11 @@ Enter your Azure DevOps org URL, org slug, and project, and choose a sign-in met
 
 ## Upgrade
 
-1. Extract the new ZIP.
-2. Copy the new `extension` folder over the installed folder. Do not delete the installed folder first. These files are not in the ZIP, so the copy keeps them:
-    - `argus.config.json`, your local config.
-    - The SQLite database, which is stored outside the extension folder by default.
-3. Reload extensions.
+Once a day, Argus checks GitHub for a new release. When one exists, the bell shows a notice. Select **Update with Copilot**. Copilot downloads the ZIP, copies it over your install, merges your edited `pr-review` skill if needed, and asks you to reload extensions. To stop the check, clear **Check for new versions** in Settings. Argus sends no data about you.
 
-If you set `ARGUS_DB_FILE` to a path inside the extension folder, back that file up before you upgrade.
+To upgrade by hand, extract the new ZIP and copy its `extension` folder over the installed folder. Do not delete the installed folder first. Your `argus.config.json` and database are not in the ZIP, so the copy keeps them. Then reload extensions.
 
-The first-run offer never replaces an existing `pr-review` skill that you wrote yourself. A skill that Argus installed is handled when Argus starts:
-
-- If you did not edit it, Argus updates it to the new bundled version.
-- If you edited it, Argus leaves it as it is and adds a notice to the bell. Compare `extension\skills\pr-review` with your installed copy and merge the changes you want. Dismiss the notice when done.
-
-### Update notices
-
-Once a day, Argus asks GitHub for the latest release. If it is newer than your version, the bell shows a notice with a link to the release page. To turn this off, clear **Check for new versions** in Settings, or set `"checkForUpdates": false` in `argus.config.json`. Argus sends no data about you in this request.
+An unedited `pr-review` skill that Argus installed updates by itself. If you edited it, Argus leaves it and shows a notice with **Merge with Copilot**.
 
 ## Uninstall
 
