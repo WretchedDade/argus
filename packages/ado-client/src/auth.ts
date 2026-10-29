@@ -160,7 +160,6 @@ function createBrokerCredential(
 }
 
 function createSilentCredential(tenantId: string): SilentCredential {
-    ensureBrokerRegistered();
     return new ChainedTokenCredential(
         new AzureCliCredential({ tenantId, processTimeoutInMs: 10_000 }),
         new DefaultAzureCredential({ tenantId, processTimeoutInMs: 10_000 }),
