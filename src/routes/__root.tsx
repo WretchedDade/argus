@@ -34,7 +34,6 @@ const tabs = [
 // Secondary views grouped under one dropdown to keep the primary nav lean.
 const menuTabs = [
     { to: "/insights", label: "Insights" },
-    { to: "/deploys", label: "Deploys" },
     { to: "/recap", label: "Recap" },
     { to: "/activity", label: "Activity" },
 ] as const;

@@ -573,39 +573,9 @@ export interface PrEvent {
     payload: Record<string, unknown> | null;
 }
 
-export interface DeployEnv {
-    state: string | null;
-    result: string | null;
-    finishedAt: string | null;
-}
-
-export interface PrDeploy {
-    found: boolean;
-    reason: "no-pipeline" | "no-build" | null;
-    buildId: number | null;
-    buildNumber: string | null;
-    buildUrl: string | null;
-    dev: DeployEnv | null;
-    ppe: DeployEnv | null;
-    prod: DeployEnv | null;
-    terminal: boolean;
-}
-
-export interface DeployTimelinePr {
-    canonical: string;
-    repo: string;
-    number: number;
-    title: string;
-    author: string | null;
-    mine: boolean;
-    mergedAt: string;
-    deploy: PrDeploy;
-}
-
 export interface PrDetail {
     pr: Pr | null;
     events: PrEvent[];
-    deploy: PrDeploy | null;
 }
 
 export const prDetailQuery = (canonical: string) =>
@@ -617,15 +587,6 @@ export const prDetailQuery = (canonical: string) =>
             ),
         refetchInterval: 10_000,
     });
-
-export const deploysQuery = queryOptions({
-    queryKey: ["deploys"],
-    queryFn: () =>
-        getJson<{ window: number; timeline: DeployTimelinePr[] }>(
-            "/api/deploys",
-        ),
-    refetchInterval: 30_000,
-});
 
 export interface Period {
     label: string;
@@ -644,8 +605,6 @@ export interface ArgusConfig {
     teamLabels: Record<string, string>;
     periods: Period[];
     reviewSkillName: string;
-    deployWindowDays: number;
-    repoPipelines: Record<string, number>;
     recencyDays: number;
     retentionDays: number;
     workStartHour: number;

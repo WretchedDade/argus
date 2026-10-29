@@ -22,8 +22,6 @@ export interface ArgusConfig {
     teamLabels: Record<string, string>; // seen team display name -> friendly label
     periods: Period[]; // named context bands for the load chart
     reviewSkillName: string; // the skill the Review buttons tell the agent to run
-    deployWindowDays: number; // how many days of merged PRs the deploy timeline shows
-    repoPipelines: Record<string, number>; // repo name -> build definition id (for deploy tracking)
     recencyDays: number;
     retentionDays: number;
     workStartHour: number;
@@ -85,9 +83,6 @@ const localConfigValidators: Record<
                 isString(period.end),
         ),
     reviewSkillName: isString,
-    deployWindowDays: isNumber,
-    repoPipelines: (value) =>
-        isRecord(value) && Object.values(value).every(isNumber),
     recencyDays: isNumber,
     retentionDays: isNumber,
     workStartHour: isNumber,
@@ -136,10 +131,6 @@ export function defaultConfig(): ArgusConfig {
         teamLabels: {},
         periods: [],
         reviewSkillName: process.env.ARGUS_REVIEW_SKILL ?? "pr-review",
-        deployWindowDays: Number(process.env.ARGUS_DEPLOY_WINDOW_DAYS ?? 14),
-        // Repo name -> build pipeline definition id, for deploy tracking. Set it in
-        // argus.config.json.
-        repoPipelines: {},
         recencyDays: Number(process.env.ARGUS_RECENCY_DAYS ?? 7),
         retentionDays: Number(process.env.ARGUS_LOG_RETENTION_DAYS ?? 2),
         workStartHour: startHour,

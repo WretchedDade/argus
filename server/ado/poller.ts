@@ -14,7 +14,6 @@ import {
 import { classifyOwnership } from "./ownership.ts";
 import { normalizePr } from "./normalize.ts";
 import { fetchAuthorMeta } from "./authorMeta.ts";
-import { resolveDeploy } from "./pipelines.ts";
 import { reconcile } from "./reconcile.ts";
 import type { CurrentPr } from "./types.ts";
 
@@ -271,49 +270,6 @@ async function runReconcile(
         // Archivable sessions are computed directly from store state (closed PR +
         // linked session) in getArchivable(), so nothing to record here.
 
-        // Deploy tracking: backfill merge commits for merged-in-window PRs that predate
-        // the feature, then resolve where merged PRs have shipped (bounded per cycle;
-        // terminal results are cached, non-terminal re-resolve until prod finishes).
-        const deployRepos = Object.keys(cfg.repoPipelines);
-        const needMerge = ctx.store.prsNeedingMergeInfo(
-            cfg.deployWindowDays,
-            deployRepos,
-        );
-        for (const p of needMerge) {
-            const raw = await showPr(p.number, cfg.orgUrl, cfg.project);
-            if (raw?.lastMergeCommit?.commitId)
-                ctx.store.setMergeInfo(
-                    p.canonical,
-                    raw.lastMergeCommit.commitId,
-                    raw.closedDate ?? null,
-                );
-        }
-        const needDeploy = ctx.store.prsNeedingDeploy(
-            cfg.deployWindowDays,
-            deployRepos,
-        );
-        if (needDeploy.length) {
-            note(
-                "info",
-                `resolving deploys for ${needDeploy.length} merged PR(s)`,
-            );
-            for (const p of needDeploy) {
-                try {
-                    const deploy = await resolveDeploy(
-                        cfg.orgSlug,
-                        p.project,
-                        cfg.repoPipelines,
-                        p.repo,
-                        p.mergeCommit,
-                        Date.parse(p.mergedAt),
-                    );
-                    ctx.store.setDeploy(p.canonical, deploy);
-                } catch {
-                    /* retry next cycle */
-                }
-            }
-        }
-
         const tracked = ctx.store.countTracked();
         note("info", `queue now ${tracked} tracked`);
         lastSummary = { mine: mine.length, tracked, ...applied, closed };
@@ -360,15 +316,6 @@ async function closeDeparted(
         if (pr && (pr.status === "completed" || pr.status === "abandoned")) {
             const rec = store.getPr(canonical);
             store.markClosed(canonical, pr.status, undefined, runId);
-            // Capture the merge commit + real merge time so the deploy tracker can pin
-            // the exact build and bound the search to the actual merge moment.
-            if (pr.status === "completed" && pr.lastMergeCommit?.commitId) {
-                store.setMergeInfo(
-                    canonical,
-                    pr.lastMergeCommit.commitId,
-                    pr.closedDate ?? null,
-                );
-            }
             closed += 1;
             if (rec?.reviewSessionId) {
                 archivable.push({

@@ -116,7 +116,6 @@ try {
             { workDays: ["Monday"] },
             { teamPatterns: [3] },
             { teamLabels: { team: 3 } },
-            { repoPipelines: { repo: "123" } },
             { periods: [null] },
             { periods: [{ label: "Week", start: 3, end: "2026-10-28" }] },
             { orgUrl: null },
@@ -147,7 +146,6 @@ try {
         teamLabels: { team: "example" },
         workDays: [1, 2, 3, 4, 5],
         periods: [{ label: "Week", start: "2026-10-26", end: "2026-10-30" }],
-        repoPipelines: { repo: 123 },
     };
     writeFileSync(file, JSON.stringify({ ...overrides, unknownSetting: true }));
     assert.deepEqual(loadLocalConfig(file), overrides);

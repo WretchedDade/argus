@@ -5,8 +5,5 @@
     "teamPatterns": ["*Your Team Name*"],
     "teamLabels": {
         "[TEAM FOUNDATION]\\Your Team Name": "my team"
-    },
-    "repoPipelines": {
-        "Your.Repo": 1234
     }
 }

@@ -161,18 +161,17 @@ Copy-Item argus.config.example.json argus.config.json
 
 Use JSON field names, not environment variable names:
 
-| JSON fields                                        | Value                                                                                   |
-| -------------------------------------------------- | --------------------------------------------------------------------------------------- |
-| `orgUrl`, `orgSlug`, `project`                     | Strings identifying the Azure DevOps organization and project                           |
-| `me`                                               | Identity string, or `null` to detect the identity from `az`                             |
-| `avatarUrl`, `reviewSkillName`                     | Strings for the custom avatar URL and review skill name                                 |
-| `teamPatterns`                                     | Array of reviewer-group glob strings                                                    |
-| `teamLabels`                                       | Object mapping reviewer-group names to short label strings                              |
-| `repoPipelines`                                    | Object mapping repo names to numeric build pipeline definition IDs                      |
-| `periods`                                          | Array of objects with string fields `label`, `start`, and `end`; dates use `YYYY-MM-DD` |
-| `deployWindowDays`, `recencyDays`, `retentionDays` | Numbers of days                                                                         |
-| `workStartHour`, `workEndHour`                     | Numeric hours, for example `9` and `17`                                                 |
-| `workDays`                                         | Array of weekday numbers, Sunday=`0` through Saturday=`6`                               |
+| JSON fields                    | Value                                                                                   |
+| ------------------------------ | --------------------------------------------------------------------------------------- |
+| `orgUrl`, `orgSlug`, `project` | Strings identifying the Azure DevOps organization and project                           |
+| `me`                           | Identity string, or `null` to detect the identity from `az`                             |
+| `avatarUrl`, `reviewSkillName` | Strings for the custom avatar URL and review skill name                                 |
+| `teamPatterns`                 | Array of reviewer-group glob strings                                                    |
+| `teamLabels`                   | Object mapping reviewer-group names to short label strings                              |
+| `periods`                      | Array of objects with string fields `label`, `start`, and `end`; dates use `YYYY-MM-DD` |
+| `recencyDays`, `retentionDays` | Numbers of days                                                                         |
+| `workStartHour`, `workEndHour` | Numeric hours, for example `9` and `17`                                                 |
+| `workDays`                     | Array of weekday numbers, Sunday=`0` through Saturday=`6`                               |
 
 For example, the JSON equivalent of `ARGUS_WORK_HOURS=9-17` and
 `ARGUS_WORK_DAYS=1-5` is:
