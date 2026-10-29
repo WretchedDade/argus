@@ -515,6 +515,7 @@ export const api = {
         updateAvailable: boolean;
     }> => {
         const res = await fetch("/api/notices/check", { method: "POST" });
+        if (res.status === 409) throw new Error("off");
         if (!res.ok) throw new Error(`notices/check -> ${res.status}`);
         return res.json();
     },

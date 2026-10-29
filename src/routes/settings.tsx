@@ -69,8 +69,13 @@ function Settings() {
                 pushToast(`Version ${r.latest} is available. See the bell.`);
             else pushToast("You're up to date");
             void qc.invalidateQueries({ queryKey: ["notices"] });
-        } catch {
-            pushToast("Couldn't check for updates", "error");
+        } catch (err) {
+            pushToast(
+                (err as Error).message === "off"
+                    ? "Update checks are turned off"
+                    : "Couldn't check for updates",
+                "error",
+            );
         } finally {
             setChecking(false);
         }

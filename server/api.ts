@@ -545,7 +545,16 @@ export async function handleApi(
             sendJson(res, 501, { error: "Update check is not available." });
             return true;
         }
-        sendJson(res, 200, await ctx.checkForUpdatesNow());
+        if (!ctx.getConfig().checkForUpdates) {
+            sendJson(res, 409, { error: "Update checks are turned off." });
+            return true;
+        }
+        const result = await ctx.checkForUpdatesNow();
+        // A manual check brings back a notice the user dismissed earlier.
+        if (result.updateAvailable && result.latest) {
+            ctx.store.restoreNotice(`app-update:${result.latest}`);
+        }
+        sendJson(res, 200, result);
         return true;
     }
 
