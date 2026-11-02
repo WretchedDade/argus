@@ -127,11 +127,12 @@ related code so a finding is grounded, not guessed.
 ## Phase 3 — Record the verdict to Argus
 
 Once the review has concluded and the vote is cast, record the outcome yourself
-with a headless HTTP POST to Argus's fixed ingest port (48100). No canvas is
-needed.
+with a headless HTTP POST to Argus's ingest endpoint. Use the exact ingest URL
+from the prompt that started this review (`<ingest-url>` below); do not assume a
+port. No canvas is needed.
 
 ```
-Invoke-RestMethod -Method Post -Uri http://127.0.0.1:48100/api/pr/record-review `
+Invoke-RestMethod -Method Post -Uri <ingest-url> `
   -ContentType application/json `
   -Body '{"canonical":"<pr-url>","verdict":"<approved|suggestions|waiting|rejected>"}'
 ```

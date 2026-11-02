@@ -12,6 +12,7 @@ import {
 import { buildNotices, type Notice } from "./notices.ts";
 import { joinSession, createCanvas } from "@github/copilot-sdk/extension";
 import { ArgusStore } from "./db.ts";
+import { DEFAULT_INGEST_PORT, setIngestPort } from "./ingest.ts";
 import { countReviewComments, fetchPrThreads } from "./ado/client.ts";
 import {
     startServer,
@@ -485,7 +486,10 @@ setSession(session);
 // record via a plain POST — no canvas, no per-session extension host. Stays on
 // regardless of any open canvas (first host to bind wins). The poller is
 // separate and runs only in a canvas-open host (see the canvas open/onClose).
-const INGEST_PORT = Number(process.env.ARGUS_INGEST_PORT ?? 48100);
+const INGEST_PORT = Number(
+    process.env.ARGUS_INGEST_PORT ?? DEFAULT_INGEST_PORT,
+);
+setIngestPort(INGEST_PORT);
 const ingestServer = startIngestServer(serverCtx(), INGEST_PORT);
 
 log(
