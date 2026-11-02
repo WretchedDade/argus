@@ -66,6 +66,7 @@ assert.equal(ingestUrl(), customUrl);
 for (const text of [
     reviewPrompt(customPr, "pr-review"),
     reviewPrompt({ ...customPr, reviewSessionId: "s1" } as Pr, "pr-review"),
+    automaticReviewPrompt(customPr, "pr-review"),
 ]) {
     assert.ok(text.includes(customUrl));
     assert.doesNotMatch(text, /48100/);
