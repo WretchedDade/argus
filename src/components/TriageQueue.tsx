@@ -5,6 +5,7 @@ import {
     Ban,
     ChevronDown,
     ChevronRight,
+    FileEdit,
     Hourglass,
     ListChecks,
     Zap,
@@ -55,7 +56,7 @@ function LaneSection({
             </div>
             <div className="flex flex-col gap-3">
                 {sorted.map((pr) =>
-                    needsAction(pr) || pr.isDraft ? (
+                    needsAction(pr) ? (
                         <PrCard key={pr.canonical} pr={pr} labels={labels} />
                     ) : (
                         <PrCard
@@ -282,9 +283,11 @@ export function TriageQueue({
     const outOfScope = review.filter((p) => p.outOfScope);
     const snoozed = inScope.filter((p) => isSnoozed(p, now));
     const awake = inScope.filter((p) => !isSnoozed(p, now));
-    const active = awake.filter((p) => !isStale(p, recencyDays));
-    const stale = awake.filter((p) => isStale(p, recencyDays));
-    const needs = active.filter((p) => needsAction(p) && !p.isDraft).length;
+    const drafts = awake.filter((p) => p.isDraft);
+    const ready = awake.filter((p) => !p.isDraft);
+    const active = ready.filter((p) => !isStale(p, recencyDays));
+    const stale = ready.filter((p) => isStale(p, recencyDays));
+    const needs = active.filter((p) => needsAction(p)).length;
     const lanes: Lane[] = ["review", "quick"];
     const laneIcon: Record<Lane, typeof Zap> = {
         review: ListChecks,
@@ -300,6 +303,8 @@ export function TriageQueue({
                 Icon: laneIcon[l],
             });
     }
+    if (drafts.length > 0)
+        rail.push({ id: "sec-drafts", label: "Drafts", Icon: FileEdit });
     if (snoozed.length > 0)
         rail.push({ id: "sec-snoozed", label: "Snoozed", Icon: AlarmClock });
     if (stale.length > 0)
@@ -351,6 +356,17 @@ export function TriageQueue({
                     />
                 ) : null;
             })}
+
+            {drafts.length > 0 && (
+                <CollapsedSection
+                    id="sec-drafts"
+                    label="Drafts"
+                    hint="not ready for review"
+                    items={drafts}
+                    labels={labels}
+                    collapsible={false}
+                />
+            )}
 
             {snoozed.length > 0 && (
                 <CollapsedSection
