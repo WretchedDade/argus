@@ -197,6 +197,13 @@ const REVIEW_COUNT_SQL = `(
     AND json_extract(e.payload, '$.verdict') IN ('approved', 'suggestions', 'waiting', 'rejected')
 )`;
 
+const COVERED_AT_SQL = `(
+  SELECT MAX(e.ts) FROM pr_events e
+  WHERE e.canonical = p.canonical
+    AND e.type = 'review_state'
+    AND json_extract(e.payload, '$.to') = 'covered'
+)`;
+
 const HOUR_MS = 3_600_000;
 const WEEK_MS = 604_800_000;
 
@@ -347,6 +354,7 @@ interface PrRow {
     teams_json: string | null;
     required_approver_groups_json: string | null;
     review_count: number;
+    covered_at: string | null;
     review_state: string | null;
     approvals_json: string | null;
     author_meta_json: string | null;
@@ -406,6 +414,7 @@ function rowToPr(r: PrRow): Pr {
         reviewSessionId: r.review_session_id,
         reviewedSha: r.reviewed_sha,
         reviewCount: r.review_count,
+        coveredAt: r.covered_at ?? null,
         changedFiles: r.changed_files ?? null,
         authorMeta: r.author_meta_json
             ? (JSON.parse(r.author_meta_json) as AuthorMeta)
@@ -642,7 +651,7 @@ export class ArgusStore {
     getPr(canonical: string): Pr | null {
         this.#clearExpiredSnoozes();
         const row = this.#prep(
-            `SELECT p.*, ${REVIEW_COUNT_SQL} AS review_count FROM prs p WHERE canonical = ?`,
+            `SELECT p.*, ${REVIEW_COUNT_SQL} AS review_count, ${COVERED_AT_SQL} AS covered_at FROM prs p WHERE canonical = ?`,
         ).get(canonical) as PrRow | undefined;
         return row ? rowToPr(row) : null;
     }
@@ -664,7 +673,7 @@ export class ArgusStore {
         if (!opts.includeDismissed) where.push("dismissed = 0");
         const clause = where.length ? `WHERE ${where.join(" AND ")}` : "";
         const rows = this.#prep(
-            `SELECT p.*, ${REVIEW_COUNT_SQL} AS review_count FROM prs p ${clause} ORDER BY updated_at DESC`,
+            `SELECT p.*, ${REVIEW_COUNT_SQL} AS review_count, ${COVERED_AT_SQL} AS covered_at FROM prs p ${clause} ORDER BY updated_at DESC`,
         ).all() as unknown as PrRow[];
         return rows.map(rowToPr);
     }

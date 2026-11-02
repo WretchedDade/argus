@@ -284,6 +284,7 @@ export interface Pr {
     reviewSessionId: string | null;
     reviewedSha: string | null;
     reviewCount: number;
+    coveredAt: string | null;
     changedFiles: number | null;
     authorMeta: AuthorMeta | null;
     prCreatedAt: string | null;

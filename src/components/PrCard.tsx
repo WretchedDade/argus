@@ -599,6 +599,19 @@ export function PrCard({
                 </span>
                 <SizeChip files={pr.changedFiles} />
                 <StatePill pr={pr} small />
+                {pr.reviewState === "covered" && (
+                    <span
+                        className="text-muted max-w-[14rem] shrink-0 truncate"
+                        title="Approvals on this PR, and when it became covered"
+                    >
+                        approved by{" "}
+                        {pr.otherVotes
+                            .filter((v) => v.vote >= 5)
+                            .map((v) => v.name)
+                            .join(", ") || "a teammate"}
+                        {pr.coveredAt ? ` · ${shortAge(pr.coveredAt)}` : ""}
+                    </span>
+                )}
                 <span
                     className="text-muted inline-flex shrink-0 items-center gap-1"
                     title="Completed reviews by me"
