@@ -89,7 +89,17 @@ Enter your Azure DevOps org URL, org slug, and project, and choose a sign-in met
 
 If you choose OneDrive, reload extensions to start using it. The README section "Where the database lives" has more detail.
 
-If you choose Windows account, the next screen asks for the Entra app client and tenant IDs. To prefill these values, copy `argus.config.example.json` to `argus.config.json` in the extension folder and edit it. See the README for all fields.
+If you choose Windows account, the sign-in screen provides separate **Application
+(client) ID** and **Directory (tenant) ID** fields. Enter both IDs from your Entra
+app registration, then select **Save setup**. You can edit them there or under
+**Settings > Windows account setup**. Saving setup saves only the IDs, not your
+sign-in method. See the README for the saved auth-config location and explicit
+environment overrides.
+
+To prefill organization defaults, copy `argus.config.example.json` to
+`argus.config.json` in the extension folder and edit it. That example does **not**
+prefill the client or tenant ID fields. `ado-auth-config.example.json` contains
+only the empty registration structure; configure actual IDs through the canvas.
 
 ## Verify the installation
 

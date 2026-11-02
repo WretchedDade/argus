@@ -64,9 +64,13 @@ fallback until a verified path is selected.
 
 ## Independent packaging milestone
 
-Integrated upstream `7875201` (including #13's workspace-link removal, #25's
-version-driven release flow and #88's config/command validation), preserving the
-two-field registration milestone and the upstream command tests.
+Integrated the fixed upstream snapshot
+`8c9f7bb74450c727b4757651782ce47aaaef6390`, including #13's workspace-link
+removal, #25's version-driven release flow, #88's config/command validation,
+#89's safe Markdown rendering, #90's image-proxy hardening and #91's
+LocalAppData storage default. The two-field registration milestone and every
+upstream test command are preserved. Later main changes are outside this bounded
+integration; no claim is made that this branch tracks an indefinitely moving tip.
 Upstream already moved the package from 0.1.0 to **0.5.0**; no additional version
 bump was chosen here. PR/version choice remains pending.
 
@@ -91,28 +95,31 @@ bump was chosen here. PR/version choice remains pending.
   dependency metadata, repeat verification, tampering/extra files, writable
   registration rejection and link rejection.
 
+### Historical ZIP evidence (before the final rebase)
+
 An external Windows x64 stage was acquired using Node **26.13.0** and its own
 `npm ci --omit=dev` production tree, not the checkout's developer dependencies.
 Azure imports, native MSAL loading and bundle syntax passed without an app or
-sign-in. The final clean-source stage records commit
+sign-in. That historical clean-source stage records commit
 `69ce400f1579fee4608cdd92768fb51d7c3bbc9b`, `sourceDirty: false`,
 31,902 hashed files and 280 installed dependency entries. This does not certify
 the minimum supported Node version or hosted CI;
 the release workflow retains Node 22. The SDK is host-injected, so the extension
 itself was not started outside the host.
 
-The final stage was compressed and extracted to a fresh directory outside the
+That stage was compressed and extracted to a fresh directory outside the
 repository with PowerShell `Compress-Archive` / `Expand-Archive`, then verified:
 all 31,902 payload hashes, Azure imports, native loading and entry-point syntax
 passed. Compression took 517 seconds; compression plus extraction took 665
 seconds on this machine. The local, unpublished ZIP's SHA-256 is
 `25bd73f5fefa558b1d4c82806484ea9494fba2125bfd99ba37ba11cca429960c`.
-It identifies this local evidence artifact, **not** a published release or plugin
-ref. It retains the developer staging root name `argus-0.5.0`; the release
+It identifies only this historical local evidence artifact, **not** the rebased
+source, a published release or a plugin ref. It retains the developer staging root
+name `argus-0.5.0`; the release
 workflow renames that root to `argus-v0.5.0` before archiving. File checksums are
 relative to that root and unaffected by the rename.
 
-After integrating #88's manifest/lock changes, root `npm ci`, the full test suite,
+At that milestone, after integrating #88's manifest/lock changes, root `npm ci`, the full test suite,
 typecheck, formatting check and build passed; packaging scripts also passed a
 separate TypeScript check (they are outside the root tsconfig's includes).
 The install reported **7 dependency advisories (1 moderate, 6 high)**.
@@ -121,13 +128,34 @@ no clean audit or dependency-security approval is claimed. No automatic
 dependency fixes or install-script approvals were applied. Existing build
 chunk-size and npm native-install-script/deprecation warnings remain.
 
+### Final bounded integration
+
+The incoming snapshot changes application code, storage behavior and the
+dependency lockfile, not the packaging scripts or archive workflow. The costly
+ZIP roundtrip is therefore retained only as independent historical packaging
+proof. After rebasing onto that fixed snapshot and installing its changed
+lockfile, the full suite (including upstream image, Markdown and storage tests),
+typecheck, formatting check, build and separate packaging-script TypeScript
+check passed. The install again reported 7 advisories; no audit retry or
+automatic dependency remediation was performed. A fresh external production
+stage must identify the rebased source rather than `69ce400`.
+Neither stage verification nor the historical ZIP establishes desktop plugin
+loading, persistent plugin data or user-operated WAM login. No push retry is
+authorized after the previously observed GitHub 403.
+
 ## Data, skills and runtime boundaries
 
 Current code is still the existing extension runtime, not a shared daemon:
 
-- DB: `ARGUS_DB_FILE`, else OneDrive Desktop `argus.db`, else extension-local
-  `data/argus.db`. Config: extension-local `argus.config.json` plus stored
-  Settings overrides. Standalone previews keep their separate path/profile.
+- DB: #91 resolves `ARGUS_DB_FILE` first, then the saved local/OneDrive choice
+  in `%LOCALAPPDATA%\argus\storage.json`. Without a choice, an existing local
+  file wins; otherwise an existing legacy OneDrive or extension-local database
+  is retained before falling back to `%LOCALAPPDATA%\argus\argus.db`.
+  An explicit location choice copies an old database only if its target is
+  absent. This is upstream extension storage behavior, not a verified shared
+  plugin/profile contract or a registration-ID migration.
+  Config remains extension-local `argus.config.json` plus stored Settings
+  overrides. Standalone previews keep their separate path/profile.
 - Registration: `DEVSTART_ADO_CONFIG_PATH`, otherwise existing per-user shared
   auth-config path; explicit client/tenant environment overrides still win.
   The new fields save IDs jointly and do not change provider selection.
