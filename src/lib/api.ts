@@ -332,8 +332,10 @@ export interface AuthStatus {
     error: string | null;
 }
 
+const JSON_HEADERS = { "content-type": "application/json" };
+
 async function postAuth(path: string): Promise<AuthStatus> {
-    const res = await fetch(path, { method: "POST" });
+    const res = await fetch(path, { method: "POST", headers: JSON_HEADERS });
     const body = await res.json();
     if (!res.ok) throw new Error(body.error ?? `${path} -> ${res.status}`);
     return body as AuthStatus;
@@ -419,7 +421,10 @@ export const api = {
         ),
     run: (id: number) => getJson<RunDetail>(`/api/run?id=${id}`),
     refresh: async () => {
-        const res = await fetch("/api/refresh", { method: "POST" });
+        const res = await fetch("/api/refresh", {
+            method: "POST",
+            headers: JSON_HEADERS,
+        });
         if (!res.ok) throw new Error(`refresh -> ${res.status}`);
         return res.json();
     },
@@ -495,7 +500,10 @@ export const api = {
             (r) => r.archivable,
         ),
     archive: async (): Promise<{ dispatched: number }> => {
-        const res = await fetch("/api/archive", { method: "POST" });
+        const res = await fetch("/api/archive", {
+            method: "POST",
+            headers: JSON_HEADERS,
+        });
         if (!res.ok) throw new Error(`archive -> ${res.status}`);
         return res.json();
     },
@@ -515,7 +523,10 @@ export const api = {
         latest: string | null;
         updateAvailable: boolean;
     }> => {
-        const res = await fetch("/api/notices/check", { method: "POST" });
+        const res = await fetch("/api/notices/check", {
+            method: "POST",
+            headers: JSON_HEADERS,
+        });
         if (res.status === 409) throw new Error("off");
         if (!res.ok) throw new Error(`notices/check -> ${res.status}`);
         return res.json();
@@ -549,7 +560,10 @@ export const api = {
         if (!res.ok) throw new Error(`changes/read -> ${res.status}`);
     },
     markAllChangesRead: async (): Promise<void> => {
-        const res = await fetch("/api/changes/read-all", { method: "POST" });
+        const res = await fetch("/api/changes/read-all", {
+            method: "POST",
+            headers: JSON_HEADERS,
+        });
         if (!res.ok) throw new Error(`changes/read-all -> ${res.status}`);
     },
 };
