@@ -26,14 +26,40 @@ assert.equal(isNewerVersion("0.1.0", "0.2.0"), false);
 assert.equal(isNewerVersion("garbage", "0.1.0"), false);
 
 // Release fetch
-const okFetch = (async () =>
-    new Response(
-        JSON.stringify({ tag_name: "v0.3.0", html_url: "https://x/r" }),
-    )) as typeof fetch;
-assert.deepEqual(await fetchLatestRelease(okFetch), {
+const releaseJson = (assets: unknown[]) =>
+    (async () =>
+        new Response(
+            JSON.stringify({
+                tag_name: "v0.3.0",
+                html_url: "https://x/r",
+                assets,
+            }),
+        )) as typeof fetch;
+const zipAsset = {
+    name: "argus-v0.3.0-windows.zip",
+    state: "uploaded",
+    browser_download_url: "https://x/dl/argus-v0.3.0-windows.zip",
+};
+assert.deepEqual(await fetchLatestRelease(releaseJson([zipAsset])), {
     version: "0.3.0",
     url: "https://x/r",
+    zipUrl: "https://x/dl/argus-v0.3.0-windows.zip",
 });
+// A release without the ZIP asset is not offered as an update.
+// A failed upload leaves a placeholder asset in the starter state.
+assert.equal(
+    await fetchLatestRelease(releaseJson([{ ...zipAsset, state: "starter" }])),
+    null,
+);
+assert.equal(await fetchLatestRelease(releaseJson([])), null);
+assert.equal(
+    await fetchLatestRelease(
+        releaseJson([
+            { name: "other.zip", browser_download_url: "https://x/o" },
+        ]),
+    ),
+    null,
+);
 const badFetch = (async () =>
     new Response("no", { status: 404 })) as typeof fetch;
 assert.equal(await fetchLatestRelease(badFetch), null);
@@ -43,7 +69,11 @@ const throwFetch = (async () => {
 assert.equal(await fetchLatestRelease(throwFetch), null);
 
 // Notices
-const release = { version: "0.2.0", url: "https://x/r" };
+const release = {
+    version: "0.2.0",
+    url: "https://x/r",
+    zipUrl: "https://x/dl/argus-v0.2.0-windows.zip",
+};
 const base = {
     appVersion: "0.1.0",
     release,
@@ -53,7 +83,10 @@ const base = {
 };
 const update = buildNotices(base)[0];
 assert.equal(update.actionLabel, "Update with Copilot");
-assert.match(update.prompt ?? "", /argus-v0\.2\.0-windows\.zip/);
+assert.match(
+    update.prompt ?? "",
+    /https:\/\/x\/dl\/argus-v0\.2\.0-windows\.zip/,
+);
 assert.match(update.prompt ?? "", /C:\\ext/);
 assert.deepEqual(
     buildNotices(base).map((n) => n.id),
@@ -62,6 +95,14 @@ assert.deepEqual(
 assert.equal(buildNotices({ ...base, checkForUpdates: false }).length, 0);
 assert.equal(buildNotices({ ...base, appVersion: "0.2.0" }).length, 0);
 assert.equal(buildNotices({ ...base, release: null }).length, 0);
+// A cached release saved before zipUrl existed gives no update notice.
+assert.equal(
+    buildNotices({
+        ...base,
+        release: { version: "0.2.0", url: "https://x/r" } as typeof release,
+    }).length,
+    0,
+);
 const withSkill = buildNotices({
     ...base,
     release: null,

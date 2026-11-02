@@ -207,8 +207,13 @@ async function checkForUpdate(): Promise<void> {
     if (!getConfig().checkForUpdates) return;
     // Session hosts share the store, so the last-check time limits GitHub calls to one a day.
     const last = Number(store.getUpdateCheck()?.checkedAt ?? 0);
-    if (Date.now() - last < UPDATE_CHECK_INTERVAL_MS) {
-        latestRelease = store.getUpdateCheck()?.release ?? null;
+    const cached = store.getUpdateCheck()?.release ?? null;
+    // Entries saved by older builds have no zipUrl. Fetch again for those.
+    if (
+        Date.now() - last < UPDATE_CHECK_INTERVAL_MS &&
+        (!cached || cached.zipUrl)
+    ) {
+        latestRelease = cached;
         return;
     }
     const release = await fetchLatestRelease();
