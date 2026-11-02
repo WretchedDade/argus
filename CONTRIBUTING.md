@@ -6,7 +6,7 @@ Thank you for helping with Argus. This guide shows how to set up, run, test, and
 
 You need:
 
-- Windows x64 (the tested platform), Node.js 22.13 or later, and Git.
+- Windows x64 (the tested platform), Node.js 22.22.1 or later, and Git. (The development tools need 22.22.1. The release ZIP needs only 22.13.)
 - Azure CLI (`az`) signed in with `az login`, or the Windows account sign-in method (see the README, "Sign-in method").
 - Access to an Azure DevOps project, to run the app against real data.
 
@@ -34,7 +34,7 @@ npm run standalone
 
 The README section "Standalone browser preview" lists the environment variables for more than one preview at the same time.
 
-To test inside the Copilot app, run `npm run build`, then copy the build output to the extension folder (see [docs/INSTALL.md](docs/INSTALL.md) for the layout), and reload the canvas.
+To test inside the Copilot app, run `npm run build`, then copy the build output to the extension folder (see [docs/INSTALL.md](docs/INSTALL.md) for the layout), and reload extensions in the Copilot app (or restart it). Reloading only the canvas does not load a new server bundle.
 
 ## Test
 

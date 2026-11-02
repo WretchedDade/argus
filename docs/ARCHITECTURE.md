@@ -47,11 +47,11 @@ flowchart LR
 1. Resolve the database file (`server/storage.ts`) and copy the old file if the user changed the location.
 2. Open `ArgusStore`. The constructor creates the schema.
 3. Build `getConfig()`. It merges the defaults, `argus.config.json`, and the overrides saved in the store.
-4. Start the poller with a `PollerContext` (`{ store, getConfig }`).
-5. Register the canvas. Each open canvas instance starts its own HTTP server on a stable loopback port. All instances share the one store and poller.
+4. Build a `PollerContext` (`{ store, getConfig }`). The poller does not start yet.
+5. Register the canvas. Each open canvas instance starts its own HTTP server on a stable loopback port. All instances share the one store and poller. The **first canvas to open** starts the poller. When the **last canvas closes**, the poller stops. A host with no open canvas does not poll ADO.
 6. Start the **ingest server** on a fixed port. Exactly one host owns it (the first to bind). It lets a review session record a verdict with plain HTTP.
 
-`standalone.ts` does the same without the Copilot app. Features that need a Copilot session (Review, re-review, archive) fail with a clear message.
+`standalone.ts` does the same, but it starts the poller at startup. It runs without the Copilot app. Features that need a Copilot session (Review, re-review, archive) fail with a clear message.
 
 ## Poller
 
@@ -69,7 +69,9 @@ Each tick catches its own errors, so one failed run does not stop the schedule. 
 `ArgusStore` in `server/db.ts` uses `node:sqlite` in WAL mode. There are two data models:
 
 - `prs` holds the **current snapshot** of each PR.
-- `pr_events` is the **append-only timeline**. Every metric is derived from it.
+- `pr_events` is the **append-only timeline**. Most metrics are derived from it.
+
+Some metrics also read `prs` snapshot columns. For example, review latency uses `prs.reviewed_at` and `prs.reviewed_sha_authored_at`, and the backlog and authored-PR summaries use snapshot rows.
 
 Other tables: `poll_runs`, `activity_log`, `settings` (key/value, holds the saved config overrides), and `changes_read`.
 
@@ -96,7 +98,7 @@ The client is a single-page app in `src/`:
 - `src/lib/api.ts` holds the response types, the `api` fetch helpers, and the `queryOptions` for each endpoint.
 - `src/components/` holds shared components. Charts are in `Charts.tsx`.
 
-There is no dev server. `npm run dev` runs a watch build, and you reload the canvas to see changes.
+There is no dev server. `npm run dev` runs a watch build, and you reload the canvas to see client changes. A server change needs a reload of extensions (or a restart of the Copilot app).
 
 ## Where the data lives
 
@@ -137,7 +139,7 @@ Argus has no down-migration. A column change must be safe for a user who upgrade
 
 Charts show data from `/api/insights` (`computeInsights` in `server/db.ts`).
 
-1. Compute the data in the store. Add a field to the `Insights` type in `server/types.ts` and fill it in `computeInsights`. Derive it from `pr_events`, not from a new copy of the data.
+1. Compute the data in the store. Add a field to the `Insights` type in `server/types.ts` and fill it in `computeInsights`. Derive it from `pr_events` when you can. Read `prs` snapshot columns only when the event timeline does not hold the value. Do not store a new copy of data that already exists.
 2. Add the matching type to `src/lib/api.ts`.
 3. Add a component to `src/components/Charts.tsx`. The file uses Recharts.
 4. Render it in `src/routes/insights.tsx` (or `recap.tsx`).
