@@ -448,8 +448,7 @@ export async function handleApi(
     // UI switches from the setup gate to the board. Optionally installs the bundled
     // baseline pr-review skill. Body is config overrides plus installPrReviewSkill.
     if (route === "/api/setup" && req.method === "POST") {
-        const body = (await readJsonBody(req)) as Record<string, unknown>;
-        const installPrReviewSkill = body.installPrReviewSkill === true;
+        const body = await readJsonBody(req);
         let overrides: ConfigOverrides;
         try {
             overrides = parseConfigOverrides(body);
@@ -458,6 +457,8 @@ export async function handleApi(
             sendJson(res, 400, { error: err.message });
             return true;
         }
+        const installPrReviewSkill =
+            (body as Record<string, unknown>).installPrReviewSkill === true;
         if (!hasRequiredSetup(mergeConfig(ctx.getConfig(), overrides))) {
             sendJson(res, 400, {
                 error: "Valid org URL, org slug, and project required",

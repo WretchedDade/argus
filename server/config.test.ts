@@ -189,6 +189,12 @@ try {
             );
         }
     }
+    for (const route of ["/api/config", "/api/setup"]) {
+        for (const body of [null, [], "text", 3]) {
+            const response = await post(route, body);
+            assert.equal(response.status, 400, `${route} ${String(body)}`);
+        }
+    }
     assert.equal(JSON.stringify(config), before, "rejected input is not saved");
 
     const accepted = await post("/api/config", {

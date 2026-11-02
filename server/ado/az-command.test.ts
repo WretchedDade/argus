@@ -21,6 +21,15 @@ assert.deepEqual(argv, ["-IBm", "azure.cli", ...args]);
 assert.ok(!/cmd(\.exe)?$/i.test(file));
 assert.ok(!argv.includes("/c"));
 
+// A quoted PATH entry is accepted, as Windows command lookup does.
+const quoted = {
+    PATH: 'C:\\Windows;"C:\\Program Files\\Microsoft SDKs\\Azure\\CLI2\\wbin"',
+};
+assert.equal(
+    resolveAzCommand(args, "win32", quoted, exists)[0],
+    "C:\\Program Files\\Microsoft SDKs\\Azure\\CLI2\\python.exe",
+);
+
 // Windows without the CLI gives a clear error.
 assert.throws(
     () => resolveAzCommand(args, "win32", { PATH: "C:\\Windows" }, exists),

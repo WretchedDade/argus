@@ -16,7 +16,8 @@ export function resolveAzCommand(
 ): AzCommand {
     if (platform !== "win32") return ["az", args];
     const dirs = (env.PATH ?? env.Path ?? "").split(path.win32.delimiter);
-    for (const dir of dirs) {
+    for (const entry of dirs) {
+        const dir = entry.trim().replace(/^"(.*)"$/, "$1");
         if (!dir) continue;
         const shim = path.win32.join(dir, "az.cmd");
         if (!exists(shim)) continue;
