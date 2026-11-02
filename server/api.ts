@@ -28,7 +28,7 @@ import {
 } from "./ado/client.ts";
 import { sendJson } from "./respond.ts";
 import type { Notice } from "./notices.ts";
-
+import type { DbLocation } from "./storage.ts";
 // Chat message asking to archive the review sessions of PRs that closed/merged.
 function archivePrompt(items: ArchivableSession[]): string {
     const lines = items.map(
@@ -110,9 +110,22 @@ export interface ApiContext {
     saveConfig: (overrides: ConfigOverrides) => ArgusConfig;
     markSetupComplete: () => void;
     installBaselineSkill: () => { installed: boolean; reason?: string };
+    // Absent in standalone mode, where the location is not user-selectable.
+    storage?: () => StorageInfo;
+    setDbLocation?: (location: DbLocation) => {
+        ok: boolean;
+        restartRequired: boolean;
+        reason?: string;
+    };
     getNotices?: () => Notice[];
     appVersion?: string;
     checkForUpdatesNow?: () => Promise<UpdateCheckResult>;
+}
+
+export interface StorageInfo {
+    location: DbLocation | null; // null when ARGUS_DB_FILE sets the path
+    choosable: boolean; // false when ARGUS_DB_FILE sets the path
+    oneDriveAvailable: boolean;
 }
 
 export interface UpdateCheckResult {
@@ -249,6 +262,7 @@ export async function handleApi(
             store: ctx.store.counts(),
             migrated: ctx.migrated,
             poller: ctx.pollerStatus(),
+            storage: ctx.storage?.() ?? null,
             auth: useBroker() ? await authStatus() : null,
             setup_complete:
                 ctx.store.isSetupComplete() &&
@@ -504,13 +518,34 @@ export async function handleApi(
             });
             return true;
         }
+        const dbLocation = (body as Record<string, unknown>).dbLocation;
+        if (
+            dbLocation !== undefined &&
+            dbLocation !== "local" &&
+            dbLocation !== "onedrive"
+        ) {
+            sendJson(res, 400, {
+                error: "dbLocation must be local or onedrive",
+            });
+            return true;
+        }
+        const storage =
+            dbLocation && ctx.setDbLocation
+                ? ctx.setDbLocation(dbLocation)
+                : null;
+        if (storage && !storage.ok) {
+            sendJson(res, 400, {
+                error: storage.reason ?? "Could not save the storage location",
+            });
+            return true;
+        }
         const config = ctx.saveConfig(overrides);
         setAuthProvider(config.adoAuth);
         ctx.markSetupComplete();
         const skill = installPrReviewSkill
             ? ctx.installBaselineSkill()
             : { installed: false, reason: "skipped" };
-        sendJson(res, 200, { config, setup_complete: true, skill });
+        sendJson(res, 200, { config, setup_complete: true, skill, storage });
         return true;
     }
 
@@ -625,7 +660,8 @@ export async function handleApi(
             return true;
         }
         await ctx.dispatch(notice.prompt);
-        ctx.store.dismissNotice(notice.id);
+        // The storage notice clears only after the user's choice is saved.
+        if (notice.kind !== "storage") ctx.store.dismissNotice(notice.id);
         sendJson(res, 200, { ok: true });
         return true;
     }

@@ -3099,6 +3099,12 @@ export class ArgusStore {
         ).get(rec.url!, terminalTs, type);
     }
 
+    // Consistent snapshot into a new file. Fails if the target file exists.
+    copyTo(file: string): void {
+        mkdirSync(path.dirname(file), { recursive: true });
+        this.#db.prepare("VACUUM INTO ?").run(file);
+    }
+
     close(): void {
         this.#db.close();
     }

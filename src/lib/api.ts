@@ -16,7 +16,7 @@ export interface AuthorMeta {
 
 export interface Notice {
     id: string;
-    kind: "app-update" | "skill-update";
+    kind: "app-update" | "skill-update" | "storage";
     title: string;
     detail: string;
     href?: string;
@@ -313,6 +313,11 @@ export interface Health {
     boot_at: string;
     store: { prs: number; events: number };
     poller: PollerStatus;
+    storage: {
+        location: "local" | "onedrive" | null;
+        choosable: boolean;
+        oneDriveAvailable: boolean;
+    } | null;
     setup_complete: boolean;
     auth: AuthStatus | null;
 }
@@ -689,10 +694,18 @@ export const configApi = {
             (r) => r.version,
         ),
     setup: async (
-        overrides: Partial<ArgusConfig> & { installPrReviewSkill?: boolean },
+        overrides: Partial<ArgusConfig> & {
+            installPrReviewSkill?: boolean;
+            dbLocation?: "local" | "onedrive";
+        },
     ): Promise<{
         config: ArgusConfig;
         skill: { installed: boolean; reason?: string };
+        storage: {
+            ok: boolean;
+            restartRequired: boolean;
+            reason?: string;
+        } | null;
     }> => {
         const res = await fetch("/api/setup", {
             method: "POST",
@@ -701,7 +714,11 @@ export const configApi = {
         });
         if (!res.ok) throw new Error(`setup -> ${res.status}`);
         const j = await res.json();
-        return { config: j.config as ArgusConfig, skill: j.skill };
+        return {
+            config: j.config as ArgusConfig,
+            skill: j.skill,
+            storage: j.storage,
+        };
     },
 };
 

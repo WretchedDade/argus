@@ -38,18 +38,35 @@ import {
     type PollerContext,
 } from "./ado/poller.ts";
 import { setSession, log } from "./log.ts";
+import {
+    choiceFilePath,
+    localDbPath,
+    oneDriveDbPath,
+    resolveDbFile,
+    migrateToChoice,
+    readChoice,
+    writeChoice,
+    type DbLocation,
+} from "./storage.ts";
+import type { StorageInfo } from "./api.ts";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const DIST_DIR = path.join(__dirname, "dist");
 const BOOT_AT = new Date().toISOString();
 
-// Store lives on OneDrive by default so it survives devbox resets; overridable.
-const ONEDRIVE_ROOT = process.env.OneDriveCommercial || process.env.OneDrive;
-const DB_FILE =
-    process.env.ARGUS_DB_FILE ||
-    (ONEDRIVE_ROOT
-        ? path.join(ONEDRIVE_ROOT, "Desktop", "argus.db")
-        : path.join(__dirname, "data", "argus.db"));
+// Where the database lives: see server/storage.ts for the order of choice.
+const STORAGE_ENV = { env: process.env, extensionDir: __dirname };
+const resolvedStorage = resolveDbFile(STORAGE_ENV);
+const DB_FILE = resolvedStorage.file;
+// A failed copy must stop startup: opening the target would create an empty
+// database and hide the history in the source file.
+try {
+    const from = migrateToChoice(STORAGE_ENV, resolvedStorage);
+    if (from) log(`database copied from ${from} to ${DB_FILE}`);
+} catch (err) {
+    log(`database copy failed: ${(err as Error).message}`);
+    throw err;
+}
 
 // Legacy pr-tracker archive: read-only input for the one-time migration, only
 // when explicitly pointed at a file. No default, so a shared install doesn't look
@@ -235,8 +252,63 @@ function stopUpdateChecks(): void {
     updateTimer = null;
 }
 
+function getStorage(): StorageInfo {
+    return {
+        location: resolvedStorage.location,
+        choosable: resolvedStorage.source !== "env",
+        oneDriveAvailable: oneDriveDbPath(process.env) !== null,
+    };
+}
+
+// Saves the choice for the next start. The open database stays in use until
+// extensions reload. At that start, Argus copies the database to the new
+// location if no file is there yet, and never replaces an existing file.
+function setDbLocation(location: DbLocation): {
+    ok: boolean;
+    restartRequired: boolean;
+    reason?: string;
+} {
+    if (resolvedStorage.source === "env")
+        return {
+            ok: false,
+            restartRequired: false,
+            reason: "ARGUS_DB_FILE sets the path",
+        };
+    const target =
+        location === "onedrive"
+            ? oneDriveDbPath(process.env)
+            : localDbPath(STORAGE_ENV);
+    if (!target)
+        return {
+            ok: false,
+            restartRequired: false,
+            reason: "OneDrive was not found on this device",
+        };
+    try {
+        writeChoice(STORAGE_ENV, location);
+        return {
+            ok: true,
+            restartRequired: path.resolve(target) !== path.resolve(DB_FILE),
+        };
+    } catch (err) {
+        return {
+            ok: false,
+            restartRequired: false,
+            reason: (err as Error).message,
+        };
+    }
+}
+
 function getNotices(): Notice[] {
     return buildNotices({
+        legacyDb:
+            resolvedStorage.legacyPath && !readChoice(STORAGE_ENV)
+                ? {
+                      path: resolvedStorage.legacyPath,
+                      localPath: localDbPath(STORAGE_ENV),
+                      choiceFile: choiceFilePath(STORAGE_ENV),
+                  }
+                : null,
         appVersion: APP_VERSION,
         release: latestRelease,
         checkForUpdates: getConfig().checkForUpdates,
@@ -266,6 +338,8 @@ const serverCtx = (): ServerContext => ({
     saveConfig,
     markSetupComplete: () => store.markSetupComplete(),
     installBaselineSkill,
+    storage: getStorage,
+    setDbLocation,
     getNotices,
     appVersion: APP_VERSION,
     checkForUpdatesNow,

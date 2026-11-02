@@ -71,6 +71,20 @@ assert.deepEqual(
     withSkill.map((n) => n.id),
     ["skill-update:abc"],
 );
+const legacy = buildNotices({
+    ...base,
+    release: null,
+    legacyDb: {
+        path: "O:\\Desktop\\argus.db",
+        localPath: "L:\\argus.db",
+        choiceFile: "L:\\storage.json",
+    },
+});
+assert.deepEqual(
+    legacy.map((n) => n.id),
+    ["storage-legacy"],
+);
+assert.match(legacy[0].prompt ?? "", /L:\\storage\.json/);
 
 // Skill sync
 const dir = mkdtempSync(path.join(tmpdir(), "argus-skill-test-"));
