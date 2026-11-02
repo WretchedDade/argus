@@ -37,6 +37,9 @@ export function SetupGate() {
         cfg?.reviewSkillName ?? "pr-review",
     );
     const [saving, setSaving] = useState(false);
+    const storage = useQuery(healthQuery).data?.storage ?? null;
+    const [dbLocation, setDbLocation] = useState<"local" | "onedrive">("local");
+    const showStorage = !!storage?.choosable;
 
     const patterns = teams
         .split(",")
@@ -49,7 +52,7 @@ export function SetupGate() {
         if (!canSave) return;
         setSaving(true);
         try {
-            const { skill } = await configApi.setup({
+            const { skill, storage: moved } = await configApi.setup({
                 adoAuth,
                 me: me.trim() || null,
                 orgUrl: orgUrl.trim(),
@@ -60,12 +63,21 @@ export function SetupGate() {
                     ? "pr-review"
                     : skillName.trim() || "pr-review",
                 installPrReviewSkill: installSkill,
+                ...(showStorage ? { dbLocation } : {}),
             });
             await Promise.all([
                 qc.invalidateQueries({ queryKey: ["health"] }),
                 qc.invalidateQueries({ queryKey: ["config"] }),
                 qc.invalidateQueries({ queryKey: ["prs"] }),
             ]);
+            if (moved && !moved.ok) {
+                pushToast(
+                    `Couldn't change where history is stored: ${moved.reason ?? "unknown error"}`,
+                    "error",
+                );
+            } else if (moved?.restartRequired) {
+                pushToast("Reload extensions to store history on OneDrive");
+            }
             if (installSkill) {
                 pushToast(
                     skill.installed
@@ -122,6 +134,34 @@ export function SetupGate() {
                                 : "Windows only. Needs an Entra app registration; the next screen asks for its client and tenant IDs."}
                         </div>
                     </div>
+
+                    {showStorage && (
+                        <div>
+                            <div className="text-fg mb-1 text-sm font-medium">
+                                Where to keep your history
+                            </div>
+                            <SegToggle
+                                value={dbLocation}
+                                onChange={setDbLocation}
+                                options={[
+                                    { v: "local", label: "This device" },
+                                    ...(storage?.oneDriveAvailable
+                                        ? [
+                                              {
+                                                  v: "onedrive" as const,
+                                                  label: "OneDrive",
+                                              },
+                                          ]
+                                        : []),
+                                ]}
+                            />
+                            <div className="text-muted mt-1 text-xs">
+                                {dbLocation === "local"
+                                    ? "Private by default. PR titles, descriptions, and review history stay on this device. If you reset the device, the history is lost."
+                                    : "OneDrive syncs the database, so a device reset does not lose your history. PR titles, descriptions, and review history sync to your OneDrive. Do not share one OneDrive database between devices that run Argus at the same time."}
+                            </div>
+                        </div>
+                    )}
 
                     <label className="block">
                         <div className="text-fg text-sm font-medium">

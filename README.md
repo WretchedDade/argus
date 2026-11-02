@@ -220,9 +220,11 @@ Setup is complete only while the effective org URL, org slug, and project are se
 
 ## First run
 
-The first time you open Argus, a setup screen asks for five things:
+The first time you open Argus, a setup screen asks for six things:
 
 - **Sign-in method** — Azure CLI (default) or Windows account. See Requirements.
+- **Where to keep your history** — **This device** (default) or **OneDrive**. See
+  "Where the database lives" below.
 - **Identity** — your Azure DevOps account. Argus detects this from `az`, so you
   can leave it blank.
 - **Org URL and slug** — for example `https://dev.azure.com/your-org` and
@@ -314,21 +316,52 @@ spawn-a-review loop needs `pr-review`.
 
 Settings persist in the store. Environment variables set the defaults:
 
-| Variable              | Purpose                               | Default                                |
-| --------------------- | ------------------------------------- | -------------------------------------- |
-| `ARGUS_ME`            | identity override                     | auto from `az`                         |
-| `ARGUS_ORG_URL`       | Azure DevOps org URL                  | none, or built from `ARGUS_ORG_SLUG`   |
-| `ARGUS_ORG_SLUG`      | org slug                              | none                                   |
-| `ARGUS_PROJECT`       | project                               | none                                   |
-| `ARGUS_TEAM_PATTERNS` | reviewer-group globs, comma-separated | none                                   |
-| `ARGUS_RECENCY_DAYS`  | days before an idle PR goes stale     | `7`                                    |
-| `ARGUS_WORK_HOURS`    | work hours, `start-end`               | `9-17`                                 |
-| `ARGUS_WORK_DAYS`     | work days, `start-end` (Mon=1)        | `1-5`                                  |
-| `ARGUS_DB_FILE`       | store path                            | OneDrive Desktop, else `data/argus.db` |
+| Variable              | Purpose                               | Default                              |
+| --------------------- | ------------------------------------- | ------------------------------------ |
+| `ARGUS_ME`            | identity override                     | auto from `az`                       |
+| `ARGUS_ORG_URL`       | Azure DevOps org URL                  | none, or built from `ARGUS_ORG_SLUG` |
+| `ARGUS_ORG_SLUG`      | org slug                              | none                                 |
+| `ARGUS_PROJECT`       | project                               | none                                 |
+| `ARGUS_TEAM_PATTERNS` | reviewer-group globs, comma-separated | none                                 |
+| `ARGUS_RECENCY_DAYS`  | days before an idle PR goes stale     | `7`                                  |
+| `ARGUS_WORK_HOURS`    | work hours, `start-end`               | `9-17`                               |
+| `ARGUS_WORK_DAYS`     | work days, `start-end` (Mon=1)        | `1-5`                                |
+| `ARGUS_DB_FILE`       | store path                            | `%LOCALAPPDATA%\argus\argus.db`      |
 
-The store is a `node:sqlite` database. It holds your PR history, so keep it
-private. It lives outside the extension folder by default, so sharing the folder
-does not share your data.
+The store is a `node:sqlite` database. It holds your PR titles, descriptions, and
+review history, so keep it private. It lives outside the extension folder, so
+sharing the folder does not share your data.
+
+### Where the database lives
+
+The first-run setup screen asks where to keep your history. You have two choices.
+
+| Choice          | Path                            | Pick it when                                                                                                                    |
+| --------------- | ------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| **This device** | `%LOCALAPPDATA%\argus\argus.db` | You want the data to stay private. This is the default. A device reset loses the history.                                       |
+| **OneDrive**    | `<OneDrive>\Desktop\argus.db`   | You want disaster recovery. OneDrive syncs the file, so a new device can restore your history. The data syncs to your OneDrive. |
+
+Notes on the OneDrive choice:
+
+- OneDrive syncs PR titles, descriptions, and review history. Choose it only if
+  that is acceptable for your PR data.
+- Run Argus on one device at a time. Several Copilot hosts that share one synced
+  file can race.
+- Argus keeps an existing file. If the OneDrive file exists already, for example
+  after a device reset, Argus uses it and does not overwrite it.
+- The choice takes effect after you reload extensions.
+
+The choice is stored in `%LOCALAPPDATA%\argus\storage.json`, as
+`{ "location": "local" }` or `{ "location": "onedrive" }`. Argus reads it before
+it opens the database. Set `ARGUS_DB_FILE` to use any other path. It overrides
+the choice, and the setup screen then hides the toggle.
+
+**Upgrading from an earlier version.** Earlier versions stored the database on
+OneDrive by default. If you have not chosen a location, and the OneDrive file
+exists and no local file exists, Argus keeps using the OneDrive file. The bell
+shows a notice. Select **Choose with Copilot** to move the file to this device,
+or to keep it on OneDrive. Either choice clears the notice. Your history is never
+moved without your approval.
 
 ## Formatting
 
