@@ -64,8 +64,9 @@ fallback until a verified path is selected.
 
 ## Independent packaging milestone
 
-Integrated upstream `1bdafee` (including #13's workspace-link removal and #25's
-version-driven release flow), preserving the two-field registration milestone.
+Integrated upstream `7875201` (including #13's workspace-link removal, #25's
+version-driven release flow and #88's config/command validation), preserving the
+two-field registration milestone and the upstream command tests.
 Upstream already moved the package from 0.1.0 to **0.5.0**; no additional version
 bump was chosen here. PR/version choice remains pending.
 
@@ -93,10 +94,32 @@ bump was chosen here. PR/version choice remains pending.
 An external Windows x64 stage was acquired using Node **26.13.0** and its own
 `npm ci --omit=dev` production tree, not the checkout's developer dependencies.
 Azure imports, native MSAL loading and bundle syntax passed without an app or
-sign-in. This does not certify the minimum supported Node version or hosted CI;
+sign-in. The final clean-source stage records commit
+`69ce400f1579fee4608cdd92768fb51d7c3bbc9b`, `sourceDirty: false`,
+31,902 hashed files and 280 installed dependency entries. This does not certify
+the minimum supported Node version or hosted CI;
 the release workflow retains Node 22. The SDK is host-injected, so the extension
-itself was not started outside the host. A clean extracted ZIP check is also
-required after final packaging edits.
+itself was not started outside the host.
+
+The final stage was compressed and extracted to a fresh directory outside the
+repository with PowerShell `Compress-Archive` / `Expand-Archive`, then verified:
+all 31,902 payload hashes, Azure imports, native loading and entry-point syntax
+passed. Compression took 517 seconds; compression plus extraction took 665
+seconds on this machine. The local, unpublished ZIP's SHA-256 is
+`25bd73f5fefa558b1d4c82806484ea9494fba2125bfd99ba37ba11cca429960c`.
+It identifies this local evidence artifact, **not** a published release or plugin
+ref. It retains the developer staging root name `argus-0.5.0`; the release
+workflow renames that root to `argus-v0.5.0` before archiving. File checksums are
+relative to that root and unaffected by the rename.
+
+After integrating #88's manifest/lock changes, root `npm ci`, the full test suite,
+typecheck, formatting check and build passed; packaging scripts also passed a
+separate TypeScript check (they are outside the root tsconfig's includes).
+The install reported **7 dependency advisories (1 moderate, 6 high)**.
+A follow-up `npm audit` was blocked by the configured feed's HTTP 429 response;
+no clean audit or dependency-security approval is claimed. No automatic
+dependency fixes or install-script approvals were applied. Existing build
+chunk-size and npm native-install-script/deprecation warnings remain.
 
 ## Data, skills and runtime boundaries
 
