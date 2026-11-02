@@ -14,6 +14,8 @@ permissions:
 jobs:
     check:
         name: Check for a new version
+        # Manual runs can pick any branch. Only main may release.
+        if: github.ref == 'refs/heads/main'
         runs-on: ubuntu-latest
         outputs:
             version: ${{ steps.version.outputs.version }}
@@ -28,17 +30,28 @@ jobs:
               run: |
                   version=$(node -p "require('./package.json').version")
                   echo "version=$version" >> "$GITHUB_OUTPUT"
-                  if git ls-remote --exit-code --tags origin "refs/tags/v$version" > /dev/null; then
+                  # Exit code 2 means the lookup worked and found no matching tag.
+                  # Any other failure stops the job instead of enabling a release.
+                  status=0
+                  git ls-remote --exit-code --tags origin "refs/tags/v$version" > /dev/null || status=$?
+                  if [ "$status" -eq 0 ]; then
                       echo "Tag v$version already exists. Nothing to release."
                       echo "needs_release=false" >> "$GITHUB_OUTPUT"
-                  else
+                  elif [ "$status" -eq 2 ]; then
                       echo "needs_release=true" >> "$GITHUB_OUTPUT"
+                  else
+                      echo "Tag lookup failed with exit code $status."
+                      exit "$status"
                   fi
 
     release:
         name: Build and publish release ZIP
         needs: check
         if: needs.check.outputs.needs_release == 'true'
+        # One publisher per version. A queued run waits and never cancels the active one.
+        concurrency:
+            group: release-${{ needs.check.outputs.version }}
+            cancel-in-progress: false
         # Windows: the packaged node_modules include native Windows binaries.
         runs-on: windows-latest
         timeout-minutes: 20
@@ -76,7 +89,12 @@ jobs:
               env:
                   GH_TOKEN: ${{ github.token }}
               shell: pwsh
-              run: >
-                  gh release create $env:TAG
-                  "release/argus-$env:TAG-windows.zip"
-                  --title $env:TAG --generate-notes --target $env:GITHUB_SHA
+              run: |
+                  git ls-remote --exit-code --tags origin "refs/tags/$env:TAG" | Out-Null
+                  if ($LASTEXITCODE -eq 0) {
+                      Write-Host "Tag $env:TAG already exists. Nothing to release."
+                      exit 0
+                  }
+                  if ($LASTEXITCODE -ne 2) { throw "Tag lookup failed with exit code $LASTEXITCODE" }
+                  gh release create $env:TAG "release/argus-$env:TAG-windows.zip" --title $env:TAG --generate-notes --target $env:GITHUB_SHA
+                  if ($LASTEXITCODE -ne 0) { throw "gh release create failed" }
