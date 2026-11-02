@@ -178,6 +178,34 @@ detect conflicting histories/config, choose explicitly rather than overwrite,
 and define rollback. Registration IDs must **not** be auto-imported from legacy
 values. Never put populated IDs/account data in evidence or artifacts.
 
+## Publication recovery and desktop launch clarification
+
+The producer's final read-only API diagnosis confirmed that the explicit
+process-scoped identity is `Darnellicious`: `gh api user` succeeds, and the public,
+non-archived `WretchedDade/argus` repository reports `pull: true`, `push: false`,
+and `admin`, `maintain` and `triage` all false. This establishes working read
+authentication and missing repository write permission; there is no evidence
+that token expiry caused the feature-branch 403. The active **Protect main**
+ruleset includes only `refs/heads/main`, with no exclusions, so it does not
+explain that feature-branch denial.
+
+An authorized owner must grant repository **Write** to the same named identity
+before a separately, explicitly authorized push retry. Alternatively, a
+maintainer can export/apply the committed changes through authorized access.
+Do not change identity, credentials or Git configuration, create a fork, or
+treat these findings as authorization to retry. All independently safe
+implementation and findings are committed locally; publication remains blocked.
+
+Read-only `agency gh-app --help` documents `--copilot-path` and `[EXTRA_ARGS]`
+forwarding to the launched app. It does not document a desktop ephemeral local
+plugin mount. Forwarding arguments is not proof that the app accepts the CLI's
+`--plugin-dir`; Agency's `--plugin local:...` also describes CLI-session loading.
+The inspected app documentation instead says `agency gh-app` installs/updates
+extension plugins before launch, and its marketplace route changes installed
+configuration. No documented, already-authorized settings/install-free desktop
+route was established, so no desktop spike was executed. There are no desktop
+plugins, settings changes or test resources from this investigation to clean up.
+
 ## Next authorized gate and consequences
 
 Obtain separate authorization for a minimal local-plugin **desktop** load using
