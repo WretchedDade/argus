@@ -2,7 +2,12 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import type { ArgusStore } from "./db.ts";
 import type { ArchivableSession, Pr } from "./types.ts";
 import type { ArgusConfig, ConfigOverrides } from "./config.ts";
-import { hasRequiredSetup, mergeConfig } from "./config.ts";
+import {
+    ConfigError,
+    hasRequiredSetup,
+    mergeConfig,
+    parseConfigOverrides,
+} from "./config.ts";
 import type { PollerStatus, ReconcileSummary } from "./ado/poller.ts";
 import { resetIdentity } from "./ado/poller.ts";
 import { fetchAdoImage, isAllowedImageHost } from "./ado/images.ts";
@@ -442,9 +447,17 @@ export async function handleApi(
     if (route === "/api/config") {
         if (req.method === "POST") {
             const before = ctx.getConfig().adoAuth;
+            let body: ConfigOverrides;
+            try {
+                body = parseConfigOverrides(await readJsonBody(req));
+            } catch (err) {
+                if (!(err instanceof ConfigError)) throw err;
+                sendJson(res, 400, { error: err.message });
+                return true;
+            }
             const config = ctx.saveConfig({
                 ...ctx.store.getConfigOverrides(),
-                ...(await readJsonBody(req)),
+                ...body,
             });
             setAuthProvider(config.adoAuth);
             if (config.adoAuth !== before) resetIdentity(ctx.store);
@@ -457,10 +470,17 @@ export async function handleApi(
     // UI switches from the setup gate to the board. Optionally installs the bundled
     // baseline pr-review skill. Body is config overrides plus installPrReviewSkill.
     if (route === "/api/setup" && req.method === "POST") {
-        const body = (await readJsonBody(req)) as ConfigOverrides & {
-            installPrReviewSkill?: boolean;
-        };
-        const { installPrReviewSkill, ...overrides } = body;
+        const body = await readJsonBody(req);
+        let overrides: ConfigOverrides;
+        try {
+            overrides = parseConfigOverrides(body);
+        } catch (err) {
+            if (!(err instanceof ConfigError)) throw err;
+            sendJson(res, 400, { error: err.message });
+            return true;
+        }
+        const installPrReviewSkill =
+            (body as Record<string, unknown>).installPrReviewSkill === true;
         if (!hasRequiredSetup(mergeConfig(ctx.getConfig(), overrides))) {
             sendJson(res, 400, {
                 error: "Valid org URL, org slug, and project required",

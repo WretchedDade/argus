@@ -211,6 +211,88 @@ try {
     };
     writeFileSync(file, JSON.stringify({ ...overrides, unknownSetting: true }));
     assert.deepEqual(loadLocalConfig(file), overrides);
+
+    const post = (route: string, body: unknown) =>
+        fetch(`${base}${route}`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(body),
+        });
+    const before = JSON.stringify(config);
+    const unsafe = [
+        { project: "x & calc.exe" },
+        { project: 'x" --output json & calc' },
+        { project: "x|calc" },
+        { project: "x\ncalc" },
+        { project: "$(calc)" },
+        { project: "..\\..\\x" },
+        { project: "-x" },
+        { orgSlug: "org;calc" },
+        { orgUrl: "https://dev.azure.com/org & calc" },
+        { orgUrl: "https://user:pw@dev.azure.com/org" },
+        { orgUrl: "file:///c:/windows" },
+        { orgUrl: "javascript:alert(1)" },
+        { recencyDays: 1.5 },
+        { recencyDays: 0 },
+        { recencyDays: 100000 },
+        { retentionDays: -1 },
+        { workStartHour: 24 },
+        { workEndHour: 25 },
+        { workDays: [7] },
+        { adoAuth: "cmd" },
+    ];
+    for (const route of ["/api/config", "/api/setup"]) {
+        for (const body of unsafe) {
+            const response = await post(route, body);
+            assert.equal(
+                response.status,
+                400,
+                `${route} ${JSON.stringify(body)}`,
+            );
+        }
+    }
+    for (const route of ["/api/config", "/api/setup"]) {
+        for (const body of [null, [], "text", 3]) {
+            const response = await post(route, body);
+            assert.equal(response.status, 400, `${route} ${String(body)}`);
+        }
+    }
+    assert.equal(JSON.stringify(config), before, "rejected input is not saved");
+
+    const accepted = await post("/api/config", {
+        project: "My Project (1)".replace(/[()]/g, ""),
+        recencyDays: 14,
+        workStartHour: 8,
+        workEndHour: 24,
+        unknownKey: "ignored",
+    });
+    assert.equal(accepted.status, 200);
+    assert.equal(config.project, "My Project 1");
+    assert.equal(config.recencyDays, 14);
+    assert.equal(Object.hasOwn(config, "unknownKey"), false);
+
+    // Saved settings that are unsafe are dropped when read back.
+    const errorsBefore = errors.length;
+    console.error = (message: string) => errors.push(message);
+    try {
+        store.saveConfigOverrides({
+            project: "x & calc",
+            recencyDays: 3,
+        } as never);
+        assert.deepEqual(store.getConfigOverrides(), { recencyDays: 3 });
+        assert.equal(errors.length, errorsBefore + 1);
+
+        // Unsafe environment values fall back to safe defaults.
+        process.env.ARGUS_PROJECT = "x & calc";
+        process.env.ARGUS_RECENCY_DAYS = "abc";
+        const fromEnv = defaultConfig();
+        assert.equal(fromEnv.project, "");
+        assert.equal(fromEnv.recencyDays, 7);
+    } finally {
+        console.error = originalError;
+        delete process.env.ARGUS_PROJECT;
+        delete process.env.ARGUS_RECENCY_DAYS;
+    }
 } finally {
     await new Promise<void>((resolve, reject) =>
         server.close((err) => (err ? reject(err) : resolve())),

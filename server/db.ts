@@ -26,7 +26,7 @@ import type {
     WeeklyReviewFacts,
 } from "./types.ts";
 import type { Plan, Snapshot } from "./ado/reconcile.ts";
-import type { ConfigOverrides } from "./config.ts";
+import { salvageConfigOverrides, type ConfigOverrides } from "./config.ts";
 import { isVendorName } from "./ado/normalize.ts";
 import { log } from "./log.ts";
 import type { ReleaseInfo } from "./update-check.ts";
@@ -2819,7 +2819,7 @@ export class ArgusStore {
         const row = this.#prep(
             "SELECT value FROM settings WHERE key = 'config'",
         ).get() as { value: string } | undefined;
-        return row ? (JSON.parse(row.value) as ConfigOverrides) : {};
+        return row ? salvageConfigOverrides(JSON.parse(row.value)) : {};
     }
 
     saveConfigOverrides(overrides: ConfigOverrides): void {
