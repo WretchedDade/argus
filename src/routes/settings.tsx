@@ -52,6 +52,32 @@ function Row({
 const inputCls =
     "border-line bg-canvas mt-1 w-full rounded-md border px-2.5 py-1.5 text-sm";
 
+const GROUPS = [
+    { id: "account", label: "Account" },
+    { id: "teams", label: "Teams" },
+    { id: "ado", label: "Azure DevOps" },
+    { id: "schedule", label: "Schedule" },
+    { id: "app", label: "App" },
+] as const;
+type GroupId = (typeof GROUPS)[number]["id"];
+
+// Hidden, not unmounted, so one form still saves every group.
+function Group({
+    id,
+    active,
+    children,
+}: {
+    id: GroupId;
+    active: GroupId;
+    children: React.ReactNode;
+}) {
+    return (
+        <div hidden={id !== active} className="flex flex-col gap-6">
+            {children}
+        </div>
+    );
+}
+
 function Settings() {
     const qc = useQueryClient();
     const router = useRouter();
@@ -59,6 +85,7 @@ function Settings() {
     const teamOptions = useQuery(teamsQuery).data ?? [];
     const version = useQuery(versionQuery).data;
     const [checking, setChecking] = useState(false);
+    const [tab, setTab] = useState<GroupId>("account");
 
     const checkNow = async () => {
         setChecking(true);
@@ -134,435 +161,515 @@ function Settings() {
                 e.preventDefault();
                 void form.handleSubmit();
             }}
-            className="mx-auto flex max-w-xl flex-col gap-5 pb-24"
+            className="mx-auto flex max-w-3xl flex-col gap-5 pb-24"
         >
-            {version && (
-                <div className="text-muted flex items-center gap-3 text-xs">
-                    <span>Argus v{version}</span>
-                    <button
-                        type="button"
-                        disabled={checking || !cfg.checkForUpdates}
-                        title={
-                            cfg.checkForUpdates
-                                ? undefined
-                                : "Turn on update checks to use this"
-                        }
-                        onClick={() => void checkNow()}
-                        className="border-line text-muted hover:text-fg rounded-md border px-2 py-0.5 disabled:opacity-60"
-                    >
-                        {checking ? "Checking…" : "Check for updates"}
-                    </button>
-                </div>
-            )}
-            <section className="flex flex-col gap-3">
-                <h2 className="text-muted text-xs font-medium uppercase tracking-wide">
-                    Identity
-                </h2>
-                <form.Field name="adoAuth">
-                    {(field) => (
-                        <div>
-                            <div className="text-fg text-sm font-medium">
-                                Sign-in method
-                            </div>
-                            <div className="mt-1">
-                                <SegToggle
-                                    value={field.state.value}
-                                    onChange={field.handleChange}
-                                    options={[
-                                        { v: "az", label: "Azure CLI" },
-                                        {
-                                            v: "broker",
-                                            label: "Windows account",
-                                        },
-                                    ]}
-                                />
-                            </div>
-                            <div className="text-muted mt-1 text-xs">
-                                Azure CLI uses your az login. Windows account
-                                uses the Windows account broker and needs an
-                                Entra app registration (Windows only). Applies
-                                without a restart.
-                            </div>
-                        </div>
-                    )}
-                </form.Field>
-                <AccountPanel />
-                <RegistrationShare />
-                <form.Field name="me">
-                    {(field) => (
-                        <Row
-                            label="Me"
-                            hint="Your ADO account email. Leave blank to use the signed-in account."
+            <div className="flex gap-8">
+                <nav className="flex w-36 shrink-0 flex-col gap-1">
+                    {GROUPS.map((g) => (
+                        <button
+                            key={g.id}
+                            type="button"
+                            onClick={() => setTab(g.id)}
+                            className={`rounded-md px-3 py-1.5 text-left text-sm ${
+                                tab === g.id
+                                    ? "text-fg bg-surface font-medium"
+                                    : "text-muted hover:text-fg"
+                            }`}
                         >
-                            <input
-                                className={inputCls}
-                                placeholder="auto-detect"
-                                value={field.state.value}
-                                onChange={(e) =>
-                                    field.handleChange(e.target.value)
-                                }
-                            />
-                        </Row>
-                    )}
-                </form.Field>
-                <form.Field name="avatarUrl">
-                    {(field) => (
-                        <Row
-                            label="Avatar image"
-                            hint="Optional image URL shown for your own PRs (e.g. a photo). Falls back to initials."
-                        >
-                            <input
-                                className={inputCls}
-                                placeholder="https://…/me.jpg"
-                                value={field.state.value}
-                                onChange={(e) =>
-                                    field.handleChange(e.target.value)
-                                }
-                            />
-                        </Row>
-                    )}
-                </form.Field>
-            </section>
-
-            <section className="flex flex-col gap-3">
-                <h2 className="text-muted text-xs font-medium uppercase tracking-wide">
-                    Teams
-                </h2>
-                <form.Field name="teamPatterns">
-                    {(field) => (
-                        <Row
-                            label="Team reviewer patterns"
-                            hint="Pick teams seen on your PRs, or type a custom *glob*."
-                        >
-                            <TeamMultiSelect
-                                value={field.state.value}
-                                options={teamOptions}
-                                onChange={(v) => field.handleChange(v)}
-                            />
-                        </Row>
-                    )}
-                </form.Field>
-                <form.Field name="teamLabels">
-                    {(field) => (
-                        <Row
-                            label="Team labels"
-                            hint="Friendly names for team chips. Independent of tracking above."
-                        >
-                            <TeamLabelEditor
-                                value={field.state.value}
-                                options={teamOptions}
-                                onChange={(v) => field.handleChange(v)}
-                            />
-                        </Row>
-                    )}
-                </form.Field>
-            </section>
-
-            <section className="grid grid-cols-2 gap-3">
-                <h2 className="text-muted col-span-2 text-xs font-medium uppercase tracking-wide">
-                    Azure DevOps
-                </h2>
-                <form.Field name="project">
-                    {(field) => (
-                        <Row label="Project">
-                            <input
-                                className={inputCls}
-                                value={field.state.value}
-                                onChange={(e) =>
-                                    field.handleChange(e.target.value)
-                                }
-                            />
-                        </Row>
-                    )}
-                </form.Field>
-                <form.Field name="orgSlug">
-                    {(field) => (
-                        <Row label="Org slug">
-                            <input
-                                className={inputCls}
-                                value={field.state.value}
-                                onChange={(e) =>
-                                    field.handleChange(e.target.value)
-                                }
-                            />
-                        </Row>
-                    )}
-                </form.Field>
-                <form.Field name="orgUrl">
-                    {(field) => (
-                        <Row label="Org URL">
-                            <input
-                                className={inputCls}
-                                value={field.state.value}
-                                onChange={(e) =>
-                                    field.handleChange(e.target.value)
-                                }
-                            />
-                        </Row>
-                    )}
-                </form.Field>
-                <form.Field name="reviewSkillName">
-                    {(field) => (
-                        <Row
-                            label="Review skill"
-                            hint="The skill the Review buttons tell the agent to run. Default: pr-review."
-                        >
-                            <input
-                                className={inputCls}
-                                placeholder="pr-review"
-                                value={field.state.value}
-                                onChange={(e) =>
-                                    field.handleChange(e.target.value)
-                                }
-                            />
-                        </Row>
-                    )}
-                </form.Field>
-            </section>
-
-            <section className="flex flex-col gap-3">
-                <h2 className="text-muted text-xs font-medium uppercase tracking-wide">
-                    Schedule
-                </h2>
-                <div className="grid grid-cols-2 gap-3">
-                    <form.Field name="workStartHour">
-                        {(field) => (
-                            <Row label="Work start (hour)">
-                                <input
-                                    type="number"
-                                    min={0}
-                                    max={23}
-                                    className={inputCls}
-                                    value={field.state.value}
-                                    onChange={(e) =>
-                                        field.handleChange(
-                                            Number(e.target.value),
-                                        )
-                                    }
-                                />
-                            </Row>
-                        )}
-                    </form.Field>
-                    <form.Field name="workEndHour">
-                        {(field) => (
-                            <Row label="Work end (hour)">
-                                <input
-                                    type="number"
-                                    min={0}
-                                    max={23}
-                                    className={inputCls}
-                                    value={field.state.value}
-                                    onChange={(e) =>
-                                        field.handleChange(
-                                            Number(e.target.value),
-                                        )
-                                    }
-                                />
-                            </Row>
-                        )}
-                    </form.Field>
-                </div>
-                <form.Field name="workDays">
-                    {(field) => (
-                        <Row label="Work days">
-                            <div className="mt-1 flex gap-1">
-                                {DAYS.map((d, i) => {
-                                    const on = field.state.value.includes(i);
-                                    return (
-                                        <button
-                                            key={d}
-                                            type="button"
-                                            onClick={() =>
-                                                field.handleChange(
-                                                    on
-                                                        ? field.state.value.filter(
-                                                              (x) => x !== i,
-                                                          )
-                                                        : [
-                                                              ...field.state
-                                                                  .value,
-                                                              i,
-                                                          ].sort(),
-                                                )
-                                            }
-                                            className="rounded-md border px-2 py-1 text-xs"
-                                            style={{
-                                                borderColor: on
-                                                    ? "var(--peacock-teal)"
-                                                    : "var(--color-line)",
-                                                background: on
-                                                    ? "color-mix(in srgb, var(--peacock-teal) 16%, transparent)"
-                                                    : "transparent",
-                                            }}
-                                        >
-                                            {d}
-                                        </button>
-                                    );
-                                })}
-                            </div>
-                        </Row>
-                    )}
-                </form.Field>
-            </section>
-
-            <section className="flex flex-col gap-3">
-                <h2 className="text-muted text-xs font-medium uppercase tracking-wide">
-                    Updates
-                </h2>
-                <form.Field name="checkForUpdates">
-                    {(field) => (
-                        <Row
-                            label="Check for new versions"
-                            hint="Once a day, Argus asks GitHub for the latest release and shows a notice in the bell. It sends no data about you."
-                        >
-                            <label className="mt-1 flex items-center gap-2 text-sm">
-                                <input
-                                    type="checkbox"
-                                    checked={field.state.value}
-                                    onChange={(e) =>
-                                        field.handleChange(e.target.checked)
-                                    }
-                                />
-                                Enabled
-                            </label>
-                        </Row>
-                    )}
-                </form.Field>
-            </section>
-
-            <section className="flex flex-col gap-3">
-                <h2 className="text-muted text-xs font-medium uppercase tracking-wide">
-                    Context bands
-                </h2>
-                <form.Field name="periods">
-                    {(field) => (
-                        <Row
-                            label="Named periods"
-                            hint="Shaded bands on the Load & capacity chart, e.g. Hackathon, Team week, PTO."
-                        >
-                            <div className="mt-1 flex flex-col gap-2">
-                                {field.state.value.map((p, i) => (
-                                    <div
-                                        key={i}
-                                        className="flex items-center gap-2"
+                            {g.label}
+                        </button>
+                    ))}
+                </nav>
+                <div className="min-w-0 flex-1">
+                    <Group id="account" active={tab}>
+                        <section className="flex flex-col gap-3">
+                            <h2 className="text-muted text-xs font-medium uppercase tracking-wide">
+                                Identity
+                            </h2>
+                            <form.Field name="adoAuth">
+                                {(field) => (
+                                    <div>
+                                        <div className="text-fg text-sm font-medium">
+                                            Sign-in method
+                                        </div>
+                                        <div className="mt-1">
+                                            <SegToggle
+                                                value={field.state.value}
+                                                onChange={field.handleChange}
+                                                options={[
+                                                    {
+                                                        v: "az",
+                                                        label: "Azure CLI",
+                                                    },
+                                                    {
+                                                        v: "broker",
+                                                        label: "Windows account",
+                                                    },
+                                                ]}
+                                            />
+                                        </div>
+                                        <div className="text-muted mt-1 text-xs">
+                                            Azure CLI uses your az login.
+                                            Windows account uses the Windows
+                                            account broker and needs an Entra
+                                            app registration (Windows only).
+                                            Applies without a restart.
+                                        </div>
+                                    </div>
+                                )}
+                            </form.Field>
+                            <AccountPanel />
+                            <RegistrationShare />
+                            <form.Field name="me">
+                                {(field) => (
+                                    <Row
+                                        label="Me"
+                                        hint="Your ADO account email. Leave blank to use the signed-in account."
                                     >
                                         <input
-                                            className="border-line bg-canvas w-full rounded-md border px-2.5 py-1.5 text-sm"
-                                            placeholder="Label"
-                                            value={p.label}
-                                            onChange={(e) => {
-                                                const next =
-                                                    field.state.value.slice();
-                                                next[i] = {
-                                                    ...next[i],
-                                                    label: e.target.value,
-                                                };
-                                                field.handleChange(next);
-                                            }}
-                                        />
-                                        <input
-                                            type="date"
-                                            className="border-line bg-canvas shrink-0 rounded-md border px-2 py-1.5 text-sm"
-                                            value={p.start}
-                                            onChange={(e) => {
-                                                const next =
-                                                    field.state.value.slice();
-                                                next[i] = {
-                                                    ...next[i],
-                                                    start: e.target.value,
-                                                };
-                                                field.handleChange(next);
-                                            }}
-                                        />
-                                        <span className="text-muted text-xs">
-                                            →
-                                        </span>
-                                        <input
-                                            type="date"
-                                            className="border-line bg-canvas shrink-0 rounded-md border px-2 py-1.5 text-sm"
-                                            value={p.end}
-                                            onChange={(e) => {
-                                                const next =
-                                                    field.state.value.slice();
-                                                next[i] = {
-                                                    ...next[i],
-                                                    end: e.target.value,
-                                                };
-                                                field.handleChange(next);
-                                            }}
-                                        />
-                                        <button
-                                            type="button"
-                                            onClick={() =>
+                                            className={inputCls}
+                                            placeholder="auto-detect"
+                                            value={field.state.value}
+                                            onChange={(e) =>
                                                 field.handleChange(
-                                                    field.state.value.filter(
-                                                        (_, j) => j !== i,
-                                                    ),
+                                                    e.target.value,
                                                 )
                                             }
-                                            className="text-muted hover:text-fg shrink-0 rounded-md border border-line px-2 py-1.5 text-xs"
-                                            aria-label="Remove period"
-                                        >
-                                            ✕
-                                        </button>
-                                    </div>
-                                ))}
-                                <button
-                                    type="button"
-                                    onClick={() =>
-                                        field.handleChange([
-                                            ...field.state.value,
-                                            { label: "", start: "", end: "" },
-                                        ])
-                                    }
-                                    className="text-muted hover:text-fg w-fit rounded-md border border-line px-2.5 py-1 text-xs"
-                                >
-                                    + Add period
-                                </button>
-                            </div>
-                        </Row>
-                    )}
-                </form.Field>
-            </section>
+                                        />
+                                    </Row>
+                                )}
+                            </form.Field>
+                            <form.Field name="avatarUrl">
+                                {(field) => (
+                                    <Row
+                                        label="Avatar image"
+                                        hint="Optional image URL shown for your own PRs (e.g. a photo). Falls back to initials."
+                                    >
+                                        <input
+                                            className={inputCls}
+                                            placeholder="https://…/me.jpg"
+                                            value={field.state.value}
+                                            onChange={(e) =>
+                                                field.handleChange(
+                                                    e.target.value,
+                                                )
+                                            }
+                                        />
+                                    </Row>
+                                )}
+                            </form.Field>
+                        </section>
+                    </Group>
 
-            <section className="grid grid-cols-2 gap-3">
-                <h2 className="text-muted col-span-2 text-xs font-medium uppercase tracking-wide">
-                    Discovery &amp; logs
-                </h2>
-                <form.Field name="recencyDays">
-                    {(field) => (
-                        <Row
-                            label="Recency (days)"
-                            hint="Auto-add untracked PRs newer than this."
-                        >
-                            <input
-                                type="number"
-                                min={1}
-                                className={inputCls}
-                                value={field.state.value}
-                                onChange={(e) =>
-                                    field.handleChange(Number(e.target.value))
-                                }
-                            />
-                        </Row>
-                    )}
-                </form.Field>
-                <form.Field name="retentionDays">
-                    {(field) => (
-                        <Row label="Log retention (days)">
-                            <input
-                                type="number"
-                                min={1}
-                                className={inputCls}
-                                value={field.state.value}
-                                onChange={(e) =>
-                                    field.handleChange(Number(e.target.value))
-                                }
-                            />
-                        </Row>
-                    )}
-                </form.Field>
-            </section>
+                    <Group id="teams" active={tab}>
+                        <section className="flex flex-col gap-3">
+                            <h2 className="text-muted text-xs font-medium uppercase tracking-wide">
+                                Teams
+                            </h2>
+                            <form.Field name="teamPatterns">
+                                {(field) => (
+                                    <Row
+                                        label="Team reviewer patterns"
+                                        hint="Pick teams seen on your PRs, or type a custom *glob*."
+                                    >
+                                        <TeamMultiSelect
+                                            value={field.state.value}
+                                            options={teamOptions}
+                                            onChange={(v) =>
+                                                field.handleChange(v)
+                                            }
+                                        />
+                                    </Row>
+                                )}
+                            </form.Field>
+                            <form.Field name="teamLabels">
+                                {(field) => (
+                                    <Row
+                                        label="Team labels"
+                                        hint="Friendly names for team chips. Independent of tracking above."
+                                    >
+                                        <TeamLabelEditor
+                                            value={field.state.value}
+                                            options={teamOptions}
+                                            onChange={(v) =>
+                                                field.handleChange(v)
+                                            }
+                                        />
+                                    </Row>
+                                )}
+                            </form.Field>
+                        </section>
+                    </Group>
+
+                    <Group id="ado" active={tab}>
+                        <section className="grid grid-cols-2 gap-3">
+                            <h2 className="text-muted col-span-2 text-xs font-medium uppercase tracking-wide">
+                                Azure DevOps
+                            </h2>
+                            <form.Field name="project">
+                                {(field) => (
+                                    <Row label="Project">
+                                        <input
+                                            className={inputCls}
+                                            value={field.state.value}
+                                            onChange={(e) =>
+                                                field.handleChange(
+                                                    e.target.value,
+                                                )
+                                            }
+                                        />
+                                    </Row>
+                                )}
+                            </form.Field>
+                            <form.Field name="orgSlug">
+                                {(field) => (
+                                    <Row label="Org slug">
+                                        <input
+                                            className={inputCls}
+                                            value={field.state.value}
+                                            onChange={(e) =>
+                                                field.handleChange(
+                                                    e.target.value,
+                                                )
+                                            }
+                                        />
+                                    </Row>
+                                )}
+                            </form.Field>
+                            <form.Field name="orgUrl">
+                                {(field) => (
+                                    <Row label="Org URL">
+                                        <input
+                                            className={inputCls}
+                                            value={field.state.value}
+                                            onChange={(e) =>
+                                                field.handleChange(
+                                                    e.target.value,
+                                                )
+                                            }
+                                        />
+                                    </Row>
+                                )}
+                            </form.Field>
+                            <form.Field name="reviewSkillName">
+                                {(field) => (
+                                    <Row
+                                        label="Review skill"
+                                        hint="The skill the Review buttons tell the agent to run. Default: pr-review."
+                                    >
+                                        <input
+                                            className={inputCls}
+                                            placeholder="pr-review"
+                                            value={field.state.value}
+                                            onChange={(e) =>
+                                                field.handleChange(
+                                                    e.target.value,
+                                                )
+                                            }
+                                        />
+                                    </Row>
+                                )}
+                            </form.Field>
+                        </section>
+                    </Group>
+
+                    <Group id="schedule" active={tab}>
+                        <section className="flex flex-col gap-3">
+                            <h2 className="text-muted text-xs font-medium uppercase tracking-wide">
+                                Schedule
+                            </h2>
+                            <div className="grid grid-cols-2 gap-3">
+                                <form.Field name="workStartHour">
+                                    {(field) => (
+                                        <Row label="Work start (hour)">
+                                            <input
+                                                type="number"
+                                                min={0}
+                                                max={23}
+                                                className={inputCls}
+                                                value={field.state.value}
+                                                onChange={(e) =>
+                                                    field.handleChange(
+                                                        Number(e.target.value),
+                                                    )
+                                                }
+                                            />
+                                        </Row>
+                                    )}
+                                </form.Field>
+                                <form.Field name="workEndHour">
+                                    {(field) => (
+                                        <Row label="Work end (hour)">
+                                            <input
+                                                type="number"
+                                                min={0}
+                                                max={23}
+                                                className={inputCls}
+                                                value={field.state.value}
+                                                onChange={(e) =>
+                                                    field.handleChange(
+                                                        Number(e.target.value),
+                                                    )
+                                                }
+                                            />
+                                        </Row>
+                                    )}
+                                </form.Field>
+                            </div>
+                            <form.Field name="workDays">
+                                {(field) => (
+                                    <Row label="Work days">
+                                        <div className="mt-1 flex gap-1">
+                                            {DAYS.map((d, i) => {
+                                                const on =
+                                                    field.state.value.includes(
+                                                        i,
+                                                    );
+                                                return (
+                                                    <button
+                                                        key={d}
+                                                        type="button"
+                                                        onClick={() =>
+                                                            field.handleChange(
+                                                                on
+                                                                    ? field.state.value.filter(
+                                                                          (x) =>
+                                                                              x !==
+                                                                              i,
+                                                                      )
+                                                                    : [
+                                                                          ...field
+                                                                              .state
+                                                                              .value,
+                                                                          i,
+                                                                      ].sort(),
+                                                            )
+                                                        }
+                                                        className="rounded-md border px-2 py-1 text-xs"
+                                                        style={{
+                                                            borderColor: on
+                                                                ? "var(--peacock-teal)"
+                                                                : "var(--color-line)",
+                                                            background: on
+                                                                ? "color-mix(in srgb, var(--peacock-teal) 16%, transparent)"
+                                                                : "transparent",
+                                                        }}
+                                                    >
+                                                        {d}
+                                                    </button>
+                                                );
+                                            })}
+                                        </div>
+                                    </Row>
+                                )}
+                            </form.Field>
+                        </section>
+
+                        <section className="flex flex-col gap-3">
+                            <h2 className="text-muted text-xs font-medium uppercase tracking-wide">
+                                Context bands
+                            </h2>
+                            <form.Field name="periods">
+                                {(field) => (
+                                    <Row
+                                        label="Named periods"
+                                        hint="Shaded bands on the Load & capacity chart, e.g. Hackathon, Team week, PTO."
+                                    >
+                                        <div className="mt-1 flex flex-col gap-2">
+                                            {field.state.value.map((p, i) => (
+                                                <div
+                                                    key={i}
+                                                    className="flex items-center gap-2"
+                                                >
+                                                    <input
+                                                        className="border-line bg-canvas w-full rounded-md border px-2.5 py-1.5 text-sm"
+                                                        placeholder="Label"
+                                                        value={p.label}
+                                                        onChange={(e) => {
+                                                            const next =
+                                                                field.state.value.slice();
+                                                            next[i] = {
+                                                                ...next[i],
+                                                                label: e.target
+                                                                    .value,
+                                                            };
+                                                            field.handleChange(
+                                                                next,
+                                                            );
+                                                        }}
+                                                    />
+                                                    <input
+                                                        type="date"
+                                                        className="border-line bg-canvas shrink-0 rounded-md border px-2 py-1.5 text-sm"
+                                                        value={p.start}
+                                                        onChange={(e) => {
+                                                            const next =
+                                                                field.state.value.slice();
+                                                            next[i] = {
+                                                                ...next[i],
+                                                                start: e.target
+                                                                    .value,
+                                                            };
+                                                            field.handleChange(
+                                                                next,
+                                                            );
+                                                        }}
+                                                    />
+                                                    <span className="text-muted text-xs">
+                                                        →
+                                                    </span>
+                                                    <input
+                                                        type="date"
+                                                        className="border-line bg-canvas shrink-0 rounded-md border px-2 py-1.5 text-sm"
+                                                        value={p.end}
+                                                        onChange={(e) => {
+                                                            const next =
+                                                                field.state.value.slice();
+                                                            next[i] = {
+                                                                ...next[i],
+                                                                end: e.target
+                                                                    .value,
+                                                            };
+                                                            field.handleChange(
+                                                                next,
+                                                            );
+                                                        }}
+                                                    />
+                                                    <button
+                                                        type="button"
+                                                        onClick={() =>
+                                                            field.handleChange(
+                                                                field.state.value.filter(
+                                                                    (_, j) =>
+                                                                        j !== i,
+                                                                ),
+                                                            )
+                                                        }
+                                                        className="text-muted hover:text-fg shrink-0 rounded-md border border-line px-2 py-1.5 text-xs"
+                                                        aria-label="Remove period"
+                                                    >
+                                                        ✕
+                                                    </button>
+                                                </div>
+                                            ))}
+                                            <button
+                                                type="button"
+                                                onClick={() =>
+                                                    field.handleChange([
+                                                        ...field.state.value,
+                                                        {
+                                                            label: "",
+                                                            start: "",
+                                                            end: "",
+                                                        },
+                                                    ])
+                                                }
+                                                className="text-muted hover:text-fg w-fit rounded-md border border-line px-2.5 py-1 text-xs"
+                                            >
+                                                + Add period
+                                            </button>
+                                        </div>
+                                    </Row>
+                                )}
+                            </form.Field>
+                        </section>
+                    </Group>
+
+                    <Group id="app" active={tab}>
+                        <section className="flex flex-col gap-3">
+                            <h2 className="text-muted text-xs font-medium uppercase tracking-wide">
+                                Updates
+                            </h2>
+                            {version && (
+                                <div className="text-muted flex items-center gap-3 text-xs">
+                                    <span>Argus v{version}</span>
+                                    <button
+                                        type="button"
+                                        disabled={
+                                            checking || !cfg.checkForUpdates
+                                        }
+                                        title={
+                                            cfg.checkForUpdates
+                                                ? undefined
+                                                : "Turn on update checks to use this"
+                                        }
+                                        onClick={() => void checkNow()}
+                                        className="border-line text-muted hover:text-fg rounded-md border px-2 py-0.5 disabled:opacity-60"
+                                    >
+                                        {checking
+                                            ? "Checking…"
+                                            : "Check for updates"}
+                                    </button>
+                                </div>
+                            )}
+                            <form.Field name="checkForUpdates">
+                                {(field) => (
+                                    <Row
+                                        label="Check for new versions"
+                                        hint="Once a day, Argus asks GitHub for the latest release and shows a notice in the bell. It sends no data about you."
+                                    >
+                                        <label className="mt-1 flex items-center gap-2 text-sm">
+                                            <input
+                                                type="checkbox"
+                                                checked={field.state.value}
+                                                onChange={(e) =>
+                                                    field.handleChange(
+                                                        e.target.checked,
+                                                    )
+                                                }
+                                            />
+                                            Enabled
+                                        </label>
+                                    </Row>
+                                )}
+                            </form.Field>
+                        </section>
+
+                        <section className="grid grid-cols-2 gap-3">
+                            <h2 className="text-muted col-span-2 text-xs font-medium uppercase tracking-wide">
+                                Discovery &amp; logs
+                            </h2>
+                            <form.Field name="recencyDays">
+                                {(field) => (
+                                    <Row
+                                        label="Recency (days)"
+                                        hint="Auto-add untracked PRs newer than this."
+                                    >
+                                        <input
+                                            type="number"
+                                            min={1}
+                                            className={inputCls}
+                                            value={field.state.value}
+                                            onChange={(e) =>
+                                                field.handleChange(
+                                                    Number(e.target.value),
+                                                )
+                                            }
+                                        />
+                                    </Row>
+                                )}
+                            </form.Field>
+                            <form.Field name="retentionDays">
+                                {(field) => (
+                                    <Row label="Log retention (days)">
+                                        <input
+                                            type="number"
+                                            min={1}
+                                            className={inputCls}
+                                            value={field.state.value}
+                                            onChange={(e) =>
+                                                field.handleChange(
+                                                    Number(e.target.value),
+                                                )
+                                            }
+                                        />
+                                    </Row>
+                                )}
+                            </form.Field>
+                        </section>
+                    </Group>
+                </div>
+            </div>
 
             <form.Subscribe
                 selector={(s) => ({
@@ -581,7 +688,7 @@ function Settings() {
                                     "color-mix(in srgb, var(--peacock-gold) 45%, var(--color-line))",
                             }}
                         >
-                            <div className="mx-auto flex max-w-xl items-center gap-3">
+                            <div className="mx-auto flex max-w-3xl items-center gap-3">
                                 <span className="text-muted text-sm">
                                     Unsaved changes
                                 </span>
