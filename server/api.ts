@@ -26,6 +26,7 @@ import {
     switchAccount,
     useBroker,
 } from "./ado/client.ts";
+import { ingestUrl } from "./ingest.ts";
 import { sendJson } from "./respond.ts";
 import type { Notice } from "./notices.ts";
 import type { DbLocation } from "./storage.ts";
@@ -54,9 +55,8 @@ function archivePrompt(items: ArchivableSession[]): string {
 // decoupled child session that runs the PR review skill; the skill records its own
 // verdict with a headless HTTP POST to Argus's fixed-port ingest endpoint (no
 // canvas, no per-session extension host), so nothing reports back to chat.
-const INGEST = "http://127.0.0.1:48100/api/pr/record-review";
 function recordCmd(canonical: string): string {
-    return `Invoke-RestMethod -Method Post -Uri ${INGEST} -ContentType application/json -Body '{"canonical":"${canonical}","verdict":"<approved|suggestions|waiting|rejected>"}'`;
+    return `Invoke-RestMethod -Method Post -Uri ${ingestUrl()} -ContentType application/json -Body '{"canonical":"${canonical}","verdict":"<approved|suggestions|waiting|rejected>"}'`;
 }
 export function reviewPrompt(pr: Pr, skillName: string): string {
     const ref = `**${pr.repo} #${pr.number}** — ${pr.title}\n${pr.canonical}`;

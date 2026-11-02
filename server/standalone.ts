@@ -12,6 +12,7 @@ import {
     type ReleaseInfo,
 } from "./update-check.ts";
 import { ArgusStore } from "./db.ts";
+import { setIngestPort } from "./ingest.ts";
 import {
     startServer,
     stopInstance,
@@ -44,6 +45,7 @@ const DB_FILE =
 const CONFIG_FILE =
     process.env.ARGUS_CONFIG_FILE || path.join(root, "argus.config.json");
 const INGEST_PORT = Number(process.env.ARGUS_INGEST_PORT ?? 48199);
+setIngestPort(INGEST_PORT);
 
 const store = new ArgusStore(DB_FILE);
 const getConfig = (): ArgusConfig =>

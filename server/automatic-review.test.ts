@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { automaticReviewPrompt, reviewPrompt } from "./api.ts";
+import { ingestUrl, setIngestPort } from "./ingest.ts";
 import { shouldShowAutomaticReview } from "../src/lib/triage.ts";
 import type { Pr } from "./types.ts";
 
@@ -51,6 +52,24 @@ assert.doesNotMatch(
     interactivePrompt,
     /Review mode: automatic|kickoff\.mode: "autopilot"/,
 );
+
+const customPr = {
+    repo: "Example.UI",
+    number: 123,
+    title: "Custom port",
+    canonical: "https://example.test/pr/123",
+    lane: "quick",
+} as Pr;
+setIngestPort(48555);
+const customUrl = "http://127.0.0.1:48555/api/pr/record-review";
+assert.equal(ingestUrl(), customUrl);
+for (const text of [
+    reviewPrompt(customPr, "pr-review"),
+    reviewPrompt({ ...customPr, reviewSessionId: "s1" } as Pr, "pr-review"),
+]) {
+    assert.ok(text.includes(customUrl));
+    assert.doesNotMatch(text, /48100/);
+}
 
 for (const path of ["../skills/pr-review/SKILL.md"]) {
     const skill = readFileSync(
