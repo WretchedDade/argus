@@ -57,7 +57,7 @@ then the Windows account broker.
 
 To install without building, download the ZIP from the latest GitHub Release and
 follow [docs/INSTALL.md](docs/INSTALL.md) (Windows x64). The ZIP is built when a
-maintainer pushes a tag `vX.Y.Z` that matches the version in `package.json`. To
+maintainer merges a version bump to `main`; the Release workflow then tags it. To
 test the packaging locally, run `npm ci` then `node scripts/package-release.ts`.
 
 To build from source instead:
@@ -78,24 +78,19 @@ to resolve `index.html` when the project root is a symlink.
 
 ## Releasing
 
-Argus uses semantic versioning. The version is in `package.json`. Only a pushed
-tag publishes a release; merges to `main` do not.
+Argus uses semantic versioning. The version is in `package.json`. A release is
+published when a change to `package.json` reaches `main` with a version that has
+no tag yet. Other merges to `main` do not publish.
 
 1. In a PR, bump `version` in `package.json` (and the lockfile). While on `0.x`,
    bump MINOR for features or disruptive changes, and PATCH for fixes.
-2. After the PR merges, tag the merge commit and push the tag:
+2. Merge the PR. The Release workflow creates the tag `vX.Y.Z`, runs the checks,
+   and publishes `argus-vX.Y.Z-windows.zip` on the GitHub Release.
 
-```powershell
-git checkout main
-git pull
-git tag v0.2.0
-git push origin v0.2.0
-```
-
-The Release workflow checks that the tag matches `package.json`, runs the checks,
-and publishes `argus-vX.Y.Z-windows.zip` on the GitHub Release. To undo a bad
-release, delete the GitHub Release and the tag (`git push origin :refs/tags/v0.2.0`),
-then tag again.
+If the workflow fails, no tag exists. Fix the problem and re-run the workflow
+from the Actions tab (it also has a manual trigger). To undo a bad release,
+delete the GitHub Release and the tag (`git push origin :refs/tags/v0.2.0`),
+then re-run the workflow.
 
 ## Standalone browser preview
 
