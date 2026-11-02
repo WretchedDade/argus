@@ -36,7 +36,7 @@ export function buildNotices(inputs: NoticeInputs): Notice[] {
         release &&
         isNewerVersion(release.version, appVersion)
     ) {
-        const zip = `https://github.com/WretchedDade/argus/releases/download/v${release.version}/argus-v${release.version}-windows.zip`;
+        const zip = release.zipUrl;
         notices.push({
             id: `app-update:${release.version}`,
             kind: "app-update",

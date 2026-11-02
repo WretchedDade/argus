@@ -69,6 +69,7 @@ let latestRelease: ReleaseInfo | null = process.env.ARGUS_FAKE_RELEASE
     ? {
           version: process.env.ARGUS_FAKE_RELEASE,
           url: "https://github.com/WretchedDade/argus/releases",
+          zipUrl: `https://github.com/WretchedDade/argus/releases/download/v${process.env.ARGUS_FAKE_RELEASE}/argus-v${process.env.ARGUS_FAKE_RELEASE}-windows.zip`,
       }
     : null;
 const fakeRelease = latestRelease;

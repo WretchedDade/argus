@@ -1,6 +1,7 @@
 export interface ReleaseInfo {
     version: string;
     url: string;
+    zipUrl: string; // download URL of the Windows ZIP, taken from the release assets
 }
 
 const LATEST_RELEASE_URL =
@@ -40,6 +41,7 @@ export async function fetchLatestRelease(
         const body = (await res.json()) as {
             tag_name?: unknown;
             html_url?: unknown;
+            assets?: { name?: unknown; browser_download_url?: unknown }[];
         };
         if (
             typeof body.tag_name !== "string" ||
@@ -47,9 +49,15 @@ export async function fetchLatestRelease(
             !parseVersion(body.tag_name)
         )
             return null;
+        const version = body.tag_name.replace(/^v/, "");
+        const zip = (Array.isArray(body.assets) ? body.assets : []).find(
+            (a) => a?.name === `argus-v${version}-windows.zip`,
+        );
+        if (typeof zip?.browser_download_url !== "string") return null;
         return {
-            version: body.tag_name.replace(/^v/, ""),
+            version,
             url: body.html_url,
+            zipUrl: zip.browser_download_url,
         };
     } catch {
         return null;

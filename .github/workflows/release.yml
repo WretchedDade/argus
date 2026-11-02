@@ -92,7 +92,12 @@ jobs:
               run: |
                   git ls-remote --exit-code --tags origin "refs/tags/$env:TAG" | Out-Null
                   if ($LASTEXITCODE -eq 0) {
-                      Write-Host "Tag $env:TAG already exists. Nothing to release."
+                      # A tag without its uploaded ZIP is a failed release, not a finished one.
+                      $assets = gh release view $env:TAG --json assets --jq '.assets[] | select(.name == "argus-' + $env:TAG + '-windows.zip" and .state == "uploaded") | .name'
+                      if ($LASTEXITCODE -ne 0 -or -not $assets) {
+                          throw "Tag $env:TAG exists, but the release ZIP is missing. Delete the tag and release, then run again."
+                      }
+                      Write-Host "Tag $env:TAG already has its release ZIP. Nothing to release."
                       exit 0
                   }
                   if ($LASTEXITCODE -ne 2) { throw "Tag lookup failed with exit code $LASTEXITCODE" }
