@@ -23,13 +23,13 @@ Read [CONTRIBUTING.md](../CONTRIBUTING.md) for setup, checks, and the PR process
 
 - Add routes as `/api/...` blocks in `handleApi` in `server/api.ts`.
 - Use `GET` for reads and `POST` for actions that change data.
-- Reply with `sendJson`. Do not write to `res` directly.
-- Add the response type, the `api` helper, and the `queryOptions` in `src/lib/api.ts` for each endpoint.
+- Reply to JSON endpoints with `sendJson`. Do not write JSON to `res` directly. Binary endpoints such as `/api/img` write bytes and headers to `res`.
+- Add the response type and the `api` helper in `src/lib/api.ts` for each endpoint. Add a `queryOptions` for each read endpoint only.
 
 ## Frontend
 
 - Add one file in `src/routes/` for each route. Do not edit or commit `src/routeTree.gen.ts`.
-- Fetch data with TanStack Query and the `queryOptions` from `src/lib/api.ts`.
+- Fetch data with TanStack Query and the `queryOptions` from `src/lib/api.ts`. Call actions with `useMutation`, not `queryOptions`.
 - Put shared components in `src/components/` and charts in `Charts.tsx` (Recharts).
 
 ## Testing
