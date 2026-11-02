@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { createServer } from "node:http";
+import { createServer, request as httpRequest } from "node:http";
 import { handleApi, type ApiContext } from "./api.ts";
 import { defaultConfig, loadLocalConfig, mergeConfig } from "./config.ts";
 import { ArgusStore } from "./db.ts";
@@ -105,6 +105,68 @@ try {
     });
     assert.equal(validSetup.status, 200);
     assert.equal((await health()).setup_complete, true);
+
+    const send = (
+        method: string,
+        headers: Record<string, string>,
+    ): Promise<number> =>
+        new Promise((resolve, reject) => {
+            const request = httpRequest(
+                {
+                    host: "127.0.0.1",
+                    port: address.port,
+                    path: "/api/health",
+                    method,
+                    headers,
+                },
+                (response) => {
+                    response.resume();
+                    resolve(response.statusCode ?? 0);
+                },
+            );
+            request.on("error", reject);
+            request.end(method === "GET" ? undefined : "{}");
+        });
+    const json = { "Content-Type": "application/json" };
+    const host = `127.0.0.1:${address.port}`;
+    assert.equal(await send("GET", { Host: host }), 200);
+    assert.equal(await send("GET", { Host: `localhost:${address.port}` }), 200);
+    assert.equal(await send("GET", { Host: "evil.example" }), 403);
+    assert.equal(await send("GET", { Host: "127.0.0.1:1" }), 403);
+    assert.equal(
+        await send("GET", { Host: host, Origin: "http://evil.example" }),
+        403,
+    );
+    assert.equal(
+        await send("GET", { Host: host, Origin: "http://127.0.0.1:1" }),
+        403,
+    );
+    assert.equal(
+        await send("GET", { Host: host, Origin: `http://${host}` }),
+        200,
+    );
+    assert.equal(await send("POST", { Host: host }), 415);
+    assert.equal(
+        await send("POST", { Host: host, "Content-Type": "text/plain" }),
+        415,
+    );
+    assert.equal(
+        await send("DELETE", { Host: host, "Content-Type": "text/plain" }),
+        415,
+    );
+    assert.equal(
+        await send("POST", {
+            ...json,
+            Host: host,
+            Origin: "http://evil.example",
+        }),
+        403,
+    );
+    assert.equal(await send("POST", { ...json, Host: "evil.example" }), 403);
+    assert.equal(
+        await send("POST", { ...json, Host: host, Origin: `http://${host}` }),
+        200,
+    );
 
     const errors: string[] = [];
     const originalError = console.error;

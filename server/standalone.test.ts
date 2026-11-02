@@ -68,6 +68,7 @@ async function checkShutdown(signal: "SIGINT" | "SIGTERM"): Promise<void> {
         const pending = once(child, "message");
         const refresh = fetch(`${url}api/refresh`, {
             method: "POST",
+            headers: { "Content-Type": "application/json" },
             signal: controller.signal,
         }).then(
             () => "completed",
