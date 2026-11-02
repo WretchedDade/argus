@@ -137,8 +137,18 @@ proof. After rebasing onto that fixed snapshot and installing its changed
 lockfile, the full suite (including upstream image, Markdown and storage tests),
 typecheck, formatting check, build and separate packaging-script TypeScript
 check passed. The install again reported 7 advisories; no audit retry or
-automatic dependency remediation was performed. A fresh external production
-stage must identify the rebased source rather than `69ce400`.
+automatic dependency remediation was performed.
+
+A fresh external production stage from clean source
+`fb02eafd6d87b18cd23140eb467c9c275ec4e9fa` passed file-inventory verification,
+entry-point syntax, Azure imports and native MSAL loading without startup or
+sign-in. It records `sourceDirty: false`, 31,668 hashed files, 269 installed
+dependency entries, Windows x64 and Node 26.13.0. The rebased bundle SHA-256 is
+`afc18734d1812b1f320fb7f69305c5acc248a6ed83bd8a00d7bbb445aa59898f`;
+its source-lock SHA-256 is
+`adf6ce5449bf6fa49719559a3c6e241f92d74375e5cfc0abcb3c4602e8677da9`.
+This is a stage check, **not a new ZIP roundtrip**, published artifact or desktop
+plugin test. The earlier ZIP digest above must not be assigned to this source.
 Neither stage verification nor the historical ZIP establishes desktop plugin
 loading, persistent plugin data or user-operated WAM login. No push retry is
 authorized after the previously observed GitHub 403.
