@@ -397,6 +397,12 @@ npm test
 route tree required by the typecheck. After source changes, run `npm run build`
 before the checks.
 
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for setup, the dev loop, tests, and pull
+request rules. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for how the
+parts connect and where the data lives.
+
 ## Stack
 
 - React 18 + TanStack Router + TanStack Query
