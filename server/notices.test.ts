@@ -37,6 +37,7 @@ const releaseJson = (assets: unknown[]) =>
         )) as typeof fetch;
 const zipAsset = {
     name: "argus-v0.3.0-windows.zip",
+    state: "uploaded",
     browser_download_url: "https://x/dl/argus-v0.3.0-windows.zip",
 };
 assert.deepEqual(await fetchLatestRelease(releaseJson([zipAsset])), {
@@ -45,6 +46,11 @@ assert.deepEqual(await fetchLatestRelease(releaseJson([zipAsset])), {
     zipUrl: "https://x/dl/argus-v0.3.0-windows.zip",
 });
 // A release without the ZIP asset is not offered as an update.
+// A failed upload leaves a placeholder asset in the starter state.
+assert.equal(
+    await fetchLatestRelease(releaseJson([{ ...zipAsset, state: "starter" }])),
+    null,
+);
 assert.equal(await fetchLatestRelease(releaseJson([])), null);
 assert.equal(
     await fetchLatestRelease(

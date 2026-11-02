@@ -41,7 +41,11 @@ export async function fetchLatestRelease(
         const body = (await res.json()) as {
             tag_name?: unknown;
             html_url?: unknown;
-            assets?: { name?: unknown; browser_download_url?: unknown }[];
+            assets?: {
+                name?: unknown;
+                state?: unknown;
+                browser_download_url?: unknown;
+            }[];
         };
         if (
             typeof body.tag_name !== "string" ||
@@ -51,7 +55,9 @@ export async function fetchLatestRelease(
             return null;
         const version = body.tag_name.replace(/^v/, "");
         const zip = (Array.isArray(body.assets) ? body.assets : []).find(
-            (a) => a?.name === `argus-v${version}-windows.zip`,
+            (a) =>
+                a?.name === `argus-v${version}-windows.zip` &&
+                a.state === "uploaded",
         );
         if (typeof zip?.browser_download_url !== "string") return null;
         return {
