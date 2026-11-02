@@ -5,6 +5,7 @@ import path from "node:path";
 import { promisify } from "node:util";
 import type { AuthStatus } from "@devstart/ado-client";
 import type { AdoRawPr } from "./types.ts";
+import { resolveAzCommand } from "./az-command.ts";
 
 const pExecFile = promisify(execFile);
 const MAX_BUFFER = 64 * 1024 * 1024;
@@ -21,13 +22,8 @@ function decodeAz(buf: Buffer): string {
     }
 }
 
-// Node blocks spawning .cmd shims directly on Windows (CVE-2024-27980), so run
-// `az` through cmd.exe there. argv stays separate, so no shell-quoting hazard.
-const IS_WIN = process.platform === "win32";
 function azCommand(args: string[]): [string, string[]] {
-    return IS_WIN
-        ? [process.env.ComSpec || "cmd.exe", ["/c", "az", ...args]]
-        : ["az", args];
+    return resolveAzCommand(args);
 }
 
 export class AdoError extends Error {}

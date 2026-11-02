@@ -1,4 +1,5 @@
 import { existsSync, readFileSync } from "node:fs";
+import { z } from "zod";
 
 // A named date range (e.g. "Hackathon", "Team week") shown as a shaded band on
 // the Load & capacity chart, for context on why load dipped/spiked that period.
@@ -38,64 +39,88 @@ export type ConfigOverrides = Partial<ArgusConfig>;
 export function loadLocalConfig(file: string): ConfigOverrides {
     if (!existsSync(file)) return {};
     try {
-        const parsed: unknown = JSON.parse(readFileSync(file, "utf-8"));
-        if (!isRecord(parsed)) throw new TypeError("expected a config object");
-        const entries = Object.entries(localConfigValidators)
-            .filter(([key]) => Object.hasOwn(parsed, key))
-            .map(([key, validate]) => {
-                if (!validate(parsed[key]))
-                    throw new TypeError(`invalid config field: ${key}`);
-                return [key, parsed[key]];
-            });
-        return Object.fromEntries(entries) as ConfigOverrides;
+        return parseConfigOverrides(JSON.parse(readFileSync(file, "utf-8")));
     } catch (err) {
         console.error(`argus: cannot read ${file}: ${(err as Error).message}`);
         return {};
     }
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-    return value !== null && typeof value === "object" && !Array.isArray(value);
+// Values that reach the Azure CLI or an ADO URL may only use these characters.
+// No shell metacharacters, quotes, or path separators.
+const SLUG = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
+const PROJECT_NAME = /^[\p{L}\p{N}][\p{L}\p{N} ._-]*$/u;
+const ORG_URL =
+    /^https?:\/\/[A-Za-z0-9][A-Za-z0-9.-]*(:\d{1,5})?(\/[A-Za-z0-9._~-]+)*\/?$/;
+const DAY = /^\d{4}-\d{2}-\d{2}$/;
+
+const optional = (schema: z.ZodString, pattern: RegExp, message: string) =>
+    schema.max(200).refine((value) => value === "" || pattern.test(value), {
+        message,
+    });
+
+export const ConfigSchema = z.object({
+    me: z.string().max(320).nullable(),
+    adoAuth: z.enum(["az", "broker"]),
+    avatarUrl: z.string().max(2048),
+    orgUrl: optional(z.string(), ORG_URL, "must be an http(s) URL"),
+    orgSlug: optional(z.string(), SLUG, "contains unsafe characters"),
+    project: optional(z.string(), PROJECT_NAME, "contains unsafe characters"),
+    teamPatterns: z.array(z.string().max(200)).max(200),
+    teamLabels: z.record(z.string().max(200), z.string().max(200)),
+    periods: z
+        .array(
+            z.object({
+                label: z.string().max(200),
+                start: z.string().regex(DAY),
+                end: z.string().regex(DAY),
+            }),
+        )
+        .max(200),
+    reviewSkillName: z.string().max(200),
+    recencyDays: z.number().int().min(1).max(365),
+    retentionDays: z.number().int().min(1).max(365),
+    workStartHour: z.number().int().min(0).max(23),
+    workEndHour: z.number().int().min(1).max(24),
+    workDays: z.array(z.number().int().min(0).max(6)).max(7),
+    checkForUpdates: z.boolean(),
+}) satisfies z.ZodType<ArgusConfig>;
+
+const ConfigOverridesSchema = ConfigSchema.partial();
+
+// Validate untrusted config input (file, saved settings, HTTP body). Unknown
+// keys are dropped. Throws a ConfigError that names every invalid field.
+export function parseConfigOverrides(input: unknown): ConfigOverrides {
+    const result = ConfigOverridesSchema.safeParse(input);
+    if (result.success) return result.data as ConfigOverrides;
+    throw new ConfigError(
+        result.error.issues
+            .map((i) => `${i.path.join(".") || "config"}: ${i.message}`)
+            .join("; "),
+    );
+}
+
+export class ConfigError extends Error {}
+
+// Keep the valid fields of stored settings and log the invalid ones, so one bad
+// saved value does not discard every setting.
+export function salvageConfigOverrides(input: unknown): ConfigOverrides {
+    if (input === null || typeof input !== "object" || Array.isArray(input))
+        return {};
+    const out: Record<string, unknown> = {};
+    for (const key of Object.keys(
+        ConfigSchema.shape,
+    ) as (keyof ArgusConfig)[]) {
+        if (!Object.hasOwn(input, key)) continue;
+        const value = (input as Record<string, unknown>)[key];
+        const result = ConfigSchema.shape[key].safeParse(value);
+        if (result.success) out[key] = result.data;
+        else console.error(`argus: ignoring invalid saved setting: ${key}`);
+    }
+    return out as ConfigOverrides;
 }
 
 const isString = (value: unknown): value is string => typeof value === "string";
-const isNumber = (value: unknown): value is number =>
-    typeof value === "number" && Number.isFinite(value);
-const localConfigValidators: Record<
-    keyof ArgusConfig,
-    (value: unknown) => boolean
-> = {
-    me: (value) => value === null || isString(value),
-    adoAuth: (value) => value === "az" || value === "broker",
-    avatarUrl: isString,
-    orgUrl: isString,
-    orgSlug: isString,
-    project: isString,
-    teamPatterns: (value) => Array.isArray(value) && value.every(isString),
-    teamLabels: (value) =>
-        isRecord(value) && Object.values(value).every(isString),
-    periods: (value) =>
-        Array.isArray(value) &&
-        value.every(
-            (period: unknown) =>
-                isRecord(period) &&
-                isString(period.label) &&
-                isString(period.start) &&
-                isString(period.end),
-        ),
-    reviewSkillName: isString,
-    recencyDays: isNumber,
-    retentionDays: isNumber,
-    workStartHour: isNumber,
-    workEndHour: isNumber,
-    workDays: (value) =>
-        Array.isArray(value) &&
-        value.every(
-            (day: unknown) =>
-                isNumber(day) && Number.isInteger(day) && day >= 0 && day <= 6,
-        ),
-    checkForUpdates: (value) => typeof value === "boolean",
-};
 
 export function hasRequiredSetup(config: ArgusConfig): boolean {
     if (
@@ -112,7 +137,44 @@ export function hasRequiredSetup(config: ArgusConfig): boolean {
     }
 }
 
+const SAFE_DEFAULTS: ArgusConfig = {
+    me: null,
+    adoAuth: "az",
+    avatarUrl: "",
+    orgUrl: "",
+    orgSlug: "",
+    project: "",
+    teamPatterns: [],
+    teamLabels: {},
+    periods: [],
+    reviewSkillName: "pr-review",
+    recencyDays: 7,
+    retentionDays: 2,
+    workStartHour: 9,
+    workEndHour: 17,
+    workDays: [1, 2, 3, 4, 5],
+    checkForUpdates: true,
+};
+
+// Environment values go through the same schema. An invalid value is logged and
+// replaced by its safe default so a bad variable cannot reach the Azure CLI.
 export function defaultConfig(): ArgusConfig {
+    const raw = envConfig() as unknown as Record<string, unknown>;
+    const out: Record<string, unknown> = { ...raw };
+    for (const key of Object.keys(
+        ConfigSchema.shape,
+    ) as (keyof ArgusConfig)[]) {
+        const result = ConfigSchema.shape[key].safeParse(raw[key]);
+        if (result.success) continue;
+        console.error(
+            `argus: ignoring invalid environment value for ${key}: ${result.error.issues[0]?.message}`,
+        );
+        out[key] = SAFE_DEFAULTS[key];
+    }
+    return out as unknown as ArgusConfig;
+}
+
+function envConfig(): ArgusConfig {
     const [startHour, endHour] = parseRange(
         process.env.ARGUS_WORK_HOURS,
         9,
