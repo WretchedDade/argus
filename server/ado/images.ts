@@ -91,41 +91,61 @@ interface Upstream {
     body: Buffer;
 }
 
-function getOnce(url: string, token: string): Promise<Upstream> {
+interface GetOptions {
+    maxBytes: number;
+    timeoutMs: number;
+    request: typeof https.get;
+    lookup: typeof dns.lookup;
+}
+
+const defaultGetOptions: GetOptions = {
+    maxBytes: MAX_IMAGE_BYTES,
+    timeoutMs: IMAGE_TIMEOUT_MS,
+    request: https.get,
+    lookup: safeLookup,
+};
+
+export function getOnce(
+    url: string,
+    token: string,
+    options: Partial<GetOptions> = {},
+): Promise<Upstream> {
+    const { maxBytes, timeoutMs, request, lookup } = {
+        ...defaultGetOptions,
+        ...options,
+    };
     const headers: Record<string, string> = { Accept: "image/*" };
     if (token) headers.Authorization = `Bearer ${token}`;
     return new Promise((resolve, reject) => {
-        const req = https.get(
-            url,
-            { headers, lookup: safeLookup, timeout: IMAGE_TIMEOUT_MS },
-            (res) => {
-                const chunks: Buffer[] = [];
-                let size = 0;
-                res.on("data", (c: Buffer) => {
-                    size += c.length;
-                    if (size > MAX_IMAGE_BYTES) {
-                        req.destroy(new ImageProxyError("image too large"));
-                        return;
-                    }
-                    chunks.push(c);
-                });
-                res.on("end", () =>
-                    resolve({
-                        status: res.statusCode ?? 0,
-                        headers: res.headers,
-                        body: Buffer.concat(chunks),
-                    }),
-                );
-                res.on("error", reject);
-            },
+        // Wall-clock deadline for the whole request, not just socket idle time.
+        const deadline = setTimeout(
+            () => req.destroy(new ImageProxyError("upstream timeout", 504)),
+            timeoutMs,
         );
-        req.on("timeout", () =>
-            req.destroy(new ImageProxyError("upstream timeout", 504)),
-        );
+        const req = request(url, { headers, lookup }, (res) => {
+            const chunks: Buffer[] = [];
+            let size = 0;
+            res.on("data", (c: Buffer) => {
+                size += c.length;
+                if (size > maxBytes) {
+                    req.destroy(new ImageProxyError("image too large"));
+                    return;
+                }
+                chunks.push(c);
+            });
+            res.on("end", () =>
+                resolve({
+                    status: res.statusCode ?? 0,
+                    headers: res.headers,
+                    body: Buffer.concat(chunks),
+                }),
+            );
+            res.on("error", reject);
+        });
+        req.on("close", () => clearTimeout(deadline));
         req.on("error", reject);
     });
 }
-
 export type ImageGetter = (url: string, token: string) => Promise<Upstream>;
 
 // Fetch an ADO attachment with the user's bearer token. Redirects are followed
