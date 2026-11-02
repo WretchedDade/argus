@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { pathToFileURL } from "node:url";
 import { build } from "esbuild";
 import { safeUrlTransform } from "./markdown-options.ts";
@@ -26,12 +26,14 @@ const result = await build({
     packages: "external",
     jsx: "automatic",
 });
-const outDir = "node_modules/.cache/argus-test";
-mkdirSync(outDir, { recursive: true });
+// Stay inside the repo so package imports resolve. Each run gets its own directory.
+const cacheDir = "node_modules/.cache";
+mkdirSync(cacheDir, { recursive: true });
+const outDir = mkdtempSync(`${cacheDir}/argus-markdown-test-`);
 const outFile = `${outDir}/markdown-preview.mjs`;
 writeFileSync(outFile, result.outputFiles[0].text);
 const { renderFull, renderClamped } = await import(pathToFileURL(outFile).href);
-rmSync(outFile);
+rmSync(outDir, { recursive: true, force: true });
 
 // The clamped preview uses useLayoutEffect, which warns during server rendering.
 const quiet = (render: (text: string) => string) => (text: string) => {
