@@ -80,13 +80,14 @@ export function AuthGate({ onDismiss }: { onDismiss: () => void }) {
                             again.
                         </p>
                     )}
-                    {provider === "broker" && auth && !auth.configured && (
+                    {provider === "broker" && auth && (
                         <>
                             <p>
                                 Windows account sign-in needs a one-time setup:
                                 an Entra app registration for Argus. Ask a
                                 teammate to copy their setup from Settings, then
-                                paste it here.
+                                enter the client ID and tenant ID below. You can
+                                also edit an existing setup here.
                             </p>
                             <RegistrationImport />
                             <p className="text-muted text-xs">

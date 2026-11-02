@@ -38,15 +38,19 @@ lets you switch method.
   [packages/ado-client/README.md](packages/ado-client/README.md), or get the IDs from
   a teammate. The IDs are not secret.
 
-To set up the Windows account method, paste the IDs as JSON into the sign-in screen:
-
-```json
-{ "clientId": "<application-client-id>", "tenantId": "<microsoft-tenant-id>" }
-```
+To set up the Windows account method, enter **Application (client) ID** and
+**Directory (tenant) ID** on the sign-in screen, then select **Save setup**.
+Both fields require GUIDs. You can edit the saved values there or under
+**Settings > Windows account setup**. Save setup saves only the IDs; the existing
+sign-in method selector and **Save settings** control the method.
 
 Argus saves them to `%LOCALAPPDATA%\devstart\ado-auth-config.json`. The environment
 variables `DEVSTART_ADO_CLIENT_ID` and `DEVSTART_ADO_TENANT_ID` override that file. To
-share your setup, copy it from **Settings > Share Windows account setup**. Under
+share your setup, copy it from **Settings > Share Windows account setup**. The
+copied JSON's `clientId` goes in Application (client) ID and `tenantId` goes in
+Directory (tenant) ID; do not paste the whole JSON into a field. When an environment
+override is active, the form shows the effective IDs and a warning; saving the file
+does not replace the environment values. Under
 **Settings > Account** you can switch account or sign out.
 
 `ARGUS_ADO_AUTH=broker` only sets the default method for a fresh install. A saved
