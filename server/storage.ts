@@ -1,4 +1,10 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import {
+    existsSync,
+    mkdirSync,
+    readFileSync,
+    rmSync,
+    writeFileSync,
+} from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
 import { ArgusStore } from "./db.ts";
@@ -149,6 +155,9 @@ export function migrateToChoice(
     const from = new ArgusStore(source);
     try {
         from.copyTo(resolved.file);
+    } catch (err) {
+        rmSync(resolved.file, { force: true });
+        throw err;
     } finally {
         from.close();
     }

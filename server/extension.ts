@@ -58,11 +58,14 @@ const BOOT_AT = new Date().toISOString();
 const STORAGE_ENV = { env: process.env, extensionDir: __dirname };
 const resolvedStorage = resolveDbFile(STORAGE_ENV);
 const DB_FILE = resolvedStorage.file;
+// A failed copy must stop startup: opening the target would create an empty
+// database and hide the history in the source file.
 try {
     const from = migrateToChoice(STORAGE_ENV, resolvedStorage);
     if (from) log(`database copied from ${from} to ${DB_FILE}`);
 } catch (err) {
     log(`database copy failed: ${(err as Error).message}`);
+    throw err;
 }
 
 // Legacy pr-tracker archive: read-only input for the one-time migration, only
