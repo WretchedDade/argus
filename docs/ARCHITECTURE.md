@@ -62,7 +62,7 @@ flowchart LR
 - reconciles the result with the store (`reconcile.ts`), which writes `prs` rows and appends `pr_events`;
 - records the run in `poll_runs`.
 
-Each tick catches its own errors, so one failed run does not stop the schedule. The poller does not change user-managed columns (lane, snooze, scope).
+Each tick catches its own errors, so one failed run does not stop the schedule. The poller does not change user choices such as lane, scope, or dismissal. It can clear a snooze: the store clears an expired snooze, and an FTE approval wakes an "until FTE approves" snooze.
 
 ## Store
 
@@ -87,7 +87,7 @@ Rules in the file:
 
 - Reads use `GET`. Actions that change data use `POST`.
 - Responses use `sendJson`. Do not write to `res` directly.
-- The API reaches the host through `ApiContext` (store, `getConfig`, poller functions). It does not import the poller directly.
+- The API reaches the host through `ApiContext` (store, `getConfig`, poller functions). It imports one function directly from the poller: `resetIdentity`, which it calls after a sign-in change.
 
 ## Client
 
