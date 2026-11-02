@@ -277,6 +277,11 @@ does not increase the count.
 - **Poller** — a background poll runs on a clock-aligned cadence during your work
   hours. In the Copilot app, it runs only in a host that has the canvas open.
   In standalone mode, it runs while the runner is active.
+- **PR descriptions** — Argus renders descriptions as Markdown. It does not
+  render raw HTML: HTML tags (for example `<img>` or `<details>`) show as plain
+  text. Links and images open only if they use `http`, `https`, or `mailto`, or
+  are relative. Other schemes, such as `javascript:` and `data:`, are removed.
+  This prevents a PR author from running script in the Argus UI.
 
 ## Recording a review verdict
 
