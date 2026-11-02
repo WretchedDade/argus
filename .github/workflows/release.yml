@@ -27,6 +27,8 @@ jobs:
                   persist-credentials: false
             - name: Compare package.json version with existing tags
               id: version
+              env:
+                  GH_TOKEN: ${{ github.token }}
               run: |
                   version=$(node -p "require('./package.json').version")
                   echo "version=$version" >> "$GITHUB_OUTPUT"
@@ -35,7 +37,14 @@ jobs:
                   status=0
                   git ls-remote --exit-code --tags origin "refs/tags/v$version" > /dev/null || status=$?
                   if [ "$status" -eq 0 ]; then
-                      echo "Tag v$version already exists. Nothing to release."
+                      # A tag without its uploaded ZIP is a failed release, not a finished one.
+                      zip="argus-v$version-windows.zip"
+                      uploaded=$(gh release view "v$version" --repo "$GITHUB_REPOSITORY" --json assets --jq ".assets[] | select(.name == \"$zip\" and .state == \"uploaded\") | .name")
+                      if [ -z "$uploaded" ]; then
+                          echo "Tag v$version exists, but the release ZIP $zip is missing. Delete the tag and release, then run again."
+                          exit 1
+                      fi
+                      echo "Tag v$version already has its release ZIP. Nothing to release."
                       echo "needs_release=false" >> "$GITHUB_OUTPUT"
                   elif [ "$status" -eq 2 ]; then
                       echo "needs_release=true" >> "$GITHUB_OUTPUT"
@@ -92,12 +101,7 @@ jobs:
               run: |
                   git ls-remote --exit-code --tags origin "refs/tags/$env:TAG" | Out-Null
                   if ($LASTEXITCODE -eq 0) {
-                      # A tag without its uploaded ZIP is a failed release, not a finished one.
-                      $assets = gh release view $env:TAG --json assets --jq '.assets[] | select(.name == "argus-' + $env:TAG + '-windows.zip" and .state == "uploaded") | .name'
-                      if ($LASTEXITCODE -ne 0 -or -not $assets) {
-                          throw "Tag $env:TAG exists, but the release ZIP is missing. Delete the tag and release, then run again."
-                      }
-                      Write-Host "Tag $env:TAG already has its release ZIP. Nothing to release."
+                      Write-Host "Tag $env:TAG already exists. Nothing to release."
                       exit 0
                   }
                   if ($LASTEXITCODE -ne 2) { throw "Tag lookup failed with exit code $LASTEXITCODE" }

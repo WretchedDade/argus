@@ -33,7 +33,7 @@ export function buildNotices(inputs: NoticeInputs): Notice[] {
     const { release, appVersion } = inputs;
     if (
         inputs.checkForUpdates &&
-        release &&
+        release?.zipUrl &&
         isNewerVersion(release.version, appVersion)
     ) {
         const zip = release.zipUrl;

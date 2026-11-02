@@ -89,6 +89,14 @@ assert.deepEqual(
 assert.equal(buildNotices({ ...base, checkForUpdates: false }).length, 0);
 assert.equal(buildNotices({ ...base, appVersion: "0.2.0" }).length, 0);
 assert.equal(buildNotices({ ...base, release: null }).length, 0);
+// A cached release saved before zipUrl existed gives no update notice.
+assert.equal(
+    buildNotices({
+        ...base,
+        release: { version: "0.2.0", url: "https://x/r" } as typeof release,
+    }).length,
+    0,
+);
 const withSkill = buildNotices({
     ...base,
     release: null,
