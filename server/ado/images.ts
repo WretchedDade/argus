@@ -117,11 +117,6 @@ export function getOnce(
     const headers: Record<string, string> = { Accept: "image/*" };
     if (token) headers.Authorization = `Bearer ${token}`;
     return new Promise((resolve, reject) => {
-        // Wall-clock deadline for the whole request, not just socket idle time.
-        const deadline = setTimeout(
-            () => req.destroy(new ImageProxyError("upstream timeout", 504)),
-            timeoutMs,
-        );
         const req = request(url, { headers, lookup }, (res) => {
             const chunks: Buffer[] = [];
             let size = 0;
@@ -142,6 +137,11 @@ export function getOnce(
             );
             res.on("error", reject);
         });
+        // Wall-clock deadline for the whole request, not just socket idle time.
+        const deadline = setTimeout(
+            () => req.destroy(new ImageProxyError("upstream timeout", 504)),
+            timeoutMs,
+        );
         req.on("close", () => clearTimeout(deadline));
         req.on("error", reject);
     });

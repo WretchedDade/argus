@@ -202,4 +202,11 @@ await assert.rejects(
 );
 assert.ok(Date.now() - started < 1000);
 
+// A synchronous failure while building the request rejects and leaves no timer behind.
+await assert.rejects(
+    getOnce("https://%FF@dev.azure.com/a.png", "t", { timeoutMs: 50 }),
+    /URI|URL/,
+);
+await new Promise((r) => setTimeout(r, 150));
+
 console.log("images self-check OK");
