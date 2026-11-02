@@ -75,8 +75,8 @@ To upgrade by hand, extract the new ZIP and copy the contents of its `extension`
 
 An unedited `pr-review` skill that Argus installed updates by itself. If you edited it, Argus leaves it and shows a notice with **Merge with Copilot**.
 
-If your database is still on OneDrive from an earlier version, Argus keeps using it and shows a notice with **Choose with Copilot**. Choose to move it to `%LOCALAPPDATA%\argus\argus.db`, or to keep it on OneDrive as a backup. Argus never moves the file without your approval.
+If your database is still on OneDrive from an earlier version, Argus keeps using it and shows a notice with **Choose with Copilot**. Choose to move it to `%LOCALAPPDATA%\argus\argus.db`, or to keep it on OneDrive as a backup. The notice clears after you choose and reload extensions. Argus never moves the file without your approval.
 
 ## Uninstall
 
-Delete `%USERPROFILE%\.copilot\extensions\argus`. Your database is not in that folder, so it stays where it was: `%LOCALAPPDATA%\argus\argus.db`, the OneDrive file, or the path in `ARGUS_DB_FILE`. Delete the database too if you want to remove your stored history. Delete `%LOCALAPPDATA%\argus\storage.json` as well to forget your location choice.
+Delete `%USERPROFILE%\.copilot\extensions\argus`. Your database is not in that folder in a current install, so it stays where it was: `%LOCALAPPDATA%\argus\argus.db`, the OneDrive file, or the path in `ARGUS_DB_FILE`. An install from an earlier version that never used OneDrive can still keep its database in `data\argus.db` in the extension folder. Move it out first if you want to keep your history. Delete the database too if you want to remove your stored history. Delete `%LOCALAPPDATA%\argus\storage.json` as well to forget your location choice.

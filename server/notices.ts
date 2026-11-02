@@ -76,12 +76,13 @@ export function buildNotices(inputs: NoticeInputs): Notice[] {
             id: "storage-legacy",
             kind: "storage",
             title: "Your database is still on OneDrive",
-            detail: `Argus now stores history in ${localPath} by default. Your existing file stays at ${from}, and OneDrive syncs it.\nMove it to keep private PR data off OneDrive, or keep it there as a backup. Either way, this notice goes away after you choose.`,
+            detail: `Argus now stores history in ${localPath} by default. Your existing file stays at ${from}, and OneDrive syncs it.\nMove it to keep private PR data off OneDrive, or keep it there as a backup. This notice goes away after you choose and reload extensions.`,
             actionLabel: "Choose with Copilot",
             prompt: [
-                `My Argus database is still at ${from}, which OneDrive syncs. Ask me which I want, then do exactly that:`,
-                `A. Move it to local storage. Tell me to close every other Copilot session first. Copy ${from} to ${localPath}. Copy the \`-wal\` and \`-shm\` files beside it too, if they exist. Keep the original until I confirm Argus works, then tell me to reload extensions.`,
-                `B. Keep it on OneDrive as a backup. Write \`{ "location": "onedrive" }\` to ${choiceFile}. Tell me to reload extensions.`,
+                `My Argus database is still at ${from}, which OneDrive syncs. Ask me which I want, then do exactly that. Argus copies the database when extensions reload, so do not copy any database files yourself.`,
+                `A. Move it to local storage. Write \`{ "location": "local" }\` to ${choiceFile}.`,
+                `B. Keep it on OneDrive as a backup. Write \`{ "location": "onedrive" }\` to ${choiceFile}.`,
+                `After the write, tell me to close every other Copilot session that runs Argus, then reload extensions. For A, the old file at ${from} stays as a backup until I delete it.`,
             ].join("\n"),
         });
     }

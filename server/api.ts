@@ -512,16 +512,22 @@ export async function handleApi(
             });
             return true;
         }
+        const storage =
+            dbLocation && ctx.setDbLocation
+                ? ctx.setDbLocation(dbLocation)
+                : null;
+        if (storage && !storage.ok) {
+            sendJson(res, 400, {
+                error: storage.reason ?? "Could not save the storage location",
+            });
+            return true;
+        }
         const config = ctx.saveConfig(overrides);
         setAuthProvider(config.adoAuth);
         ctx.markSetupComplete();
         const skill = installPrReviewSkill
             ? ctx.installBaselineSkill()
             : { installed: false, reason: "skipped" };
-        const storage =
-            dbLocation && ctx.setDbLocation
-                ? ctx.setDbLocation(dbLocation)
-                : null;
         sendJson(res, 200, { config, setup_complete: true, skill, storage });
         return true;
     }
@@ -637,7 +643,8 @@ export async function handleApi(
             return true;
         }
         await ctx.dispatch(notice.prompt);
-        ctx.store.dismissNotice(notice.id);
+        // The storage notice clears only after the user's choice is saved.
+        if (notice.kind !== "storage") ctx.store.dismissNotice(notice.id);
         sendJson(res, 200, { ok: true });
         return true;
     }

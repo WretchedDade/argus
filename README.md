@@ -349,7 +349,10 @@ Notes on the OneDrive choice:
   file can race.
 - Argus keeps an existing file. If the OneDrive file exists already, for example
   after a device reset, Argus uses it and does not overwrite it.
-- The choice takes effect after you reload extensions.
+- The choice takes effect after you reload extensions. At that reload, Argus
+  copies your history to the new location if no file is there yet. The old file
+  stays as a backup until you delete it. Close other Copilot sessions that run
+  Argus before you reload, so they stop writing to the old file.
 
 The choice is stored in `%LOCALAPPDATA%\argus\storage.json`, as
 `{ "location": "local" }` or `{ "location": "onedrive" }`. Argus reads it before
@@ -357,11 +360,12 @@ it opens the database. Set `ARGUS_DB_FILE` to use any other path. It overrides
 the choice, and the setup screen then hides the toggle.
 
 **Upgrading from an earlier version.** Earlier versions stored the database on
-OneDrive by default. If you have not chosen a location, and the OneDrive file
-exists and no local file exists, Argus keeps using the OneDrive file. The bell
-shows a notice. Select **Choose with Copilot** to move the file to this device,
-or to keep it on OneDrive. Either choice clears the notice. Your history is never
-moved without your approval.
+OneDrive by default, or in the extension folder's `data` folder when OneDrive was
+absent. If you have not chosen a location and no local file exists, Argus keeps
+using that old file. If it is the OneDrive file, the bell shows a notice. Select
+**Choose with Copilot** to move the history to this device, or to keep it on
+OneDrive. The notice clears after you choose and reload extensions. Your history
+is never moved without your approval.
 
 ## Formatting
 

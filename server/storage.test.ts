@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import {
     localDbPath,
+    migrateToChoice,
     oneDriveDbPath,
     readChoice,
     resolveDbFile,
@@ -77,6 +78,34 @@ assert.throws(() => {
         again.close();
     }
 });
+
+// A chosen location with no file yet gets a consistent copy at startup.
+const copyRoot = mkdtempSync(path.join(tmpdir(), "argus-storage-copy-"));
+const cs = {
+    env: {
+        LOCALAPPDATA: path.join(copyRoot, "Local"),
+        OneDrive: path.join(copyRoot, "OD"),
+    },
+    extensionDir: path.join(copyRoot, "ext"),
+};
+const extDb = path.join(cs.extensionDir, "data", "argus.db");
+const seed = new ArgusStore(extDb);
+seed.markSetupComplete();
+seed.close();
+// Older no-OneDrive installs keep their extension-folder database.
+r = resolveDbFile(cs);
+assert.deepEqual([r.file, r.source, r.legacyPath], [extDb, "legacy", null]);
+assert.equal(migrateToChoice(cs, r), null);
+// Choosing local copies it once; the source stays as a backup.
+writeChoice(cs, "local");
+r = resolveDbFile(cs);
+assert.equal(migrateToChoice(cs, r), extDb);
+const moved = new ArgusStore(r.file);
+assert.equal(moved.isSetupComplete(), true);
+moved.close();
+// A second start does not replace the new file.
+assert.equal(migrateToChoice(cs, r), null);
+rmSync(copyRoot, { recursive: true, force: true });
 
 rmSync(root, { recursive: true, force: true });
 console.log("storage tests passed");

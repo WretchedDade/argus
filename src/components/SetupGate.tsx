@@ -70,13 +70,8 @@ export function SetupGate() {
                 qc.invalidateQueries({ queryKey: ["config"] }),
                 qc.invalidateQueries({ queryKey: ["prs"] }),
             ]);
-            if (moved && !moved.ok) {
-                pushToast(
-                    `Couldn't change where history is stored: ${moved.reason ?? "unknown error"}`,
-                    "error",
-                );
-            } else if (moved?.restartRequired) {
-                pushToast("Reload extensions to store history on OneDrive");
+            if (moved?.restartRequired) {
+                pushToast("Reload extensions to use the new storage location");
             }
             if (installSkill) {
                 pushToast(

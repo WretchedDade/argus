@@ -43,6 +43,8 @@ import {
     localDbPath,
     oneDriveDbPath,
     resolveDbFile,
+    migrateToChoice,
+    readChoice,
     writeChoice,
     type DbLocation,
 } from "./storage.ts";
@@ -53,9 +55,15 @@ const DIST_DIR = path.join(__dirname, "dist");
 const BOOT_AT = new Date().toISOString();
 
 // Where the database lives: see server/storage.ts for the order of choice.
-const STORAGE_ENV = { env: process.env };
+const STORAGE_ENV = { env: process.env, extensionDir: __dirname };
 const resolvedStorage = resolveDbFile(STORAGE_ENV);
 const DB_FILE = resolvedStorage.file;
+try {
+    const from = migrateToChoice(STORAGE_ENV, resolvedStorage);
+    if (from) log(`database copied from ${from} to ${DB_FILE}`);
+} catch (err) {
+    log(`database copy failed: ${(err as Error).message}`);
+}
 
 // Legacy pr-tracker archive: read-only input for the one-time migration, only
 // when explicitly pointed at a file. No default, so a shared install doesn't look
@@ -250,8 +258,8 @@ function getStorage(): StorageInfo {
 }
 
 // Saves the choice for the next start. The open database stays in use until
-// extensions reload. An existing file at the target is kept, never overwritten,
-// so a restore from a OneDrive backup keeps its data.
+// extensions reload. At that start, Argus copies the database to the new
+// location if no file is there yet, and never replaces an existing file.
 function setDbLocation(location: DbLocation): {
     ok: boolean;
     restartRequired: boolean;
@@ -274,12 +282,7 @@ function setDbLocation(location: DbLocation): {
             reason: "OneDrive was not found on this device",
         };
     try {
-        if (path.resolve(target) === path.resolve(DB_FILE))
-            writeChoice(STORAGE_ENV, location);
-        else {
-            if (!existsSync(target)) store.copyTo(target);
-            writeChoice(STORAGE_ENV, location);
-        }
+        writeChoice(STORAGE_ENV, location);
         return {
             ok: true,
             restartRequired: path.resolve(target) !== path.resolve(DB_FILE),
@@ -295,13 +298,14 @@ function setDbLocation(location: DbLocation): {
 
 function getNotices(): Notice[] {
     return buildNotices({
-        legacyDb: resolvedStorage.legacyPath
-            ? {
-                  path: resolvedStorage.legacyPath,
-                  localPath: localDbPath(STORAGE_ENV),
-                  choiceFile: choiceFilePath(STORAGE_ENV),
-              }
-            : null,
+        legacyDb:
+            resolvedStorage.legacyPath && !readChoice(STORAGE_ENV)
+                ? {
+                      path: resolvedStorage.legacyPath,
+                      localPath: localDbPath(STORAGE_ENV),
+                      choiceFile: choiceFilePath(STORAGE_ENV),
+                  }
+                : null,
         appVersion: APP_VERSION,
         release: latestRelease,
         checkForUpdates: getConfig().checkForUpdates,
