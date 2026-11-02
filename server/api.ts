@@ -10,7 +10,11 @@ import {
 } from "./config.ts";
 import type { PollerStatus, ReconcileSummary } from "./ado/poller.ts";
 import { resetIdentity } from "./ado/poller.ts";
-import { fetchAdoImage, isAllowedImageHost } from "./ado/images.ts";
+import {
+    fetchAdoImage,
+    ImageProxyError,
+    isAllowedImageHost,
+} from "./ado/images.ts";
 import {
     authStatus,
     getRegistration,
@@ -442,13 +446,26 @@ export async function handleApi(
         }
         try {
             const img = await fetchAdoImage(target);
+            if (img.status < 200 || img.status >= 300) {
+                res.writeHead(img.status, {
+                    "content-type": "text/plain",
+                    "x-content-type-options": "nosniff",
+                }).end("upstream error");
+                return true;
+            }
             res.writeHead(img.status, {
                 "content-type": img.contentType,
                 "cache-control": "private, max-age=3600",
+                "x-content-type-options": "nosniff",
+                "content-security-policy": "default-src 'none'",
             });
             res.end(img.body);
-        } catch {
-            res.writeHead(502).end("image proxy error");
+        } catch (e) {
+            const status = e instanceof ImageProxyError ? e.status : 502;
+            res.writeHead(status, {
+                "content-type": "text/plain",
+                "x-content-type-options": "nosniff",
+            }).end("image proxy error");
         }
         return true;
     }
