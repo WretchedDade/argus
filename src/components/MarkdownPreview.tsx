@@ -1,7 +1,6 @@
 import { useLayoutEffect, useRef, useState } from "react";
 import ReactMarkdown, { type Components } from "react-markdown";
-import remarkGfm from "remark-gfm";
-import rehypeRaw from "rehype-raw";
+import { markdownOptions } from "../lib/markdown-options";
 
 // ADO attachment URLs are auth-gated, so route them through the server proxy
 // (which adds the bearer token). Public images (GitHub, shields, etc.) load direct.
@@ -155,11 +154,7 @@ export function MarkdownPreview({
     if (!clamp) {
         return (
             <div className="text-fg text-sm leading-relaxed [&>*:first-child]:mt-0 [&>*:last-child]:mb-0">
-                <ReactMarkdown
-                    remarkPlugins={[remarkGfm]}
-                    rehypePlugins={[rehypeRaw]}
-                    components={fullComponents}
-                >
+                <ReactMarkdown {...markdownOptions} components={fullComponents}>
                     {text}
                 </ReactMarkdown>
             </div>
@@ -196,8 +191,7 @@ function ClampedPreview({ text }: { text: string }) {
                 className="text-muted text-xs leading-relaxed [&>*+*]:mt-1 [&_*]:my-0"
             >
                 <ReactMarkdown
-                    remarkPlugins={[remarkGfm]}
-                    rehypePlugins={[rehypeRaw]}
+                    {...markdownOptions}
                     components={compactComponents}
                 >
                     {text}
