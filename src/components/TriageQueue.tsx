@@ -8,6 +8,7 @@ import {
     FileEdit,
     Hourglass,
     ListChecks,
+    UserCheck,
     Zap,
 } from "lucide-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -285,8 +286,10 @@ export function TriageQueue({
     const awake = inScope.filter((p) => !isSnoozed(p, now));
     const drafts = awake.filter((p) => p.isDraft);
     const ready = awake.filter((p) => !p.isDraft);
-    const active = ready.filter((p) => !isStale(p, recencyDays));
-    const stale = ready.filter((p) => isStale(p, recencyDays));
+    const covered = ready.filter((p) => p.reviewState === "covered");
+    const notCovered = ready.filter((p) => p.reviewState !== "covered");
+    const active = notCovered.filter((p) => !isStale(p, recencyDays));
+    const stale = notCovered.filter((p) => isStale(p, recencyDays));
     const needs = active.filter((p) => needsAction(p)).length;
     const lanes: Lane[] = ["review", "quick"];
     const laneIcon: Record<Lane, typeof Zap> = {
@@ -303,6 +306,8 @@ export function TriageQueue({
                 Icon: laneIcon[l],
             });
     }
+    if (covered.length > 0)
+        rail.push({ id: "sec-covered", label: "Covered", Icon: UserCheck });
     if (drafts.length > 0)
         rail.push({ id: "sec-drafts", label: "Drafts", Icon: FileEdit });
     if (snoozed.length > 0)
@@ -356,6 +361,17 @@ export function TriageQueue({
                     />
                 ) : null;
             })}
+
+            {covered.length > 0 && (
+                <CollapsedSection
+                    id="sec-covered"
+                    label="Covered"
+                    hint="a teammate already reviewed these for you"
+                    items={covered}
+                    labels={labels}
+                    collapsible={false}
+                />
+            )}
 
             {drafts.length > 0 && (
                 <CollapsedSection

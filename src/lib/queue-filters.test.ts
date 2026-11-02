@@ -28,6 +28,7 @@ const pr: Pr = {
     reviewSessionId: null,
     reviewedSha: null,
     reviewCount: 0,
+    coveredAt: null,
     changedFiles: null,
     authorMeta: null,
     prCreatedAt: null,
