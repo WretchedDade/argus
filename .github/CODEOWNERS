@@ -1,0 +1,6 @@
+/server/api.ts @WretchedDade
+/server/ado/ @WretchedDade
+/packages/ado-client/ @WretchedDade
+/.github/CODEOWNERS @WretchedDade
+/.github/workflows/ @WretchedDade
+/scripts/ @WretchedDade
