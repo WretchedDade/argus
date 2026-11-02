@@ -602,9 +602,9 @@ export function PrCard({
                 {pr.reviewState === "covered" && (
                     <span
                         className="text-muted max-w-[14rem] shrink-0 truncate"
-                        title="Who covered this PR and when"
+                        title="Approvals on this PR, and when it became covered"
                     >
-                        by{" "}
+                        approved by{" "}
                         {pr.otherVotes
                             .filter((v) => v.vote >= 5)
                             .map((v) => v.name)
