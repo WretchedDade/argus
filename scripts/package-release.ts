@@ -1,5 +1,6 @@
 // Stages the release archive layout in release/argus-<version>/.
-// Run after `npm run build`. Usage: node scripts/package-release.ts
+// Run after `npm run build`.
+// Usage: node scripts/package-release.ts [--output-root DIRECTORY]
 import { execFileSync } from "node:child_process";
 import {
     cpSync,
@@ -10,6 +11,7 @@ import {
     writeFileSync,
 } from "node:fs";
 import path from "node:path";
+import { resetReleaseStage, writeReleaseEvidence } from "./release-evidence.ts";
 
 const root = path.resolve(import.meta.dirname, "..");
 const readJson = <T>(file: string) =>
@@ -20,15 +22,28 @@ const lock = readJson<{ packages: Record<string, { version: string }> }>(
     "package-lock.json",
 );
 const name = `argus-${pkg.version}`;
-const stage = path.join(root, "release", name);
+const args = process.argv.slice(2);
+if (args.length && (args.length !== 2 || args[0] !== "--output-root"))
+    throw new Error(
+        "Usage: node scripts/package-release.ts [--output-root DIRECTORY]",
+    );
+const outputRoot = args[1] ? path.resolve(args[1]) : path.join(root, "release");
+const stage = path.join(outputRoot, name);
 const ext = path.join(stage, "extension");
 
-for (const required of ["extension.mjs", "dist", "skills/pr-review"]) {
+for (const required of [
+    "extension.mjs",
+    "dist/index.html",
+    "skills/pr-review/SKILL.md",
+    "argus.config.example.json",
+    "docs/INSTALL.md",
+    "LICENSE",
+]) {
     if (!existsSync(path.join(root, required)))
         throw new Error(`Missing ${required}. Run "npm run build" first.`);
 }
 
-rmSync(path.join(root, "release"), { recursive: true, force: true });
+resetReleaseStage(outputRoot, pkg.version);
 mkdirSync(ext, { recursive: true });
 
 cpSync(path.join(root, "extension.mjs"), path.join(ext, "extension.mjs"));
@@ -42,6 +57,11 @@ cpSync(
 cpSync(
     path.join(root, "argus.config.example.json"),
     path.join(ext, "argus.config.example.json"),
+);
+// Template only: never copy registration values from a developer's machine.
+writeFileSync(
+    path.join(ext, "ado-auth-config.example.json"),
+    JSON.stringify({ clientId: "", tenantId: "" }, null, 4) + "\n",
 );
 
 // extension.mjs bundles everything except these packages. Pin them to the
@@ -108,4 +128,15 @@ execFileSync(
     { cwd: ext, stdio: "inherit" },
 );
 
-console.log(`Staged ${stage}`);
+writeReleaseEvidence(root, stage, {
+    commit: execFileSync("git", ["rev-parse", "HEAD"], {
+        cwd: root,
+        encoding: "utf8",
+    }).trim(),
+    dirty: !!execFileSync(
+        "git",
+        ["status", "--porcelain", "--untracked-files=normal"],
+        { cwd: root, encoding: "utf8" },
+    ).trim(),
+});
+console.log(`Staged ${stage} with release evidence`);
