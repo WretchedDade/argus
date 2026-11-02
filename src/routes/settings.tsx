@@ -1,5 +1,6 @@
 import { createFileRoute, useRouter } from "@tanstack/react-router";
 import { useState } from "react";
+import { flushSync } from "react-dom";
 import { useForm } from "@tanstack/react-form";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -72,7 +73,11 @@ function Group({
     children: React.ReactNode;
 }) {
     return (
-        <div hidden={id !== active} className="flex flex-col gap-6">
+        <div
+            data-group={id}
+            hidden={id !== active}
+            className="flex flex-col gap-6"
+        >
             {children}
         </div>
     );
@@ -161,6 +166,13 @@ function Settings() {
                 e.preventDefault();
                 void form.handleSubmit();
             }}
+            onInvalidCapture={(e) => {
+                const input = e.target as HTMLInputElement;
+                const group = input.closest<HTMLElement>("[data-group]");
+                if (!group?.hidden) return;
+                flushSync(() => setTab(group.dataset.group as GroupId));
+                input.reportValidity();
+            }}
             className="mx-auto flex max-w-3xl flex-col gap-5 pb-24"
         >
             <div className="flex gap-8">
@@ -169,6 +181,7 @@ function Settings() {
                         <button
                             key={g.id}
                             type="button"
+                            aria-current={tab === g.id ? "true" : undefined}
                             onClick={() => setTab(g.id)}
                             className={`rounded-md px-3 py-1.5 text-left text-sm ${
                                 tab === g.id
