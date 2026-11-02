@@ -1,38 +1,74 @@
 name: Release
 
-# Push a tag like v0.1.0 that matches the version in package.json.
+# Runs when package.json changes on main. If the version has no tag yet,
+# the workflow builds the ZIP and creates the tag and the release.
 on:
     push:
-        tags: ["v[0-9]+.[0-9]+.[0-9]+"]
+        branches: [main]
+        paths: [package.json]
+    workflow_dispatch:
 
 permissions:
     contents: write
 
 jobs:
-    release:
-        name: Build and publish release ZIP
-        # Windows: the packaged node_modules include native Windows binaries.
-        runs-on: windows-latest
-        timeout-minutes: 20
-        env:
-            HUSKY: "0"
+    check:
+        name: Check for a new version
+        # Manual runs can pick any branch. Only main may release.
+        if: github.ref == 'refs/heads/main'
+        runs-on: ubuntu-latest
+        outputs:
+            version: ${{ steps.version.outputs.version }}
+            needs_release: ${{ steps.version.outputs.needs_release }}
         steps:
             - name: Check out source
               uses: actions/checkout@v4
               with:
                   persist-credentials: false
+            - name: Compare package.json version with existing tags
+              id: version
+              run: |
+                  version=$(node -p "require('./package.json').version")
+                  echo "version=$version" >> "$GITHUB_OUTPUT"
+                  # Exit code 2 means the lookup worked and found no matching tag.
+                  # Any other failure stops the job instead of enabling a release.
+                  status=0
+                  git ls-remote --exit-code --tags origin "refs/tags/v$version" > /dev/null || status=$?
+                  if [ "$status" -eq 0 ]; then
+                      echo "Tag v$version already exists. Nothing to release."
+                      echo "needs_release=false" >> "$GITHUB_OUTPUT"
+                  elif [ "$status" -eq 2 ]; then
+                      echo "needs_release=true" >> "$GITHUB_OUTPUT"
+                  else
+                      echo "Tag lookup failed with exit code $status."
+                      exit "$status"
+                  fi
+
+    release:
+        name: Build and publish release ZIP
+        needs: check
+        if: needs.check.outputs.needs_release == 'true'
+        # One publisher per version. A queued run waits and never cancels the active one.
+        concurrency:
+            group: release-${{ needs.check.outputs.version }}
+            cancel-in-progress: false
+        # Windows: the packaged node_modules include native Windows binaries.
+        runs-on: windows-latest
+        timeout-minutes: 20
+        env:
+            HUSKY: "0"
+            TAG: v${{ needs.check.outputs.version }}
+        steps:
+            - name: Check out source
+              uses: actions/checkout@v4
+              with:
+                  persist-credentials: false
+                  ref: ${{ github.sha }}
             - name: Set up Node.js
               uses: actions/setup-node@v4
               with:
                   node-version: "22"
                   cache: npm
-            - name: Check tag matches package version
-              shell: pwsh
-              run: |
-                  $version = (Get-Content package.json -Raw | ConvertFrom-Json).version
-                  if ("v$version" -ne $env:GITHUB_REF_NAME) {
-                      throw "Tag $env:GITHUB_REF_NAME does not match package.json version $version"
-                  }
             - name: Install dependencies and build
               run: npm ci
             - name: Check formatting
@@ -46,14 +82,19 @@ jobs:
             - name: Create ZIP
               shell: pwsh
               run: |
-                  $name = "argus-$env:GITHUB_REF_NAME"
-                  Move-Item "release/argus-$($env:GITHUB_REF_NAME.TrimStart('v'))" "release/$name"
+                  $name = "argus-$env:TAG"
+                  Move-Item "release/argus-$($env:TAG.TrimStart('v'))" "release/$name"
                   Compress-Archive -Path "release/$name" -DestinationPath "release/$name-windows.zip"
             - name: Publish GitHub Release
               env:
                   GH_TOKEN: ${{ github.token }}
               shell: pwsh
-              run: >
-                  gh release create $env:GITHUB_REF_NAME
-                  "release/argus-$env:GITHUB_REF_NAME-windows.zip"
-                  --title $env:GITHUB_REF_NAME --generate-notes --verify-tag
+              run: |
+                  git ls-remote --exit-code --tags origin "refs/tags/$env:TAG" | Out-Null
+                  if ($LASTEXITCODE -eq 0) {
+                      Write-Host "Tag $env:TAG already exists. Nothing to release."
+                      exit 0
+                  }
+                  if ($LASTEXITCODE -ne 2) { throw "Tag lookup failed with exit code $LASTEXITCODE" }
+                  gh release create $env:TAG "release/argus-$env:TAG-windows.zip" --title $env:TAG --generate-notes --target $env:GITHUB_SHA
+                  if ($LASTEXITCODE -ne 0) { throw "gh release create failed" }

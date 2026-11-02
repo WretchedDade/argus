@@ -2,7 +2,7 @@
 
 ## Releases and versioning
 
-Argus uses semantic versioning (`MAJOR.MINOR.PATCH`). The version lives in `package.json` (`version`). A release is published only when a tag `vX.Y.Z` is pushed. Commits and merges to `main` do not publish anything.
+Argus uses semantic versioning (`MAJOR.MINOR.PATCH`). The version lives in `package.json` (`version`). A release is published when a change to `package.json` reaches `main` with a version that has no tag yet. The Release workflow creates the tag. Other commits and merges to `main` do not publish anything.
 
 Version policy while on `0.x`:
 
@@ -46,15 +46,8 @@ When you open a PR, set the title and labels with `gh pr create --label <label>`
 
 ### How to release (after the bump PR is merged)
 
-```powershell
-git checkout main
-git pull
-git tag vX.Y.Z
-git push origin vX.Y.Z
-```
+Merging the bump PR is the release. When a change to `package.json` reaches `main` and `vX.Y.Z` has no tag yet, the Release workflow (`.github/workflows/release.yml`) runs the checks, runs `scripts/package-release.ts`, creates the tag on the merge commit, and attaches `argus-vX.Y.Z-windows.zip` to a GitHub Release. If the checks fail, no tag is created. Fix the problem and re-run the workflow (it also has a manual `workflow_dispatch` trigger).
 
-The Release workflow (`.github/workflows/release.yml`) then verifies that the tag matches `package.json`, runs the checks, runs `scripts/package-release.ts`, and attaches `argus-vX.Y.Z-windows.zip` to a GitHub Release. If the tag and `package.json` differ, the workflow fails and publishes nothing.
-
-To fix a bad release, delete the GitHub Release and the tag (`git push origin :refs/tags/vX.Y.Z`), fix the problem, and tag again.
+To fix a bad release, delete the GitHub Release and the tag (`git push origin :refs/tags/vX.Y.Z`), fix the problem, and re-run the workflow.
 
 The archive layout and install steps are in `docs/INSTALL.md`. Update that file when the layout, install destinations, or upgrade behavior change.
