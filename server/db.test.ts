@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { DatabaseSync } from "node:sqlite";
 import { ArgusStore } from "./db.ts";
 
 const dir = mkdtempSync(path.join(tmpdir(), "argus-db-test-"));
@@ -101,6 +102,26 @@ try {
     assert.equal(peer.checkVerdictAllowed(canonical, "approved", t4), true);
     assert.equal(store.checkVerdictAllowed(canonical, "approved", t4), false);
     peer.close();
+
+    // A database from before the token table keeps its history after an upgrade.
+    const legacyFile = path.join(dir, "legacy.db");
+    const seeded = new ArgusStore(legacyFile);
+    seeded.upsertPr({
+        ...store.getPr(canonical)!,
+        lastCommitSha: "sha-1",
+        lastCommitAt: new Date().toISOString(),
+        prCreatedAt: new Date().toISOString(),
+    } as never);
+    seeded.close();
+    const raw = new DatabaseSync(legacyFile);
+    raw.exec("DROP TABLE automatic_review_tokens");
+    raw.close();
+    const upgraded = new ArgusStore(legacyFile);
+    assert.equal(upgraded.getPr(canonical)?.number, 42);
+    const t5 = upgraded.issueAutomaticReviewToken(canonical);
+    assert.equal(upgraded.checkVerdictAllowed(canonical, "approved"), false);
+    assert.equal(upgraded.checkVerdictAllowed(canonical, "approved", t5), true);
+    upgraded.close();
 } finally {
     store.close();
     rmSync(dir, { recursive: true, force: true });
