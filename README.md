@@ -390,18 +390,19 @@ configuration are excluded.
 
 ## Pull request checks
 
-GitHub Actions runs the build, formatting check, typecheck, and tests on pull
+GitHub Actions runs the build, formatting check, typecheck, lint, and tests on pull
 requests and pushes to `main`. Run the same checks locally:
 
 ```powershell
 npm ci
 npm run format:check
 npm run typecheck
+npm run lint
 npm test
 ```
 
 `npm ci` builds the extension through `prepare`. The build also generates the
-route tree required by the typecheck. After source changes, run `npm run build`
+route tree required by the typecheck and lint. After source changes, run `npm run build`
 before the checks.
 
 ## Contributing

@@ -110,7 +110,7 @@ const ConfigOverridesSchema = ConfigSchema.partial();
 // keys are dropped. Throws a ConfigError that names every invalid field.
 export function parseConfigOverrides(input: unknown): ConfigOverrides {
     const result = ConfigOverridesSchema.safeParse(input);
-    if (result.success) return result.data as ConfigOverrides;
+    if (result.success) return result.data;
     throw new ConfigError(
         result.error.issues
             .map((i) => `${i.path.join(".") || "config"}: ${i.message}`)
@@ -135,7 +135,7 @@ export function salvageConfigOverrides(input: unknown): ConfigOverrides {
         if (result.success) out[key] = result.data;
         else console.error(`argus: ignoring invalid saved setting: ${key}`);
     }
-    return out as ConfigOverrides;
+    return out;
 }
 
 const isString = (value: unknown): value is string => typeof value === "string";

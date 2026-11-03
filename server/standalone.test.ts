@@ -78,13 +78,16 @@ async function checkShutdown(signal: "SIGINT" | "SIGTERM"): Promise<void> {
             "az-pending",
             undefined,
         ]);
-        assert.equal(
-            (await (await fetch(`${url}api/health`)).json()).poller.running,
-            true,
-        );
+        const health = (await (await fetch(`${url}api/health`)).json()) as {
+            poller: { running: boolean };
+        };
+        assert.equal(health.poller.running, true);
         const started = Date.now();
         child.send(signal);
-        const [code, exitSignal] = await Promise.race([exited, deadline]);
+        const [code, exitSignal] = (await Promise.race([exited, deadline])) as [
+            number | null,
+            string | null,
+        ];
         assert.equal(code, 0, output);
         assert.equal(exitSignal, null, output);
         assert.ok(Date.now() - started < 3000, "Shutdown must be bounded");

@@ -2937,7 +2937,12 @@ export class ArgusStore {
         release: ReleaseInfo | null;
     } | null {
         const raw = this.#getSetting("update_check");
-        return raw ? JSON.parse(raw) : null;
+        return raw
+            ? (JSON.parse(raw) as {
+                  checkedAt: number;
+                  release: ReleaseInfo | null;
+              })
+            : null;
     }
 
     setUpdateCheck(value: {
@@ -3006,7 +3011,10 @@ export class ArgusStore {
                 const votes = Object.fromEntries(
                     (p.reviewers ?? [])
                         .filter((r) => r.id)
-                        .map((r) => [r.id, r.vote_code ?? 0]),
+                        .map((r): [string, number] => [
+                            r.id!,
+                            r.vote_code ?? 0,
+                        ]),
                 );
                 const ts = p.last_refreshed_at || p.added_at || now();
                 const info = this.#prep(

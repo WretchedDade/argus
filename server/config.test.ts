@@ -287,7 +287,7 @@ try {
         store.saveConfigOverrides({
             project: "x & calc",
             recencyDays: 3,
-        } as never);
+        });
         assert.deepEqual(store.getConfigOverrides(), { recencyDays: 3 });
         assert.equal(errors.length, errorsBefore + 1);
 

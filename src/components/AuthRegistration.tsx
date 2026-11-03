@@ -48,7 +48,7 @@ export function RegistrationImport() {
         mutationFn: async () => {
             let parsed: Partial<AuthRegistration>;
             try {
-                parsed = JSON.parse(text);
+                parsed = JSON.parse(text) as Partial<AuthRegistration>;
             } catch {
                 throw new Error(
                     'Paste the setup JSON, like {"clientId": "...", "tenantId": "..."}.',
@@ -74,7 +74,7 @@ export function RegistrationImport() {
             />
             {save.error && (
                 <p className="text-xs text-red-500" role="alert">
-                    {(save.error as Error).message}
+                    {save.error.message}
                 </p>
             )}
             <button
@@ -131,7 +131,7 @@ export function AccountPanel() {
             )}
             {act.error && (
                 <p className="mt-1 text-xs text-red-500" role="alert">
-                    {(act.error as Error).message}
+                    {act.error.message}
                 </p>
             )}
         </div>

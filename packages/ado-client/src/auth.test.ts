@@ -194,7 +194,7 @@ test("explicit sign-in uses the default Windows broker account", async (t) => {
     const status = await auth.signIn();
     assert.equal(status.account?.homeAccountId, account.homeAccountId);
     assert.equal(requested[0]?.selectAccount, false);
-    const parentWindowHandle = Buffer.from(requested[0]!.parentWindowHandle);
+    const parentWindowHandle = Buffer.from(requested[0].parentWindowHandle);
     assert.equal(
         process.arch === "ia32"
             ? BigInt(parentWindowHandle.readUInt32LE())

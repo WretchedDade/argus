@@ -147,7 +147,7 @@ function fakeRequest(
         const req = new EventEmitter() as ClientRequest;
         let destroyed = false;
         (req as unknown as { destroyed: boolean }).destroyed = false;
-        req.destroy = ((err?: Error) => {
+        req.destroy = (err?: Error) => {
             if (destroyed) return req;
             destroyed = true;
             (req as unknown as { destroyed: boolean }).destroyed = true;
@@ -156,7 +156,7 @@ function fakeRequest(
                 req.emit("close");
             });
             return req;
-        }) as ClientRequest["destroy"];
+        };
         const res = Object.assign(new EventEmitter(), {
             statusCode: 200,
             headers: { "content-type": "image/png" },

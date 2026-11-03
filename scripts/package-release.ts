@@ -12,11 +12,13 @@ import {
 import path from "node:path";
 
 const root = path.resolve(import.meta.dirname, "..");
-const readJson = (file: string) =>
-    JSON.parse(readFileSync(path.join(root, file), "utf8"));
+const readJson = <T>(file: string) =>
+    JSON.parse(readFileSync(path.join(root, file), "utf8")) as T;
 
-const pkg = readJson("package.json");
-const lock = readJson("package-lock.json");
+const pkg = readJson<{ version: string }>("package.json");
+const lock = readJson<{ packages: Record<string, { version: string }> }>(
+    "package-lock.json",
+);
 const name = `argus-${pkg.version}`;
 const stage = path.join(root, "release", name);
 const ext = path.join(stage, "extension");
