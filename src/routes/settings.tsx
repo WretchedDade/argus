@@ -54,11 +54,10 @@ const inputCls =
     "border-line bg-canvas mt-1 w-full rounded-md border px-2.5 py-1.5 text-sm";
 
 const GROUPS = [
+    { id: "general", label: "General" },
     { id: "account", label: "Account" },
-    { id: "teams", label: "Teams" },
     { id: "ado", label: "Azure DevOps" },
-    { id: "schedule", label: "Schedule" },
-    { id: "app", label: "App" },
+    { id: "app", label: "System" },
 ] as const;
 type GroupId = (typeof GROUPS)[number]["id"];
 
@@ -90,7 +89,7 @@ function Settings() {
     const teamOptions = useQuery(teamsQuery).data ?? [];
     const version = useQuery(versionQuery).data;
     const [checking, setChecking] = useState(false);
-    const [tab, setTab] = useState<GroupId>("account");
+    const [tab, setTab] = useState<GroupId>("general");
 
     const checkNow = async () => {
         setChecking(true);
@@ -131,28 +130,39 @@ function Settings() {
             workEndHour: cfg.workEndHour,
             workDays: cfg.workDays as number[],
             checkForUpdates: cfg.checkForUpdates ?? true,
+            vendorPattern: cfg.vendorPattern ?? "\\(.+\\)",
         },
         onSubmit: async ({ value }) => {
-            await configApi.save({
-                me: value.me.trim() || null,
-                adoAuth: value.adoAuth,
-                avatarUrl: value.avatarUrl.trim(),
-                project: value.project.trim(),
-                orgUrl: value.orgUrl.trim(),
-                orgSlug: value.orgSlug.trim(),
-                teamPatterns: value.teamPatterns,
-                teamLabels: value.teamLabels,
-                periods: value.periods.filter(
-                    (p) => p.label.trim() && p.start && p.end,
-                ),
-                reviewSkillName: value.reviewSkillName.trim() || "pr-review",
-                recencyDays: Number(value.recencyDays),
-                retentionDays: Number(value.retentionDays),
-                workStartHour: Number(value.workStartHour),
-                workEndHour: Number(value.workEndHour),
-                workDays: value.workDays,
-                checkForUpdates: value.checkForUpdates,
-            });
+            try {
+                await configApi.save({
+                    me: value.me.trim() || null,
+                    adoAuth: value.adoAuth,
+                    avatarUrl: value.avatarUrl.trim(),
+                    project: value.project.trim(),
+                    orgUrl: value.orgUrl.trim(),
+                    orgSlug: value.orgSlug.trim(),
+                    teamPatterns: value.teamPatterns,
+                    teamLabels: value.teamLabels,
+                    periods: value.periods.filter(
+                        (p) => p.label.trim() && p.start && p.end,
+                    ),
+                    reviewSkillName:
+                        value.reviewSkillName.trim() || "pr-review",
+                    recencyDays: Number(value.recencyDays),
+                    retentionDays: Number(value.retentionDays),
+                    workStartHour: Number(value.workStartHour),
+                    workEndHour: Number(value.workEndHour),
+                    workDays: value.workDays,
+                    checkForUpdates: value.checkForUpdates,
+                    vendorPattern: value.vendorPattern,
+                });
+            } catch (err) {
+                pushToast(
+                    `Couldn't save settings: ${(err as Error).message}`,
+                    "error",
+                );
+                return;
+            }
             for (const key of ["config", "prs", "health"])
                 void qc.invalidateQueries({ queryKey: [key] });
             pushToast("Settings saved");
@@ -274,46 +284,6 @@ function Settings() {
                         </section>
                     </Group>
 
-                    <Group id="teams" active={tab}>
-                        <section className="flex flex-col gap-3">
-                            <h2 className="text-muted text-xs font-medium uppercase tracking-wide">
-                                Teams
-                            </h2>
-                            <form.Field name="teamPatterns">
-                                {(field) => (
-                                    <Row
-                                        label="Team reviewer patterns"
-                                        hint="Pick teams seen on your PRs, or type a custom *glob*."
-                                    >
-                                        <TeamMultiSelect
-                                            value={field.state.value}
-                                            options={teamOptions}
-                                            onChange={(v) =>
-                                                field.handleChange(v)
-                                            }
-                                        />
-                                    </Row>
-                                )}
-                            </form.Field>
-                            <form.Field name="teamLabels">
-                                {(field) => (
-                                    <Row
-                                        label="Team labels"
-                                        hint="Friendly names for team chips. Independent of tracking above."
-                                    >
-                                        <TeamLabelEditor
-                                            value={field.state.value}
-                                            options={teamOptions}
-                                            onChange={(v) =>
-                                                field.handleChange(v)
-                                            }
-                                        />
-                                    </Row>
-                                )}
-                            </form.Field>
-                        </section>
-                    </Group>
-
                     <Group id="ado" active={tab}>
                         <section className="grid grid-cols-2 gap-3">
                             <h2 className="text-muted col-span-2 text-xs font-medium uppercase tracking-wide">
@@ -364,6 +334,51 @@ function Settings() {
                                     </Row>
                                 )}
                             </form.Field>
+                        </section>
+                        <section className="flex flex-col gap-3">
+                            <h2 className="text-muted text-xs font-medium uppercase tracking-wide">
+                                Teams
+                            </h2>
+                            <form.Field name="teamPatterns">
+                                {(field) => (
+                                    <Row
+                                        label="Team reviewer patterns"
+                                        hint="Pick teams seen on your PRs, or type a custom *glob*."
+                                    >
+                                        <TeamMultiSelect
+                                            value={field.state.value}
+                                            options={teamOptions}
+                                            onChange={(v) =>
+                                                field.handleChange(v)
+                                            }
+                                        />
+                                    </Row>
+                                )}
+                            </form.Field>
+                            <form.Field name="teamLabels">
+                                {(field) => (
+                                    <Row
+                                        label="Team labels"
+                                        hint="Friendly names for team chips. Independent of tracking above."
+                                    >
+                                        <TeamLabelEditor
+                                            value={field.state.value}
+                                            options={teamOptions}
+                                            onChange={(v) =>
+                                                field.handleChange(v)
+                                            }
+                                        />
+                                    </Row>
+                                )}
+                            </form.Field>
+                        </section>
+                    </Group>
+
+                    <Group id="general" active={tab}>
+                        <section className="flex flex-col gap-3">
+                            <h2 className="text-muted text-xs font-medium uppercase tracking-wide">
+                                Review
+                            </h2>
                             <form.Field name="reviewSkillName">
                                 {(field) => (
                                     <Row
@@ -383,10 +398,26 @@ function Settings() {
                                     </Row>
                                 )}
                             </form.Field>
+                            <form.Field name="vendorPattern">
+                                {(field) => (
+                                    <Row
+                                        label="Vendor name pattern"
+                                        hint="A regular expression. A display name that matches counts as a vendor. Default: \(.+\) (a name with parentheses). Leave empty to turn the rule off."
+                                    >
+                                        <input
+                                            className={inputCls}
+                                            placeholder="\(.+\)"
+                                            value={field.state.value}
+                                            onChange={(e) =>
+                                                field.handleChange(
+                                                    e.target.value,
+                                                )
+                                            }
+                                        />
+                                    </Row>
+                                )}
+                            </form.Field>
                         </section>
-                    </Group>
-
-                    <Group id="schedule" active={tab}>
                         <section className="flex flex-col gap-3">
                             <h2 className="text-muted text-xs font-medium uppercase tracking-wide">
                                 Schedule

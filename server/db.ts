@@ -2459,6 +2459,7 @@ export class ArgusStore {
         isVendor: boolean,
         otherVotes: { name: string; vote: number }[],
         requiredApproverGroups: string[],
+        vendorPattern?: string,
     ): void {
         const prev = this.#prep(
             "SELECT review_state AS s, description AS d FROM prs WHERE canonical = ?",
@@ -2501,8 +2502,9 @@ export class ArgusStore {
             // Attribute the wake to a non-vendor (FTE) approver — a vendor approval
             // doesn't cover the team's review, so it never wakes an fte-snooze.
             const by =
-                otherVotes.find((v) => v.vote >= 5 && !isVendorName(v.name))
-                    ?.name ?? null;
+                otherVotes.find(
+                    (v) => v.vote >= 5 && !isVendorName(v.name, vendorPattern),
+                )?.name ?? null;
             if (by || reviewState === "covered" || reviewState === "approved") {
                 this.appendEvent(canonical, "fte_woke", { by });
                 this.setSnooze(canonical, null, null);
