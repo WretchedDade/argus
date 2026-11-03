@@ -1,5 +1,6 @@
 import { DatabaseSync, type StatementSync } from "node:sqlite";
 import { mkdirSync, readFileSync } from "node:fs";
+import { randomUUID } from "node:crypto";
 import path from "node:path";
 import type {
     ActivityEvent,
@@ -186,9 +187,19 @@ CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
 -- Per-event "read" marks for the notifications bell. An event is unread when it
 -- is a surfaced change, newer than the changes_seen_at watermark, and absent here.
 CREATE TABLE IF NOT EXISTS changes_read (event_id INTEGER PRIMARY KEY, read_at TEXT NOT NULL);
+
+-- One-time tokens for automatic reviews. Stored in the shared DB so every host
+-- that serves the ingest port sees the tokens issued by any other host.
+CREATE TABLE IF NOT EXISTS automatic_review_tokens (
+  canonical TEXT NOT NULL,
+  token TEXT NOT NULL,
+  issued_at INTEGER NOT NULL,
+  PRIMARY KEY (canonical, token)
+);
 `;
 
 const b = (v: boolean): number => (v ? 1 : 0);
+const AUTOMATIC_TOKEN_TTL_MS = 6 * 60 * 60 * 1000;
 const now = (): string => new Date().toISOString();
 const REVIEW_COUNT_SQL = `(
   SELECT COUNT(*) FROM pr_events e
@@ -2558,6 +2569,42 @@ export class ArgusStore {
     removePr(canonical: string): void {
         this.#prep("DELETE FROM pr_events WHERE canonical = ?").run(canonical);
         this.#prep("DELETE FROM prs WHERE canonical = ?").run(canonical);
+    }
+
+    // Issue a one-time token for an automatic review. Overlapping reviews of one
+    // PR each keep their own token.
+    issueAutomaticReviewToken(canonical: string, nowMs = Date.now()): string {
+        const token = randomUUID();
+        this.#prep(
+            "INSERT INTO automatic_review_tokens (canonical, token, issued_at) VALUES (?, ?, ?)",
+        ).run(canonical, token, nowMs);
+        return token;
+    }
+
+    // While an automatic review of a PR holds a valid token, `approved` needs one
+    // of those tokens. Other verdicts, and PRs with no automatic review, pass.
+    // Tokens expire so a crashed review cannot block approvals indefinitely.
+    checkVerdictAllowed(
+        canonical: string,
+        verdict: string | undefined,
+        token?: string,
+        nowMs = Date.now(),
+    ): boolean {
+        this.#prep(
+            "DELETE FROM automatic_review_tokens WHERE canonical = ? AND issued_at < ?",
+        ).run(canonical, nowMs - AUTOMATIC_TOKEN_TTL_MS);
+        const rows = this.#prep(
+            "SELECT token FROM automatic_review_tokens WHERE canonical = ?",
+        ).all(canonical) as { token: string }[];
+        if (rows.length === 0) return true;
+        if (token && rows.some((r) => r.token === token)) {
+            if (verdict)
+                this.#prep(
+                    "DELETE FROM automatic_review_tokens WHERE canonical = ? AND token = ?",
+                ).run(canonical, token);
+            return true;
+        }
+        return verdict !== "approved";
     }
 
     // Explicitly record a review outcome: the verdict, the commit reviewed (for

@@ -70,6 +70,32 @@ try {
 
     assert.equal(store.getPr(canonical)?.reviewCount, 2);
     assert.equal(store.listPrs()[0]?.reviewCount, 2);
+
+    const other = "https://example.test/pr/8";
+    assert.equal(store.checkVerdictAllowed(canonical, "approved"), true);
+    const t1 = store.issueAutomaticReviewToken(canonical);
+    const t2 = store.issueAutomaticReviewToken(canonical);
+    assert.equal(store.checkVerdictAllowed(canonical, "approved"), false);
+    assert.equal(
+        store.checkVerdictAllowed(canonical, "approved", "bad"),
+        false,
+    );
+    assert.equal(store.checkVerdictAllowed(canonical, "waiting"), true);
+    assert.equal(store.checkVerdictAllowed(other, "approved"), true);
+    // Overlapping reviews of one PR each keep a valid token.
+    assert.equal(store.checkVerdictAllowed(canonical, "approved", t1), true);
+    assert.equal(store.checkVerdictAllowed(canonical, "approved", t1), false);
+    assert.equal(store.checkVerdictAllowed(canonical, "approved", t2), true);
+    assert.equal(store.checkVerdictAllowed(canonical, "approved"), true);
+    // A stale token expires so it cannot block approvals forever.
+    store.issueAutomaticReviewToken(canonical, Date.now() - 7 * 3600e3);
+    assert.equal(store.checkVerdictAllowed(canonical, "approved"), true);
+    // A second store on the same file (another host) sees the tokens.
+    const t3 = store.issueAutomaticReviewToken(canonical);
+    const peer = new ArgusStore(path.join(dir, "argus.db"));
+    assert.equal(peer.checkVerdictAllowed(canonical, "approved"), false);
+    assert.equal(peer.checkVerdictAllowed(canonical, "approved", t3), true);
+    peer.close();
 } finally {
     store.close();
     rmSync(dir, { recursive: true, force: true });

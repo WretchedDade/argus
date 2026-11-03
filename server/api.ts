@@ -1,4 +1,3 @@
-import { randomUUID } from "node:crypto";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { ArgusStore } from "./db.ts";
 import type { ArchivableSession, Pr } from "./types.ts";
@@ -61,40 +60,6 @@ function recordCmd(canonical: string, token?: string): string {
     return `Invoke-RestMethod -Method Post -Uri ${ingestUrl()} -ContentType application/json -Body '{"canonical":"${canonical}"${tokenField},"verdict":"<approved|suggestions|waiting|rejected>"}'`;
 }
 
-// One-time tokens for outstanding automatic reviews, keyed by PR. While a token
-// is outstanding, the ingest endpoint refuses `approved` without it. A token
-// expires, so a crashed automatic review cannot block approvals indefinitely.
-const AUTOMATIC_TOKEN_TTL_MS = 6 * 60 * 60 * 1000;
-const automaticReviewTokens = new Map<
-    string,
-    { token: string; issuedAt: number }
->();
-
-export function issueAutomaticReviewToken(canonical: string): string {
-    const token = randomUUID();
-    automaticReviewTokens.set(canonical, { token, issuedAt: Date.now() });
-    return token;
-}
-
-export function checkVerdictAllowed(
-    canonical: string,
-    verdict: string | undefined,
-    token?: string,
-    nowMs = Date.now(),
-): boolean {
-    const entry = automaticReviewTokens.get(canonical);
-    if (!entry) return true;
-    if (nowMs - entry.issuedAt > AUTOMATIC_TOKEN_TTL_MS) {
-        automaticReviewTokens.delete(canonical);
-        return true;
-    }
-    if (token === entry.token) {
-        if (verdict) automaticReviewTokens.delete(canonical);
-        return true;
-    }
-    return verdict !== "approved";
-}
-
 // PR text is untrusted: prompts carry only the URL, repo, and number.
 export function reviewPrompt(pr: Pr, skillName: string): string {
     const ref = `**${pr.repo} #${pr.number}**\n${pr.canonical}`;
@@ -116,9 +81,12 @@ export function reviewPrompt(pr: Pr, skillName: string): string {
     ].join("\n");
 }
 
-export function automaticReviewPrompt(pr: Pr, skillName: string): string {
+export function automaticReviewPrompt(
+    pr: Pr,
+    skillName: string,
+    token: string,
+): string {
     const ref = `**${pr.repo} #${pr.number}**\n${pr.canonical}`;
-    const token = issueAutomaticReviewToken(pr.canonical);
     return [
         `Argus: please run an **automatic review** of ${ref}`,
         `Lane: quick`,
@@ -422,7 +390,11 @@ export async function handleApi(
         else {
             await ctx.dispatch(
                 body.automatic
-                    ? automaticReviewPrompt(pr, ctx.getConfig().reviewSkillName)
+                    ? automaticReviewPrompt(
+                          pr,
+                          ctx.getConfig().reviewSkillName,
+                          ctx.store.issueAutomaticReviewToken(pr.canonical),
+                      )
                     : reviewPrompt(pr, ctx.getConfig().reviewSkillName),
             );
             sendJson(res, 200, { ok: true, reReview: !!pr.reviewSessionId });
@@ -440,7 +412,13 @@ export async function handleApi(
         };
         if (!body.canonical)
             sendJson(res, 400, { error: "canonical required" });
-        else if (!checkVerdictAllowed(body.canonical, body.verdict, body.token))
+        else if (
+            !ctx.store.checkVerdictAllowed(
+                body.canonical,
+                body.verdict,
+                body.token,
+            )
+        )
             sendJson(res, 403, {
                 error: "approved requires the token from the automatic review",
             });
