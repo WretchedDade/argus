@@ -34,8 +34,8 @@ jobs:
                   version=$(node -p "require('./package.json').version")
                   echo "version=$version" >> "$GITHUB_OUTPUT"
                   # Patch versions (X.Y.Z with Z > 0) do not release on push. A manual run can still release one.
-                  patch="${version##*.}"
-                  patch="${patch%%[-+]*}"
+                  core="${version%%[-+]*}"
+                  patch="${core##*.}"
                   if [ "$patch" != "0" ] && [ "$GITHUB_EVENT_NAME" != "workflow_dispatch" ]; then
                       echo "Version $version is a patch. Patches do not release automatically."
                       echo "needs_release=false" >> "$GITHUB_OUTPUT"
