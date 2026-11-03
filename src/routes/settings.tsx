@@ -133,27 +133,36 @@ function Settings() {
             vendorPattern: cfg.vendorPattern ?? "\\(.+\\)",
         },
         onSubmit: async ({ value }) => {
-            await configApi.save({
-                me: value.me.trim() || null,
-                adoAuth: value.adoAuth,
-                avatarUrl: value.avatarUrl.trim(),
-                project: value.project.trim(),
-                orgUrl: value.orgUrl.trim(),
-                orgSlug: value.orgSlug.trim(),
-                teamPatterns: value.teamPatterns,
-                teamLabels: value.teamLabels,
-                periods: value.periods.filter(
-                    (p) => p.label.trim() && p.start && p.end,
-                ),
-                reviewSkillName: value.reviewSkillName.trim() || "pr-review",
-                recencyDays: Number(value.recencyDays),
-                retentionDays: Number(value.retentionDays),
-                workStartHour: Number(value.workStartHour),
-                workEndHour: Number(value.workEndHour),
-                workDays: value.workDays,
-                checkForUpdates: value.checkForUpdates,
-                vendorPattern: value.vendorPattern.trim(),
-            });
+            try {
+                await configApi.save({
+                    me: value.me.trim() || null,
+                    adoAuth: value.adoAuth,
+                    avatarUrl: value.avatarUrl.trim(),
+                    project: value.project.trim(),
+                    orgUrl: value.orgUrl.trim(),
+                    orgSlug: value.orgSlug.trim(),
+                    teamPatterns: value.teamPatterns,
+                    teamLabels: value.teamLabels,
+                    periods: value.periods.filter(
+                        (p) => p.label.trim() && p.start && p.end,
+                    ),
+                    reviewSkillName:
+                        value.reviewSkillName.trim() || "pr-review",
+                    recencyDays: Number(value.recencyDays),
+                    retentionDays: Number(value.retentionDays),
+                    workStartHour: Number(value.workStartHour),
+                    workEndHour: Number(value.workEndHour),
+                    workDays: value.workDays,
+                    checkForUpdates: value.checkForUpdates,
+                    vendorPattern: value.vendorPattern,
+                });
+            } catch (err) {
+                pushToast(
+                    `Couldn't save settings: ${(err as Error).message}`,
+                    "error",
+                );
+                return;
+            }
             for (const key of ["config", "prs", "health"])
                 void qc.invalidateQueries({ queryKey: [key] });
             pushToast("Settings saved");
