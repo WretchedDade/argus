@@ -35,8 +35,10 @@ argus-vX.Y.Z/
 2. Run the install script from the extracted `argus-vX.Y.Z` folder. It copies `extension` to `%USERPROFILE%\.copilot\extensions\argus`:
 
     ```powershell
-    .\install.ps1
+    powershell -NoProfile -ExecutionPolicy Bypass -File .\install.ps1
     ```
+
+    The `-ExecutionPolicy Bypass` option applies to this one command only. It lets the script run under the default `Restricted` policy, or when the extracted file has the download mark. It does not change your policy.
 
     To use a different folder, pass `-Destination <path>`. The script copies over the existing files and does not delete the folder first, so `argus.config.json` stays.
 
@@ -72,7 +74,7 @@ If you choose Windows account, the next screen asks for the Entra app client and
 
 Once a day, Argus checks GitHub for a new release. When one exists, the bell shows a notice. Select **Update now**. Argus downloads the ZIP, checks it against the SHA-256 file of the release, and runs `install.ps1`. If the checksum does not match, Argus installs nothing and shows an error. Then reload extensions. If you edited your `pr-review` skill, a **Merge with Copilot** notice appears after the reload. To stop the check, clear **Check for new versions** in Settings. Argus sends no data about you.
 
-To upgrade by hand, extract the new ZIP and run `install.ps1` from it. To check the ZIP first, compare `(Get-FileHash <zip>).Hash` with the hash in the `.sha256` file on the release page. Your `argus.config.json` and database are not in the ZIP, so the copy keeps them. Then reload extensions.
+To upgrade by hand, extract the new ZIP and run `install.ps1` from it with the same command as the install. To check the ZIP first, compare `(Get-FileHash <zip>).Hash` with the hash in the `.sha256` file on the release page. Your `argus.config.json` and database are not in the ZIP, so the copy keeps them. Then reload extensions.
 
 An unedited `pr-review` skill that Argus installed updates by itself. If you edited it, Argus leaves it and shows a notice with **Merge with Copilot**.
 

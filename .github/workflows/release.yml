@@ -46,14 +46,16 @@ jobs:
                   status=0
                   git ls-remote --exit-code --tags origin "refs/tags/v$version" > /dev/null || status=$?
                   if [ "$status" -eq 0 ]; then
-                      # A tag without its uploaded ZIP is a failed release, not a finished one.
-                      zip="argus-v$version-windows.zip"
-                      uploaded=$(gh release view "v$version" --repo "$GITHUB_REPOSITORY" --json assets --jq ".assets[] | select(.name == \"$zip\" and .state == \"uploaded\") | .name")
-                      if [ -z "$uploaded" ]; then
-                          echo "Tag v$version exists, but the release ZIP $zip is missing. Delete the tag and release, then run again."
-                          exit 1
-                      fi
-                      echo "Tag v$version already has its release ZIP. Nothing to release."
+                      # A tag without its uploaded ZIP and checksum is a failed release, not a finished one.
+                      # Clients need both assets, so a release with only the ZIP is never offered.
+                      for asset in "argus-v$version-windows.zip" "argus-v$version-windows.zip.sha256"; do
+                          uploaded=$(gh release view "v$version" --repo "$GITHUB_REPOSITORY" --json assets --jq ".assets[] | select(.name == \"$asset\" and .state == \"uploaded\") | .name")
+                          if [ -z "$uploaded" ]; then
+                              echo "Tag v$version exists, but the release asset $asset is missing. Delete the tag and release, then run again."
+                              exit 1
+                          fi
+                      done
+                      echo "Tag v$version already has its release ZIP and checksum. Nothing to release."
                       echo "needs_release=false" >> "$GITHUB_OUTPUT"
                   elif [ "$status" -eq 2 ]; then
                       echo "needs_release=true" >> "$GITHUB_OUTPUT"
