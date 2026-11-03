@@ -36,6 +36,25 @@ assert.deepEqual(
     [],
 );
 assert.equal(normalize(raw).projectId, "");
+
+const named = (name: string) => ({
+    ...raw,
+    createdBy: { displayName: name },
+});
+const vendorOf = (name: string, pattern?: string) =>
+    normalizePr(
+        named(name),
+        "org",
+        "project",
+        classifyOwnership(raw, "me", []),
+        pattern,
+    ).isVendor;
+assert.equal(vendorOf("Jane Doe (Acme)"), true);
+assert.equal(vendorOf("Jane Doe"), false);
+assert.equal(vendorOf("Jane Doe (Acme)", ""), false);
+assert.equal(vendorOf("Jane Doe [ext]", "\\[ext\\]"), true);
+assert.equal(vendorOf("Jane Doe (Acme)", "\\[ext\\]"), false);
+assert.equal(vendorOf("Jane Doe (Acme)", "("), false);
 assert.equal(
     normalize({ ...raw, repository: { project: { id: "p-guid" } } }).projectId,
     "p-guid",

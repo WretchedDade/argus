@@ -4,8 +4,17 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { createServer, request as httpRequest } from "node:http";
 import { handleApi, type ApiContext } from "./api.ts";
-import { defaultConfig, loadLocalConfig, mergeConfig } from "./config.ts";
+import {
+    defaultConfig,
+    loadLocalConfig,
+    mergeConfig,
+    parseConfigOverrides,
+} from "./config.ts";
 import { ArgusStore } from "./db.ts";
+
+assert.equal(defaultConfig().vendorPattern, "\\(.+\\)");
+assert.equal(parseConfigOverrides({ vendorPattern: "" }).vendorPattern, "");
+assert.throws(() => parseConfigOverrides({ vendorPattern: "(" }));
 
 const dir = mkdtempSync(path.join(tmpdir(), "argus-config-test-"));
 const file = path.join(dir, "config.json");

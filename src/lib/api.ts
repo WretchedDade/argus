@@ -673,6 +673,7 @@ export interface ArgusConfig {
     workEndHour: number;
     workDays: number[];
     checkForUpdates: boolean;
+    vendorPattern: string;
 }
 
 export const configApi = {
@@ -684,7 +685,12 @@ export const configApi = {
             headers: { "content-type": "application/json" },
             body: JSON.stringify(overrides),
         });
-        if (!res.ok) throw new Error(`config -> ${res.status}`);
+        if (!res.ok) {
+            const body = (await res.json().catch(() => null)) as {
+                error?: string;
+            } | null;
+            throw new Error(body?.error ?? `config -> ${res.status}`);
+        }
         return (await res.json()).config as ArgusConfig;
     },
     teams: () =>

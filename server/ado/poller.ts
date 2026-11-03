@@ -113,7 +113,15 @@ async function runReconcile(
         for (const p of raw ?? []) {
             const own = classifyOwnership(p, identity, cfg.teamPatterns);
             if (own.role)
-                mine.push(normalizePr(p, cfg.orgSlug, cfg.project, own));
+                mine.push(
+                    normalizePr(
+                        p,
+                        cfg.orgSlug,
+                        cfg.project,
+                        own,
+                        cfg.vendorPattern,
+                    ),
+                );
         }
         note(
             "info",
@@ -160,6 +168,7 @@ async function runReconcile(
                 m.isVendor,
                 m.otherVotes,
                 m.requiredApproverGroups,
+                cfg.vendorPattern,
             );
 
         // Enrich my authored PRs with ADO's completability signal + comment counts.
@@ -373,7 +382,13 @@ export async function refreshPr(
     }
     const identity = await resolveIdentity(ctx);
     const own = classifyOwnership(raw, identity, cfg.teamPatterns);
-    const norm = normalizePr(raw, cfg.orgSlug, cfg.project, own);
+    const norm = normalizePr(
+        raw,
+        cfg.orgSlug,
+        cfg.project,
+        own,
+        cfg.vendorPattern,
+    );
     const changedFiles = await prChangedFileCount(
         cfg.orgUrl,
         norm.project,
@@ -413,6 +428,7 @@ export async function refreshPr(
         norm.isVendor,
         own.otherVotes,
         norm.requiredApproverGroups,
+        cfg.vendorPattern,
     );
     // `show` returns the full description (the bulk list truncates it), so store it
     // authoritatively here.
@@ -443,7 +459,13 @@ export async function trackByNumber(
     const reviewState =
         own.role === null ? (own.reviewState ?? "needs") : own.reviewState;
     const effective = { ...own, role, reviewState };
-    const norm = normalizePr(raw, cfg.orgSlug, cfg.project, effective);
+    const norm = normalizePr(
+        raw,
+        cfg.orgSlug,
+        cfg.project,
+        effective,
+        cfg.vendorPattern,
+    );
     const existed = !!ctx.store.getPr(norm.canonical);
     ctx.store.upsertPr({
         canonical: norm.canonical,
@@ -473,6 +495,7 @@ export async function trackByNumber(
         norm.isVendor,
         effective.otherVotes,
         norm.requiredApproverGroups,
+        cfg.vendorPattern,
     );
     ctx.store.setDescription(norm.canonical, norm.description);
     if (!existed)

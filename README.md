@@ -196,6 +196,7 @@ Use JSON field names, not environment variable names:
 | `workStartHour`, `workEndHour` | Numeric hours, for example `9` and `17`                                                 |
 | `workDays`                     | Array of weekday numbers, Sunday=`0` through Saturday=`6`                               |
 | `checkForUpdates`              | Boolean; `false` stops the daily check for new releases                                 |
+| `vendorPattern`                | Regular expression for vendor display names; default `\(.+\)`; empty turns the rule off |
 
 For example, the JSON equivalent of `ARGUS_WORK_HOURS=9-17` and
 `ARGUS_WORK_DAYS=1-5` is:
@@ -229,7 +230,7 @@ The first time you open Argus, a setup screen asks for six things:
   can leave it blank.
 - **Org URL and slug** — for example `https://dev.azure.com/your-org` and
   `your-org`.
-- **Project** — for example `LPE`.
+- **Project** — for example `my-project`.
 - **Your reviewer groups (optional)** — comma-separated globs matched against the ADO team
   reviewer names you belong to, for example `*My Team Name*`. A PR counts as
   yours when one of these groups is a reviewer on it.
@@ -272,7 +273,12 @@ does not increase the count.
 - **Lanes** — new PRs default to the full-review lane. Move a PR to the quick lane
   when it needs only a light look. The lane is remembered.
 - **Snooze** — hide a PR until a time, or until an FTE (a non-vendor teammate)
-  approves it. An FTE approval wakes an FTE-snooze automatically.
+  approves it. An FTE approval wakes an FTE-snooze automatically. A name is a
+  vendor when it matches the **Vendor name pattern** setting (`vendorPattern`
+  in the config file, `ARGUS_VENDOR_PATTERN` in the environment). The pattern is
+  a regular expression. The default, `\(.+\)`, marks a display name with a
+  parenthetical, for example `Jane Doe (Acme)`. Set it to an empty value to
+  treat nobody as a vendor.
 - **Load and capacity** — "On your plate" counts a PR from when it enters your
   queue until it closes, a teammate covers it, or you record a verdict (it leaves
   the next day). Click a day to see which PRs were new, reviewed, or existing.
@@ -321,17 +327,18 @@ spawn-a-review loop needs `pr-review`.
 
 Settings persist in the store. Environment variables set the defaults:
 
-| Variable              | Purpose                               | Default                              |
-| --------------------- | ------------------------------------- | ------------------------------------ |
-| `ARGUS_ME`            | identity override                     | auto from `az`                       |
-| `ARGUS_ORG_URL`       | Azure DevOps org URL                  | none, or built from `ARGUS_ORG_SLUG` |
-| `ARGUS_ORG_SLUG`      | org slug                              | none                                 |
-| `ARGUS_PROJECT`       | project                               | none                                 |
-| `ARGUS_TEAM_PATTERNS` | reviewer-group globs, comma-separated | none                                 |
-| `ARGUS_RECENCY_DAYS`  | days before an idle PR goes stale     | `7`                                  |
-| `ARGUS_WORK_HOURS`    | work hours, `start-end`               | `9-17`                               |
-| `ARGUS_WORK_DAYS`     | work days, `start-end` (Mon=1)        | `1-5`                                |
-| `ARGUS_DB_FILE`       | store path                            | `%LOCALAPPDATA%\argus\argus.db`      |
+| Variable               | Purpose                               | Default                              |
+| ---------------------- | ------------------------------------- | ------------------------------------ |
+| `ARGUS_ME`             | identity override                     | auto from `az`                       |
+| `ARGUS_ORG_URL`        | Azure DevOps org URL                  | none, or built from `ARGUS_ORG_SLUG` |
+| `ARGUS_ORG_SLUG`       | org slug                              | none                                 |
+| `ARGUS_PROJECT`        | project                               | none                                 |
+| `ARGUS_TEAM_PATTERNS`  | reviewer-group globs, comma-separated | none                                 |
+| `ARGUS_RECENCY_DAYS`   | days before an idle PR goes stale     | `7`                                  |
+| `ARGUS_WORK_HOURS`     | work hours, `start-end`               | `9-17`                               |
+| `ARGUS_WORK_DAYS`      | work days, `start-end` (Mon=1)        | `1-5`                                |
+| `ARGUS_VENDOR_PATTERN` | vendor-name regex; empty turns it off | `\(.+\)`                             |
+| `ARGUS_DB_FILE`        | store path                            | `%LOCALAPPDATA%\argus\argus.db`      |
 
 The store is a `node:sqlite` database. It holds your PR titles, descriptions, and
 review history, so keep it private. It lives outside the extension folder, so
