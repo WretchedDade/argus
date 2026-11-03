@@ -10,6 +10,7 @@ import {
     type ReleaseInfo,
 } from "./update-check.ts";
 import { buildNotices, type Notice } from "./notices.ts";
+import { applyUpdate } from "./updater.ts";
 import { joinSession, createCanvas } from "@github/copilot-sdk/extension";
 import { ArgusStore } from "./db.ts";
 import { DEFAULT_INGEST_PORT, setIngestPort } from "./ingest.ts";
@@ -209,10 +210,10 @@ async function checkForUpdate(): Promise<void> {
     // Session hosts share the store, so the last-check time limits GitHub calls to one a day.
     const last = Number(store.getUpdateCheck()?.checkedAt ?? 0);
     const cached = store.getUpdateCheck()?.release ?? null;
-    // Entries saved by older builds have no zipUrl. Fetch again for those.
+    // Entries saved by older builds have no checksumUrl. Fetch again for those.
     if (
         Date.now() - last < UPDATE_CHECK_INTERVAL_MS &&
-        (!cached || cached.zipUrl)
+        (!cached || cached.checksumUrl)
     ) {
         latestRelease = cached;
         return;
@@ -318,7 +319,6 @@ function getNotices(): Notice[] {
         appVersion: APP_VERSION,
         release: latestRelease,
         checkForUpdates: getConfig().checkForUpdates,
-        installDir: __dirname,
         skill: pendingSkillHash
             ? {
                   bundledHash: pendingSkillHash,
@@ -349,6 +349,10 @@ const serverCtx = (): ServerContext => ({
     getNotices,
     appVersion: APP_VERSION,
     checkForUpdatesNow,
+    applyUpdate: async () => {
+        if (!latestRelease) throw new Error("No release is known yet.");
+        await applyUpdate(latestRelease, __dirname);
+    },
 });
 
 const session = await joinSession({

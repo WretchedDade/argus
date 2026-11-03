@@ -2,6 +2,7 @@ export interface ReleaseInfo {
     version: string;
     url: string;
     zipUrl: string; // download URL of the Windows ZIP, taken from the release assets
+    checksumUrl: string; // download URL of the ZIP's SHA-256 file
 }
 
 const LATEST_RELEASE_URL =
@@ -59,11 +60,21 @@ export async function fetchLatestRelease(
                 a?.name === `argus-v${version}-windows.zip` &&
                 a.state === "uploaded",
         );
-        if (typeof zip?.browser_download_url !== "string") return null;
+        const checksum = (Array.isArray(body.assets) ? body.assets : []).find(
+            (a) =>
+                a?.name === `argus-v${version}-windows.zip.sha256` &&
+                a.state === "uploaded",
+        );
+        if (
+            typeof zip?.browser_download_url !== "string" ||
+            typeof checksum?.browser_download_url !== "string"
+        )
+            return null;
         return {
             version,
             url: body.html_url,
             zipUrl: zip.browser_download_url,
+            checksumUrl: checksum.browser_download_url,
         };
     } catch {
         return null;

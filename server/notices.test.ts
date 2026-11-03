@@ -40,15 +40,25 @@ const zipAsset = {
     state: "uploaded",
     browser_download_url: "https://x/dl/argus-v0.3.0-windows.zip",
 };
-assert.deepEqual(await fetchLatestRelease(releaseJson([zipAsset])), {
+const sumAsset = {
+    name: "argus-v0.3.0-windows.zip.sha256",
+    state: "uploaded",
+    browser_download_url: "https://x/dl/argus-v0.3.0-windows.zip.sha256",
+};
+// A release without its checksum is not offered, so the update fails closed.
+assert.equal(await fetchLatestRelease(releaseJson([zipAsset])), null);
+assert.deepEqual(await fetchLatestRelease(releaseJson([zipAsset, sumAsset])), {
     version: "0.3.0",
     url: "https://x/r",
     zipUrl: "https://x/dl/argus-v0.3.0-windows.zip",
+    checksumUrl: "https://x/dl/argus-v0.3.0-windows.zip.sha256",
 });
 // A release without the ZIP asset is not offered as an update.
 // A failed upload leaves a placeholder asset in the starter state.
 assert.equal(
-    await fetchLatestRelease(releaseJson([{ ...zipAsset, state: "starter" }])),
+    await fetchLatestRelease(
+        releaseJson([{ ...zipAsset, state: "starter" }, sumAsset]),
+    ),
     null,
 );
 assert.equal(await fetchLatestRelease(releaseJson([])), null);
@@ -73,21 +83,18 @@ const release = {
     version: "0.2.0",
     url: "https://x/r",
     zipUrl: "https://x/dl/argus-v0.2.0-windows.zip",
+    checksumUrl: "https://x/dl/argus-v0.2.0-windows.zip.sha256",
 };
 const base = {
     appVersion: "0.1.0",
     release,
     checkForUpdates: true,
-    installDir: "C:\\ext",
     skill: null,
 };
 const update = buildNotices(base)[0];
-assert.equal(update.actionLabel, "Update with Copilot");
-assert.match(
-    update.prompt ?? "",
-    /https:\/\/x\/dl\/argus-v0\.2\.0-windows\.zip/,
-);
-assert.match(update.prompt ?? "", /C:\\ext/);
+assert.equal(update.actionLabel, "Update now");
+// Argus runs the update itself, so there is no chat prompt.
+assert.equal(update.prompt, undefined);
 assert.deepEqual(
     buildNotices(base).map((n) => n.id),
     ["app-update:0.2.0"],
@@ -95,11 +102,15 @@ assert.deepEqual(
 assert.equal(buildNotices({ ...base, checkForUpdates: false }).length, 0);
 assert.equal(buildNotices({ ...base, appVersion: "0.2.0" }).length, 0);
 assert.equal(buildNotices({ ...base, release: null }).length, 0);
-// A cached release saved before zipUrl existed gives no update notice.
+// A cached release saved before checksumUrl existed gives no update notice.
 assert.equal(
     buildNotices({
         ...base,
-        release: { version: "0.2.0", url: "https://x/r" } as typeof release,
+        release: {
+            version: "0.2.0",
+            url: "https://x/r",
+            zipUrl: release.zipUrl,
+        } as typeof release,
     }).length,
     0,
 );

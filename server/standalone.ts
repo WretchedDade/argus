@@ -72,6 +72,7 @@ let latestRelease: ReleaseInfo | null = process.env.ARGUS_FAKE_RELEASE
           version: process.env.ARGUS_FAKE_RELEASE,
           url: "https://github.com/WretchedDade/argus/releases",
           zipUrl: `https://github.com/WretchedDade/argus/releases/download/v${process.env.ARGUS_FAKE_RELEASE}/argus-v${process.env.ARGUS_FAKE_RELEASE}-windows.zip`,
+          checksumUrl: `https://github.com/WretchedDade/argus/releases/download/v${process.env.ARGUS_FAKE_RELEASE}/argus-v${process.env.ARGUS_FAKE_RELEASE}-windows.zip.sha256`,
       }
     : null;
 const fakeRelease = latestRelease;
@@ -125,7 +126,6 @@ const ctx: ServerContext = {
             appVersion: APP_VERSION,
             release: latestRelease,
             checkForUpdates: getConfig().checkForUpdates,
-            installDir: root,
             skill: process.env.ARGUS_FAKE_SKILL_UPDATE
                 ? {
                       bundledHash: "fake",

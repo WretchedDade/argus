@@ -103,6 +103,12 @@ jobs:
                   $name = "argus-$env:TAG"
                   Move-Item "release/argus-$($env:TAG.TrimStart('v'))" "release/$name"
                   Compress-Archive -Path "release/$name" -DestinationPath "release/$name-windows.zip"
+            - name: Create checksum
+              shell: pwsh
+              run: |
+                  $zip = "release/argus-$env:TAG-windows.zip"
+                  $hash = (Get-FileHash $zip -Algorithm SHA256).Hash.ToLower()
+                  "$hash  argus-$env:TAG-windows.zip" | Set-Content -Encoding ascii "$zip.sha256"
             - name: Publish GitHub Release
               env:
                   GH_TOKEN: ${{ github.token }}
@@ -114,5 +120,5 @@ jobs:
                       exit 0
                   }
                   if ($LASTEXITCODE -ne 2) { throw "Tag lookup failed with exit code $LASTEXITCODE" }
-                  gh release create $env:TAG "release/argus-$env:TAG-windows.zip" --title $env:TAG --generate-notes --target $env:GITHUB_SHA
+                  gh release create $env:TAG "release/argus-$env:TAG-windows.zip" "release/argus-$env:TAG-windows.zip.sha256" --title $env:TAG --generate-notes --target $env:GITHUB_SHA
                   if ($LASTEXITCODE -ne 0) { throw "gh release create failed" }

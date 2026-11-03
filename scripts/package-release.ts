@@ -92,6 +92,10 @@ rmSync(path.join(ext, "node_modules", "@devstart"), {
 });
 
 cpSync(path.join(root, "docs", "INSTALL.md"), path.join(stage, "INSTALL.md"));
+cpSync(
+    path.join(root, "scripts", "install.ps1"),
+    path.join(stage, "install.ps1"),
+);
 cpSync(path.join(root, "LICENSE"), path.join(stage, "LICENSE"));
 
 // Fail early if the runtime dependencies do not resolve from the staged folder.

@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Archive, Bell, Download, RefreshCw } from "lucide-react";
-import { api, archivableQuery, noticesQuery } from "../lib/api";
+import { api, archivableQuery, noticesQuery, type Notice } from "../lib/api";
 import { shortRepo } from "../lib/format";
 import { pushToast } from "../lib/toast";
 import { usePending } from "../lib/usePending";
@@ -19,10 +19,24 @@ export function NotificationsBell() {
     const notices = useQuery(noticesQuery).data ?? [];
     const badge = archivable.length + notices.length;
 
-    const act = (id: string) =>
+    const act = (n: Notice) =>
         run(async () => {
+            if (n.kind === "app-update") {
+                try {
+                    await api.applyUpdate();
+                    pushToast("Update installed. Reload extensions to finish.");
+                    void qc.invalidateQueries({ queryKey: ["notices"] });
+                    setOpen(false);
+                } catch (err) {
+                    pushToast(
+                        `Update failed: ${(err as Error).message}`,
+                        "error",
+                    );
+                }
+                return;
+            }
             try {
-                await api.actOnNotice(id);
+                await api.actOnNotice(n.id);
                 pushToast("Request sent to chat");
                 void qc.invalidateQueries({ queryKey: ["notices"] });
                 setOpen(false);
@@ -133,7 +147,7 @@ export function NotificationsBell() {
                                                     <button
                                                         type="button"
                                                         onClick={() =>
-                                                            void act(n.id)
+                                                            void act(n)
                                                         }
                                                         disabled={pending}
                                                         className="rounded-md px-2.5 py-1 font-semibold text-white disabled:opacity-60"

@@ -127,6 +127,8 @@ export interface ApiContext {
     getNotices?: () => Notice[];
     appVersion?: string;
     checkForUpdatesNow?: () => Promise<UpdateCheckResult>;
+    // Downloads, verifies, and installs the latest release. Absent in standalone mode.
+    applyUpdate?: () => Promise<void>;
 }
 
 export interface StorageInfo {
@@ -693,6 +695,25 @@ export async function handleApi(
         await ctx.dispatch(notice.prompt);
         // The storage notice clears only after the user's choice is saved.
         if (notice.kind !== "storage") ctx.store.dismissNotice(notice.id);
+        sendJson(res, 200, { ok: true });
+        return true;
+    }
+
+    if (route === "/api/update/apply" && req.method === "POST") {
+        const notice = (ctx.getNotices?.() ?? []).find(
+            (n) => n.kind === "app-update",
+        );
+        if (!ctx.applyUpdate || !notice) {
+            sendJson(res, 404, { error: "No update is available to install." });
+            return true;
+        }
+        try {
+            await ctx.applyUpdate();
+        } catch (err) {
+            sendJson(res, 500, { error: (err as Error).message });
+            return true;
+        }
+        ctx.store.dismissNotice(notice.id);
         sendJson(res, 200, { ok: true });
         return true;
     }

@@ -528,6 +528,18 @@ export const api = {
         });
         if (!res.ok) throw new Error(`notices/act -> ${res.status}`);
     },
+    applyUpdate: async (): Promise<void> => {
+        const res = await fetch("/api/update/apply", {
+            method: "POST",
+            headers: JSON_HEADERS,
+        });
+        if (!res.ok) {
+            const body = (await res.json().catch(() => null)) as {
+                error?: string;
+            } | null;
+            throw new Error(body?.error ?? `update/apply -> ${res.status}`);
+        }
+    },
     checkForUpdatesNow: async (): Promise<{
         ok: boolean;
         latest: string | null;
