@@ -65,6 +65,7 @@ export function RegistrationImport() {
         mutationFn: (reg: RegistrationValues) => api.saveAuthRegistration(reg),
         onSuccess: async (reg) => {
             qc.setQueryData(["auth-registration"], reg);
+            setDraft(null);
             pushToast("Setup saved");
             try {
                 await api.refresh();
