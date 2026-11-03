@@ -15,7 +15,6 @@ export interface NoticeInputs {
     appVersion: string;
     release: ReleaseInfo | null;
     checkForUpdates: boolean;
-    installDir: string; // the installed extension folder
     skill: {
         bundledHash: string;
         bundledPath: string;
@@ -34,24 +33,16 @@ export function buildNotices(inputs: NoticeInputs): Notice[] {
     if (
         inputs.checkForUpdates &&
         release?.zipUrl &&
+        release.checksumUrl &&
         isNewerVersion(release.version, appVersion)
     ) {
-        const zip = release.zipUrl;
         notices.push({
             id: `app-update:${release.version}`,
             kind: "app-update",
             title: `Argus ${release.version} is available`,
-            detail: `You have ${appVersion}.\nCopilot can download the new version and update your install.`,
+            detail: `You have ${appVersion}.\nArgus can download the new version, check it, and install it. Then reload extensions.`,
             href: release.url,
-            actionLabel: "Update with Copilot",
-            prompt: [
-                `Update my Argus installation from ${appVersion} to ${release.version}.`,
-                `1. Download ${zip} to a temporary folder and extract it.`,
-                `2. Copy the extracted \`extension\` folder over the installed folder at ${inputs.installDir}. Do not delete the installed folder first, and keep \`argus.config.json\` and any database file inside it.`,
-                `3. If I edited my installed pr-review skill, ${skillSteps("the `skills\\pr-review` folder in the extracted `extension` folder", "my installed pr-review skill")} Skip this step if I never edited it, because Argus updates an unedited skill on its own.`,
-                `4. Tell me to reload extensions. After I reload, if you merged the skill, call the Argus canvas action \`acknowledgeSkillMerge\`.`,
-                `Release notes: ${release.url}`,
-            ].join("\n"),
+            actionLabel: "Update now",
         });
     }
     if (inputs.skill) {

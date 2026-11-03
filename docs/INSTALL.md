@@ -18,6 +18,7 @@ Windows x64 is tested. The ZIP is built on Windows and its `node_modules` includ
 ```
 argus-vX.Y.Z/
   INSTALL.md
+  install.ps1                 -> copies extension/ to the install folder
   LICENSE
   extension/                  -> install to %USERPROFILE%\.copilot\extensions\argus
     extension.mjs
@@ -31,13 +32,15 @@ argus-vX.Y.Z/
 ## Install the extension
 
 1. Extract the ZIP to a temporary folder.
-2. Copy the `extension` folder to `%USERPROFILE%\.copilot\extensions\argus`:
+2. Run the install script from the extracted `argus-vX.Y.Z` folder. It copies `extension` to `%USERPROFILE%\.copilot\extensions\argus`:
 
     ```powershell
-    $dest = "$env:USERPROFILE\.copilot\extensions\argus"
-    New-Item -ItemType Directory -Force -Path $dest | Out-Null
-    Copy-Item -Recurse -Force .\argus-vX.Y.Z\extension\* $dest
+    powershell -NoProfile -ExecutionPolicy Bypass -File .\install.ps1
     ```
+
+    The `-ExecutionPolicy Bypass` option applies to this one command only. It lets the script run under the default `Restricted` policy, or when the extracted file has the download mark. It does not change your policy.
+
+    To use a different folder, pass `-Destination <path>`. The script copies over the existing files and does not delete the folder first, so `argus.config.json` stays.
 
 3. Reload extensions in the Copilot app, or restart it.
 4. Open the Argus canvas.
@@ -69,9 +72,9 @@ If you choose Windows account, the next screen asks for the Entra app client and
 
 ## Upgrade
 
-Once a day, Argus checks GitHub for a new release. When one exists, the bell shows a notice. Select **Update with Copilot**. Copilot downloads the ZIP, copies it over your install, merges your edited `pr-review` skill if needed, and asks you to reload extensions. To stop the check, clear **Check for new versions** in Settings. Argus sends no data about you.
+Once a day, Argus checks GitHub for a new release. When one exists, the bell shows a notice. Select **Update now**. Argus downloads the ZIP, checks it against the SHA-256 file of the release, and runs `install.ps1`. If the checksum does not match, Argus installs nothing and shows an error. Then reload extensions. If you edited your `pr-review` skill, a **Merge with Copilot** notice appears after the reload. To stop the check, clear **Check for new versions** in Settings. Argus sends no data about you.
 
-To upgrade by hand, extract the new ZIP and copy the contents of its `extension` folder over the installed folder, with the same `Copy-Item` command as the install. Do not delete the installed folder first. Your `argus.config.json` and database are not in the ZIP, so the copy keeps them. Then reload extensions.
+To upgrade by hand, extract the new ZIP and run `install.ps1` from it with the same command as the install. To check the ZIP first, compare `(Get-FileHash <zip>).Hash` with the hash in the `.sha256` file on the release page. Your `argus.config.json` and database are not in the ZIP, so the copy keeps them. Then reload extensions.
 
 An unedited `pr-review` skill that Argus installed updates by itself. If you edited it, Argus leaves it and shows a notice with **Merge with Copilot**.
 
