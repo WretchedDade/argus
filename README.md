@@ -58,7 +58,7 @@ then the Windows account broker.
 To install without building, download the ZIP from the latest GitHub Release and
 follow [docs/INSTALL.md](docs/INSTALL.md) (Windows x64). The ZIP is built when a
 maintainer merges a version bump to `main`; the Release workflow then tags it. To
-test the packaging locally, run `npm ci` then `node scripts/package-release.ts`.
+test the packaging locally, run `npm ci`, `npm run build`, then `node scripts/package-release.ts`.
 
 To build from source instead:
 
@@ -66,8 +66,8 @@ To build from source instead:
 2. Build it (build output is not committed):
 
 ```powershell
-npm ci             # also runs the build via the prepare script
-npm run build      # rebuild after source changes: vite -> dist/, esbuild -> extension.mjs
+npm ci
+npm run build      # vite -> dist/, esbuild -> extension.mjs. Run again after source changes.
 ```
 
 3. Reload extensions (or restart the app).
@@ -84,7 +84,7 @@ no tag yet. Other merges to `main` do not publish.
 
 1. In a PR, bump `version` in `package.json` (and the lockfile). While on `0.x`,
    bump MINOR for features or disruptive changes, and PATCH for fixes.
-2. Merge the PR. The Release workflow creates the tag `vX.Y.Z`, runs the checks,
+2. Merge the PR. The Release workflow runs the checks, creates the tag `vX.Y.Z`,
    and publishes `argus-vX.Y.Z-windows.zip` on the GitHub Release.
 
 If the workflow fails, no tag exists. Fix the problem and re-run the workflow
@@ -104,7 +104,7 @@ $env:ARGUS_DB_FILE = Join-Path $PWD "data\standalone.db"
 npm run standalone
 ```
 
-`npm ci` builds the client through the prepare script. Open the URL printed as
+Run `npm run build:client` once before the first start. Open the URL printed as
 `Argus standalone`. The default instance prefers `http://127.0.0.1:48530/`.
 If that port is in use, the server selects another port and prints its URL.
 After client changes, run `npm run build:client` in another terminal, then
@@ -384,7 +384,7 @@ is never moved without your approval.
 Run `npm run format` to format source files with four-space indentation. Run
 `npm run format:check` to check formatting without changing files.
 
-`npm ci` installs the Git pre-commit hook through the `prepare` script. The hook
+`npm ci` installs the Git pre-commit hook through the `prepare` script (`husky`). The hook
 uses lint-staged to format staged files with Prettier. Generated files and local
 configuration are excluded.
 
@@ -401,9 +401,8 @@ npm run lint
 npm test
 ```
 
-`npm ci` builds the extension through `prepare`. The build also generates the
-route tree required by the typecheck and lint. After source changes, run `npm run build`
-before the checks.
+Run `npm run build` before the checks. The build also generates the route tree
+required by the typecheck and lint. After source changes, build again.
 
 ## Contributing
 

@@ -4,7 +4,7 @@
 
 ## Verification
 
-- [ ] `npm ci` (installs dependencies and builds the extension)
+- [ ] `npm ci` and `npm run build`
 - [ ] `npm run format:check`
 - [ ] `npm run typecheck`
 - [ ] `npm run lint`
