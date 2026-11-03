@@ -2,6 +2,13 @@
 
 Read [CONTRIBUTING.md](../CONTRIBUTING.md) for setup, checks, and the PR process. Read [docs/ARCHITECTURE.md](../docs/ARCHITECTURE.md) before you change the server, the database, or the client structure.
 
+## Project context
+
+- Argus is an informal tool. Two engineers maintain it, and they share it with peer engineers.
+- Users run it locally on their own machine, with their own Azure DevOps access. It is not a hosted or multi-tenant service.
+- Match the effort to this scale. Do not add heavy security hardening, threat modeling, or process for risks that do not apply to a local tool for trusted peers.
+- Keep the basic safeguards: no secrets or real PR data in the repo, and safe upgrades for existing user data.
+
 ## Architecture
 
 - Keep Argus as one Node process: poller, store, and HTTP server.
@@ -51,6 +58,7 @@ Read [CONTRIBUTING.md](../CONTRIBUTING.md) for setup, checks, and the PR process
 
 - Do not put real PR data, tokens, or private config in code, tests, docs, or screenshots.
 - Do not commit the `data` folder or any database file.
+- Keep security work proportional to the project context above. Fix real problems, such as leaked secrets or unsafe data handling. Do not add hardening for unlikely threats.
 - Report security problems as described in `SECURITY.md`. Do not open a public issue.
 
 ## Reliability
@@ -61,7 +69,7 @@ Read [CONTRIBUTING.md](../CONTRIBUTING.md) for setup, checks, and the PR process
 
 ## Releases and versioning
 
-Argus uses semantic versioning (`MAJOR.MINOR.PATCH`). The version lives in `package.json` (`version`). A release is published when a change to `package.json` reaches `main` with a version that has no tag yet. The Release workflow creates the tag. Other commits and merges to `main` do not publish anything.
+Argus uses semantic versioning (`MAJOR.MINOR.PATCH`). The version lives in `package.json` (`version`). A release is published when a change to `package.json` reaches `main` with a minor or major version (patch `0`, for example `0.5.0`) that has no tag yet. The Release workflow creates the tag. A patch version (for example `0.5.1`) does not release automatically: the next minor release includes it. To release a patch, run the Release workflow manually (`workflow_dispatch`) on `main`. Other commits and merges to `main` do not publish anything.
 
 Version policy while on `0.x`:
 
