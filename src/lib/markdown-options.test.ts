@@ -100,5 +100,3 @@ assert.equal(safeUrlTransform("JaVaScRiPt:alert(1)"), "");
 assert.equal(safeUrlTransform("java\tscript:alert(1)"), "");
 assert.equal(safeUrlTransform("vbscript:x"), "");
 assert.equal(safeUrlTransform("file:///c:/x"), "");
-
-console.log("markdown-options tests passed");

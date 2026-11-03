@@ -108,4 +108,3 @@ assert.equal(migrateToChoice(cs, r), null);
 rmSync(copyRoot, { recursive: true, force: true });
 
 rmSync(root, { recursive: true, force: true });
-console.log("storage tests passed");

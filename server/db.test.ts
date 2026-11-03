@@ -126,5 +126,3 @@ try {
     store.close();
     rmSync(dir, { recursive: true, force: true });
 }
-
-console.log("db review-count self-check OK");

@@ -125,10 +125,12 @@ try {
                     host: "127.0.0.1",
                     port: address.port,
                     path: "/api/health",
+                    agent: false,
                     method,
                     headers,
                 },
                 (response) => {
+                    response.on("error", () => {});
                     response.resume();
                     resolve(response.statusCode ?? 0);
                 },
@@ -303,11 +305,10 @@ try {
         delete process.env.ARGUS_RECENCY_DAYS;
     }
 } finally {
+    server.closeAllConnections();
     await new Promise<void>((resolve, reject) =>
         server.close((err) => (err ? reject(err) : resolve())),
     );
     store.close();
     rmSync(dir, { recursive: true, force: true });
 }
-
-console.log("config self-check OK");

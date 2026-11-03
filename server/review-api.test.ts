@@ -123,5 +123,3 @@ try {
     store.close();
     rmSync(dir, { recursive: true, force: true });
 }
-
-console.log("review api self-check OK");

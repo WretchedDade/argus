@@ -115,5 +115,3 @@ for (const text of [
 ]) {
     assert.doesNotMatch(text, /IGNORE ALL RULES/);
 }
-
-console.log("automatic review self-check OK");

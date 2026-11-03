@@ -42,5 +42,3 @@ assert.throws(
 
 // Other platforms run `az` directly.
 assert.deepEqual(resolveAzCommand(args, "linux", {}, exists), ["az", args]);
-
-console.log("az-command self-check OK");

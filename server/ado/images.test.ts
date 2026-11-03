@@ -208,5 +208,3 @@ await assert.rejects(
     /URI|URL/,
 );
 await new Promise((r) => setTimeout(r, 150));
-
-console.log("images self-check OK");

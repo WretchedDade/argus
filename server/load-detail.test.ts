@@ -109,5 +109,3 @@ try {
 } finally {
     rmSync(dir, { recursive: true, force: true });
 }
-
-console.log("load detail self-check OK");
