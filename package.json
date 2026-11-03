@@ -18,8 +18,11 @@
         "format:check": "prettier --check ."
     },
     "lint-staged": {
-        "*": "prettier --write --ignore-unknown",
-        "*.{ts,tsx}": "eslint --fix"
+        "!(*.ts|*.tsx)": "prettier --write --ignore-unknown",
+        "*.{ts,tsx}": [
+            "eslint --fix",
+            "prettier --write"
+        ]
     },
     "dependencies": {
         "@azure/identity": "^4.14.0",
