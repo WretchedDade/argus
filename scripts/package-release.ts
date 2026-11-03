@@ -37,6 +37,7 @@ for (const required of [
     "skills/pr-review/SKILL.md",
     "argus.config.example.json",
     "docs/INSTALL.md",
+    "scripts/install.ps1",
     "LICENSE",
 ]) {
     if (!existsSync(path.join(root, required)))

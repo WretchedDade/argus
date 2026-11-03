@@ -15,6 +15,7 @@ import {
     payloadChecksums,
     releaseStage,
     resetReleaseStage,
+    releaseManifestSchema,
     writeReleaseEvidence,
     verifyReleaseEvidence,
 } from "./release-evidence.ts";
@@ -71,6 +72,7 @@ try {
         "extension/package.json",
         "extension/ado-auth-config.example.json",
         "INSTALL.md",
+        "install.ps1",
         "LICENSE",
     ]) {
         const target = path.join(stage, file);
@@ -89,8 +91,10 @@ try {
         commit: "a".repeat(40),
         dirty: false,
     });
-    const manifest = JSON.parse(
-        readFileSync(path.join(stage, "release-manifest.json"), "utf8"),
+    const manifest = releaseManifestSchema.parse(
+        JSON.parse(
+            readFileSync(path.join(stage, "release-manifest.json"), "utf8"),
+        ),
     );
     assert.equal(manifest.packageVersion, "0.1.0");
     assert.equal(manifest.sourceCommit, "a".repeat(40));

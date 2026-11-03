@@ -222,3 +222,21 @@ in a daemon topology. Full workflow parity, authenticated IPC, explicit
 start/stop, half-hour polling with clients closed, origin-qualified dispatch,
 cache replacement/data rollback and Windows sign-in remain unverified. #14
 must separately resolve ownership/governance/hosting/native-payload eligibility.
+
+## PR preparation on 2026-11-03
+
+The branch was rebased onto `4aef71f` (current `main` at preparation time).
+It retains the newer test-discovery, installer/checksum, idle-query and review
+session behavior. The user selected a minor bump from upstream **0.8.2** to
+**0.9.0**; the root manifest and lockfile are synchronized. The historical
+0.5.0 stages and ZIP hashes above do not identify the new payload.
+
+Read-only authentication checks now confirm that Darnellicious has repository
+Write access. The earlier 403 is historical, not a current publication blocker.
+No credentials, Git configuration or identity were changed. PR creation still
+requires approval of its title and body; merging this minor-version bump will
+use the existing release workflow, not publish a plugin branch.
+
+The desktop canvas, persistent plugin data and user-operated WAM gates remain
+open. This PR delivers the registration and release-verification milestones,
+not a shared daemon or installable plugin, and does not close #15.

@@ -9,6 +9,46 @@ import {
     existsSync,
 } from "node:fs";
 import path from "node:path";
+import { z } from "zod";
+
+const packageSchema = z.object({
+    version: z.string(),
+    scripts: z.unknown().optional(),
+});
+const dependencySchema = z.object({
+    path: z.string(),
+    name: z.string(),
+    version: z.string(),
+    license: z.unknown(),
+    resolved: z.string().nullable(),
+    integrity: z.string().nullable(),
+});
+export const releaseManifestSchema = z.object({
+    formatVersion: z.literal(1),
+    packageVersion: z.string(),
+    sourceCommit: z.string().regex(/^[0-9a-f]{40}$/i),
+    sourceDirty: z.boolean(),
+    platform: z.string(),
+    architecture: z.string(),
+    nodeVersion: z.string(),
+    sourceLockSha256: z.string().regex(/^[0-9a-f]{64}$/i),
+    dependencies: z.array(dependencySchema),
+    files: z.record(z.string(), z.string().regex(/^[0-9a-f]{64}$/i)),
+});
+const lockSchema = z.object({
+    packages: z.record(
+        z.string(),
+        z.object({
+            resolved: z.string().optional(),
+            integrity: z.string().optional(),
+        }),
+    ),
+});
+const installedPackageSchema = z.object({
+    name: z.string(),
+    version: z.string(),
+    license: z.unknown().optional(),
+});
 
 export function releaseStage(outputRoot: string, version: string): string {
     // This value becomes a deletion target. Reject paths, not just bad versions.
@@ -53,11 +93,11 @@ export function writeReleaseEvidence(
     stage: string,
     source: { commit: string; dirty: boolean },
 ): void {
-    const pkg = JSON.parse(
-        readFileSync(path.join(root, "package.json"), "utf8"),
+    const pkg = packageSchema.parse(
+        JSON.parse(readFileSync(path.join(root, "package.json"), "utf8")),
     );
     const lockBytes = readFileSync(path.join(root, "package-lock.json"));
-    const lock = JSON.parse(lockBytes.toString("utf8"));
+    const lock = lockSchema.parse(JSON.parse(lockBytes.toString("utf8")));
     // Inventory the packages actually present, not every dev dependency in the
     // source lock. Licenses/notices remain in their original package folders.
     const dependencies = Object.entries(lock.packages)
@@ -70,16 +110,17 @@ export function writeReleaseEvidence(
                 "package.json",
             );
             if (!existsSync(file)) return [];
-            const installed = JSON.parse(readFileSync(file, "utf8"));
-            const entry = value as { resolved?: string; integrity?: string };
+            const installed = installedPackageSchema.parse(
+                JSON.parse(readFileSync(file, "utf8")),
+            );
             return [
                 {
                     path: location,
                     name: installed.name,
                     version: installed.version,
                     license: installed.license ?? null,
-                    resolved: entry.resolved ?? null,
-                    integrity: entry.integrity ?? null,
+                    resolved: value.resolved ?? null,
+                    integrity: value.integrity ?? null,
                 },
             ];
         });
@@ -106,11 +147,11 @@ export function writeReleaseEvidence(
 }
 
 export function verifyReleaseEvidence(stage: string): void {
-    const manifest = JSON.parse(
-        readFileSync(path.join(stage, "release-manifest.json"), "utf8"),
+    const manifest = releaseManifestSchema.parse(
+        JSON.parse(
+            readFileSync(path.join(stage, "release-manifest.json"), "utf8"),
+        ),
     );
-    if (manifest.formatVersion !== 1)
-        throw new Error("Unsupported release evidence format");
     const actual = payloadChecksums(stage);
     const expected = manifest.files;
     if (
@@ -126,15 +167,18 @@ export function verifyReleaseEvidence(stage: string): void {
         "extension/package.json",
         "extension/ado-auth-config.example.json",
         "INSTALL.md",
+        "install.ps1",
         "LICENSE",
     ])
         if (!actual[file]) throw new Error(`Missing release file: ${file}`);
-    const pkg = JSON.parse(
-        readFileSync(path.join(stage, "extension/package.json"), "utf8"),
+    const pkg = packageSchema.parse(
+        JSON.parse(
+            readFileSync(path.join(stage, "extension/package.json"), "utf8"),
+        ),
     );
     if (pkg.version !== manifest.packageVersion || pkg.scripts)
         throw new Error("Release runtime manifest mismatch");
-    const registration = JSON.parse(
+    const registration: unknown = JSON.parse(
         readFileSync(
             path.join(stage, "extension/ado-auth-config.example.json"),
             "utf8",

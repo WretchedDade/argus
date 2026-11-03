@@ -100,7 +100,8 @@ try {
     ] as const) {
         const response = await post(body);
         assert.equal(response.status, 400);
-        assert.ok((await response.json()).error.includes(message));
+        const result = (await response.json()) as { error: string };
+        assert.ok(result.error.includes(message));
         assert.equal(readFileSync(file, "utf8"), stored);
     }
     const override = "99999999-8888-7777-6666-555555555555";
