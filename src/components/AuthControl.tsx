@@ -9,7 +9,10 @@ export function AuthControl() {
     const action = useMutation({
         mutationFn: () => api.signIn(),
         onSuccess: async () => {
-            await qc.invalidateQueries();
+            await Promise.all([
+                qc.invalidateQueries({ queryKey: ["auth"] }),
+                qc.invalidateQueries({ queryKey: ["health"] }),
+            ]);
         },
     });
 

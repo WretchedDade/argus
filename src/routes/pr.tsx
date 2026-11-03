@@ -14,6 +14,7 @@ import { MarkdownPreview } from "../components/MarkdownPreview";
 import { ActionBar, VoteChips } from "../components/PrCard";
 import { resolveTeamLabel, timeAgo } from "../lib/format";
 import { teamBadgeStyle } from "../lib/teamColor";
+import { claimPrRefresh } from "../lib/query-defaults";
 import { isSnoozed, REVIEW_STATE_META } from "../lib/triage";
 
 export const Route = createFileRoute("/pr")({
@@ -155,10 +156,10 @@ function PrDetailPage() {
         else void router.navigate({ to: "/" });
     };
 
-    // Fetch the full description once on open: the bulk poll truncates it, but
-    // `az pr show` (via refreshPr) returns the full text and stores it.
+    // Fetch the full description once per PR per page load: the bulk poll
+    // truncates it, but `az pr show` (via refreshPr) returns the full text.
     useEffect(() => {
-        if (!c) return;
+        if (!c || !claimPrRefresh(c)) return;
         api.refreshPr(c)
             .then(() => qc.invalidateQueries({ queryKey: ["pr", c] }))
             .catch(() => {});
