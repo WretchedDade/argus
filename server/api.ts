@@ -55,11 +55,14 @@ function archivePrompt(items: ArchivableSession[]): string {
 // decoupled child session that runs the PR review skill; the skill records its own
 // verdict with a headless HTTP POST to Argus's fixed-port ingest endpoint (no
 // canvas, no per-session extension host), so nothing reports back to chat.
-function recordCmd(canonical: string): string {
-    return `Invoke-RestMethod -Method Post -Uri ${ingestUrl()} -ContentType application/json -Body '{"canonical":"${canonical}","verdict":"<approved|suggestions|waiting|rejected>"}'`;
+function recordCmd(canonical: string, token?: string): string {
+    const tokenField = token ? `,"token":"${token}"` : "";
+    return `Invoke-RestMethod -Method Post -Uri ${ingestUrl()} -ContentType application/json -Body '{"canonical":"${canonical}"${tokenField},"verdict":"<approved|suggestions|waiting|rejected>"}'`;
 }
+
+// PR text is untrusted: prompts carry only the URL, repo, and number.
 export function reviewPrompt(pr: Pr, skillName: string): string {
-    const ref = `**${pr.repo} #${pr.number}** — ${pr.title}\n${pr.canonical}`;
+    const ref = `**${pr.repo} #${pr.number}**\n${pr.canonical}`;
     if (pr.reviewSessionId) {
         return [
             `Argus: time for a **re-review** of ${ref}`,
@@ -72,20 +75,24 @@ export function reviewPrompt(pr: Pr, skillName: string): string {
         `Argus: please **review** ${ref}`,
         `Lane: ${pr.lane === "quick" ? "quick" : "review"}`,
         ``,
-        `Spawn a child session named concisely from the PR's subject with its number (3-5 words + " #${pr.number}", dropping filler like "add"/"update" and NOT prefixing "Review" — it's implied; e.g. "Add feature flags for my-project" (#${pr.number}) → "My-project Feature Flags #${pr.number}"), and run the ${skillName} skill on it. In the child session's kickoff prompt, include the line \`Lane: ${pr.lane === "quick" ? "quick" : "review"}\` so the ${skillName} skill branches into ${pr.lane === "quick" ? "quick" : "full"} mode automatically. Also include the verdict command \`${recordCmd(pr.canonical)}\` in that kickoff prompt (the skill reads the ingest URL from the prompt). Spawn it decoupled (\`coordinate_with_creator: false\`) so it does not report back into this chat. Spawn it in interactive mode (\`kickoff.mode: "interactive"\`), never autopilot.`,
+        `Spawn a child session named "${pr.repo} #${pr.number}", and run the ${skillName} skill on it. In the child session's kickoff prompt, include the line \`Lane: ${pr.lane === "quick" ? "quick" : "review"}\` so the ${skillName} skill branches into ${pr.lane === "quick" ? "quick" : "full"} mode automatically. Also include the verdict command \`${recordCmd(pr.canonical)}\` in that kickoff prompt (the skill reads the ingest URL from the prompt). Spawn it decoupled (\`coordinate_with_creator: false\`) so it does not report back into this chat. Spawn it in interactive mode (\`kickoff.mode: "interactive"\`), never autopilot.`,
         ``,
         `As soon as the session exists, invoke the Argus \`linkReviewSession\` action with \`{ "canonical": "${pr.canonical}", "sessionId": "<child session id>" }\`. You do NOT need to wait for or relay the outcome: when the review concludes, the review session records its own verdict headlessly by running \`${recordCmd(pr.canonical)}\` in its terminal — no canvas required. If that POST fails (Argus not running), it should surface the verdict to the user so they can record it manually.`,
     ].join("\n");
 }
 
-export function automaticReviewPrompt(pr: Pr, skillName: string): string {
-    const ref = `**${pr.repo} #${pr.number}** — ${pr.title}\n${pr.canonical}`;
+export function automaticReviewPrompt(
+    pr: Pr,
+    skillName: string,
+    token: string,
+): string {
+    const ref = `**${pr.repo} #${pr.number}**\n${pr.canonical}`;
     return [
         `Argus: please run an **automatic review** of ${ref}`,
         `Lane: quick`,
         `Review mode: automatic`,
         ``,
-        `Spawn a child session named concisely from the PR's subject with its number (3-5 words + " #${pr.number}", dropping filler like "add"/"update" and NOT prefixing "Review" — it's implied). Run the ${skillName} skill on it. The child kickoff prompt must include both \`Lane: quick\` and \`Review mode: automatic\`, and the verdict command \`${recordCmd(pr.canonical)}\` (the skill reads the ingest URL from the prompt). Spawn it decoupled (\`coordinate_with_creator: false\`) with \`kickoff.mode: "autopilot"\`. Automatic mode is an in-depth full review, not the abbreviated quick-lane flow.`,
+        `Spawn a child session named "${pr.repo} #${pr.number}". Run the ${skillName} skill on it. The child kickoff prompt must include both \`Lane: quick\` and \`Review mode: automatic\`, and the verdict command \`${recordCmd(pr.canonical, token)}\` (the skill reads the ingest URL from the prompt). Spawn it decoupled (\`coordinate_with_creator: false\`) with \`kickoff.mode: "autopilot"\`. Automatic mode is an in-depth full review, not the abbreviated quick-lane flow.`,
         ``,
         `As soon as the session exists, invoke the Argus \`linkReviewSession\` action with \`{ "canonical": "${pr.canonical}", "sessionId": "<child session id>" }\`. The child must review autonomously, but must not run local tests, builds, linters, typechecks, or other expensive validation commands. It must ignore every ADO PR validation, check, and policy status when deciding the verdict, including ownership enforcer, builds, tests, policies, required reviewers, and other merge gates; pending, unavailable, or failed merge validation is never a reason to wait. When the code review is complete and confident with zero findings, it must cast an ADO Approved vote and record Argus verdict \`approved\`. With any code finding, genuine uncertainty, inability to complete the code review, or operational failure, it must post no ADO comments, cast no ADO vote, record only a provisional Argus \`waiting\` verdict when possible, and leave a detailed blocker summary in its own chat. It must never claim success after a partial failure.`,
     ].join("\n");
@@ -381,11 +388,24 @@ export async function handleApi(
                 error: "automatic review requires quick lane",
             });
         else {
-            await ctx.dispatch(
-                body.automatic
-                    ? automaticReviewPrompt(pr, ctx.getConfig().reviewSkillName)
-                    : reviewPrompt(pr, ctx.getConfig().reviewSkillName),
-            );
+            const token = body.automatic
+                ? ctx.store.issueAutomaticReviewToken(pr.canonical)
+                : null;
+            try {
+                await ctx.dispatch(
+                    token
+                        ? automaticReviewPrompt(
+                              pr,
+                              ctx.getConfig().reviewSkillName,
+                              token,
+                          )
+                        : reviewPrompt(pr, ctx.getConfig().reviewSkillName),
+                );
+            } catch (err) {
+                if (token)
+                    ctx.store.revokeAutomaticReviewToken(pr.canonical, token);
+                throw err;
+            }
             sendJson(res, 200, { ok: true, reReview: !!pr.reviewSessionId });
         }
         return true;
@@ -397,9 +417,20 @@ export async function handleApi(
             verdict?: string;
             sha?: string;
             sessionId?: string;
+            token?: string;
         };
         if (!body.canonical)
             sendJson(res, 400, { error: "canonical required" });
+        else if (
+            !ctx.store.checkVerdictAllowed(
+                body.canonical,
+                body.verdict,
+                body.token,
+            )
+        )
+            sendJson(res, 403, {
+                error: "approved requires the token from the automatic review",
+            });
         else {
             ctx.recordReview(body.canonical, {
                 verdict: body.verdict,
