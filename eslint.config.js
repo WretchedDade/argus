@@ -81,6 +81,9 @@ export default tseslint.config(
         files: ["src/**/*.{ts,tsx}", "server/**/*.ts"],
         plugins: { boundaries },
         settings: {
+            "import/resolver": {
+                node: { extensions: [".ts", ".tsx", ".js", ".mjs", ".json"] },
+            },
             "boundaries/elements": [
                 { type: "client", pattern: "src/**" },
                 { type: "server", pattern: "server/**" },
