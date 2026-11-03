@@ -8,6 +8,7 @@ export default tseslint.config(
     {
         ignores: [
             "dist/",
+            "release/",
             "extension.mjs",
             "src/routeTree.gen.ts",
             "data/",
