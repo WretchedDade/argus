@@ -673,6 +673,7 @@ export interface ArgusConfig {
     workEndHour: number;
     workDays: number[];
     checkForUpdates: boolean;
+    vendorPattern: string;
 }
 
 export const configApi = {

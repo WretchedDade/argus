@@ -29,7 +29,11 @@ export interface ArgusConfig {
     workEndHour: number;
     workDays: number[];
     checkForUpdates: boolean; // ask GitHub for new Argus releases
+    vendorPattern: string; // regex for vendor display names; "" turns the rule off
 }
+
+// Default: a "(Company)" parenthetical in the display name marks a vendor.
+export const DEFAULT_VENDOR_PATTERN = "\\(.+\\)";
 
 export type ConfigOverrides = Partial<ArgusConfig>;
 
@@ -84,6 +88,20 @@ export const ConfigSchema = z.object({
     workEndHour: z.number().int().min(1).max(24),
     workDays: z.array(z.number().int().min(0).max(6)).max(7),
     checkForUpdates: z.boolean(),
+    vendorPattern: z
+        .string()
+        .max(200)
+        .refine(
+            (value) => {
+                try {
+                    new RegExp(value);
+                    return true;
+                } catch {
+                    return false;
+                }
+            },
+            { message: "must be a valid regular expression" },
+        ),
 }) satisfies z.ZodType<ArgusConfig>;
 
 const ConfigOverridesSchema = ConfigSchema.partial();
@@ -154,6 +172,7 @@ const SAFE_DEFAULTS: ArgusConfig = {
     workEndHour: 17,
     workDays: [1, 2, 3, 4, 5],
     checkForUpdates: true,
+    vendorPattern: DEFAULT_VENDOR_PATTERN,
 };
 
 // Environment values go through the same schema. An invalid value is logged and
@@ -201,6 +220,8 @@ function envConfig(): ArgusConfig {
         workEndHour: endHour,
         workDays: inclusiveRange(dayStart, dayEnd),
         checkForUpdates: process.env.ARGUS_CHECK_UPDATES !== "0",
+        vendorPattern:
+            process.env.ARGUS_VENDOR_PATTERN ?? DEFAULT_VENDOR_PATTERN,
     };
 }
 

@@ -1,10 +1,20 @@
 import type { AdoRawPr, CurrentPr } from "./types.ts";
 import type { Ownership } from "./ownership.ts";
+import { DEFAULT_VENDOR_PATTERN } from "../config.ts";
 
-// Vendor authors carry a "(Company)" parenthetical in their display name (e.g.
-// "Jane Doe (HCL)"); FTEs don't. Matches the legacy tracker's heuristic.
-export function isVendorName(name: string | null | undefined): boolean {
-    return /\(.+\)/.test(name || "");
+// A name is a vendor when it matches the configured regular expression. The
+// default matches a "(Company)" parenthetical, for example "Jane Doe (Acme)".
+// An empty pattern turns the rule off. An invalid pattern matches nothing.
+export function isVendorName(
+    name: string | null | undefined,
+    pattern: string = DEFAULT_VENDOR_PATTERN,
+): boolean {
+    if (!pattern) return false;
+    try {
+        return new RegExp(pattern).test(name || "");
+    } catch {
+        return false;
+    }
 }
 
 // Map a raw ADO PR into the normalized form. canonical matches the URL shape the
@@ -14,6 +24,7 @@ export function normalizePr(
     org: string,
     project: string,
     ownership: Ownership,
+    vendorPattern: string = DEFAULT_VENDOR_PATTERN,
 ): CurrentPr {
     const repo = raw.repository?.name ?? "";
     const author = raw.createdBy?.displayName ?? null;
@@ -28,7 +39,7 @@ export function normalizePr(
         title: raw.title ?? "",
         description: raw.description ?? "",
         author,
-        isVendor: isVendorName(author),
+        isVendor: isVendorName(author, vendorPattern),
         role: ownership.role ?? "reviewer",
         teams: ownership.teams,
         requiredApproverGroups: [
