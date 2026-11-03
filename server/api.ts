@@ -703,7 +703,13 @@ export async function handleApi(
         const notice = (ctx.getNotices?.() ?? []).find(
             (n) => n.kind === "app-update",
         );
-        if (!ctx.applyUpdate || !notice) {
+        if (!ctx.applyUpdate) {
+            sendJson(res, 501, {
+                error: "Installing needs the Copilot app. Upgrade by hand with install.ps1 from the release ZIP.",
+            });
+            return true;
+        }
+        if (!notice) {
             sendJson(res, 404, { error: "No update is available to install." });
             return true;
         }
