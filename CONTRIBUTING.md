@@ -119,7 +119,7 @@ Argus uses semantic versioning. The version is in `package.json`. While the majo
 
 To bump the version, change `version` in `package.json`, then run `npm install --package-lock-only` to update the lockfile. Mention the new version in the pull request body.
 
-A release publishes when a change to `package.json` reaches `main` with a version that has no tag. The Release workflow runs the checks, creates the tag, and attaches the ZIP to a GitHub Release. Do not create or push a tag yourself. See the README section "Releasing" for how to fix a bad release.
+A release publishes when a change to `package.json` reaches `main` with a minor or major version (patch `0`) that has no tag. A patch version does not release automatically: the next minor release includes it, or a maintainer runs the Release workflow manually. The Release workflow runs the checks, creates the tag, and attaches the ZIP to a GitHub Release. Do not create or push a tag yourself. See the README section "Releasing" for how to fix a bad release.
 
 If you change the archive layout, the install destinations, or the upgrade behavior, update [docs/INSTALL.md](docs/INSTALL.md).
 
