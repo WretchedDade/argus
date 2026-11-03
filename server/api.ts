@@ -388,15 +388,24 @@ export async function handleApi(
                 error: "automatic review requires quick lane",
             });
         else {
-            await ctx.dispatch(
-                body.automatic
-                    ? automaticReviewPrompt(
-                          pr,
-                          ctx.getConfig().reviewSkillName,
-                          ctx.store.issueAutomaticReviewToken(pr.canonical),
-                      )
-                    : reviewPrompt(pr, ctx.getConfig().reviewSkillName),
-            );
+            const token = body.automatic
+                ? ctx.store.issueAutomaticReviewToken(pr.canonical)
+                : null;
+            try {
+                await ctx.dispatch(
+                    token
+                        ? automaticReviewPrompt(
+                              pr,
+                              ctx.getConfig().reviewSkillName,
+                              token,
+                          )
+                        : reviewPrompt(pr, ctx.getConfig().reviewSkillName),
+                );
+            } catch (err) {
+                if (token)
+                    ctx.store.revokeAutomaticReviewToken(pr.canonical, token);
+                throw err;
+            }
             sendJson(res, 200, { ok: true, reReview: !!pr.reviewSessionId });
         }
         return true;

@@ -95,6 +95,11 @@ try {
     const peer = new ArgusStore(path.join(dir, "argus.db"));
     assert.equal(peer.checkVerdictAllowed(canonical, "approved"), false);
     assert.equal(peer.checkVerdictAllowed(canonical, "approved", t3), true);
+    // A consumed token cannot approve again while another token is outstanding.
+    const t4 = store.issueAutomaticReviewToken(canonical);
+    store.issueAutomaticReviewToken(canonical);
+    assert.equal(peer.checkVerdictAllowed(canonical, "approved", t4), true);
+    assert.equal(store.checkVerdictAllowed(canonical, "approved", t4), false);
     peer.close();
 } finally {
     store.close();

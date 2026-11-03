@@ -2598,13 +2598,21 @@ export class ArgusStore {
         ).all(canonical) as { token: string }[];
         if (rows.length === 0) return true;
         if (token && rows.some((r) => r.token === token)) {
-            if (verdict)
-                this.#prep(
-                    "DELETE FROM automatic_review_tokens WHERE canonical = ? AND token = ?",
-                ).run(canonical, token);
-            return true;
+            if (!verdict) return true;
+            // Another host can consume the token first; only one delete wins.
+            const { changes } = this.#prep(
+                "DELETE FROM automatic_review_tokens WHERE canonical = ? AND token = ?",
+            ).run(canonical, token);
+            if (Number(changes) === 1) return true;
         }
         return verdict !== "approved";
+    }
+
+    // Remove one token, for a dispatch that failed before the review started.
+    revokeAutomaticReviewToken(canonical: string, token: string): void {
+        this.#prep(
+            "DELETE FROM automatic_review_tokens WHERE canonical = ? AND token = ?",
+        ).run(canonical, token);
     }
 
     // Explicitly record a review outcome: the verdict, the commit reviewed (for
