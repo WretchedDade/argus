@@ -17,17 +17,24 @@ export function AuthGate({ onDismiss }: { onDismiss: () => void }) {
     });
     const auth = status.data;
     const provider: Provider = auth?.provider ?? "az";
+    const invalidateAuth = () =>
+        Promise.all([
+            qc.invalidateQueries({ queryKey: ["auth"] }),
+            qc.invalidateQueries({ queryKey: ["health"] }),
+            // The sign-in method is stored in the cached config.
+            qc.invalidateQueries({ queryKey: ["config"] }),
+        ]);
 
     const recheck = useMutation({
         mutationFn: async (action?: () => Promise<unknown>) => {
             await action?.();
             await api.refresh();
         },
-        onSettled: () => qc.invalidateQueries(),
+        onSettled: () => invalidateAuth(),
     });
     const setProvider = useMutation({
         mutationFn: (adoAuth: Provider) => configApi.save({ adoAuth }),
-        onSuccess: () => qc.invalidateQueries(),
+        onSuccess: () => invalidateAuth(),
     });
 
     const busy =

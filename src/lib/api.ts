@@ -1,5 +1,7 @@
 // Typed client for the /api routes served by extension.mjs.
 
+import { SLOW_STALE_TIME_MS } from "./query-defaults";
+
 export type Lane = "quick" | "review";
 export type PrState = "pending" | "reviewed" | "closed";
 export type PrRole = "author" | "reviewer" | "team";
@@ -743,6 +745,7 @@ export const configApi = {
 export const configQuery = queryOptions({
     queryKey: ["config"],
     queryFn: configApi.get,
+    staleTime: SLOW_STALE_TIME_MS,
 });
 export const versionQuery = queryOptions({
     queryKey: ["version"],
@@ -752,4 +755,5 @@ export const versionQuery = queryOptions({
 export const teamsQuery = queryOptions({
     queryKey: ["teams"],
     queryFn: configApi.teams,
+    staleTime: SLOW_STALE_TIME_MS,
 });
