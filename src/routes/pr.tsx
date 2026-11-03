@@ -14,7 +14,7 @@ import { MarkdownPreview } from "../components/MarkdownPreview";
 import { ActionBar, VoteChips } from "../components/PrCard";
 import { resolveTeamLabel, timeAgo } from "../lib/format";
 import { teamBadgeStyle } from "../lib/teamColor";
-import { claimPrRefresh } from "../lib/query-defaults";
+import { claimPrRefresh, releasePrRefresh } from "../lib/query-defaults";
 import { isSnoozed, REVIEW_STATE_META } from "../lib/triage";
 
 export const Route = createFileRoute("/pr")({
@@ -162,7 +162,7 @@ function PrDetailPage() {
         if (!c || !claimPrRefresh(c)) return;
         api.refreshPr(c)
             .then(() => qc.invalidateQueries({ queryKey: ["pr", c] }))
-            .catch(() => {});
+            .catch(() => releasePrRefresh(c));
     }, [c, qc]);
 
     const pr = q.data?.pr;

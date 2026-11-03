@@ -21,6 +21,8 @@ export function AuthGate({ onDismiss }: { onDismiss: () => void }) {
         Promise.all([
             qc.invalidateQueries({ queryKey: ["auth"] }),
             qc.invalidateQueries({ queryKey: ["health"] }),
+            // The sign-in method is stored in the cached config.
+            qc.invalidateQueries({ queryKey: ["config"] }),
         ]);
 
     const recheck = useMutation({

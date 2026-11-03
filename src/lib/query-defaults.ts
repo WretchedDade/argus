@@ -18,3 +18,8 @@ export function claimPrRefresh(canonical: string): boolean {
     refreshedPrs.add(canonical);
     return true;
 }
+
+// Call after a failed refresh so the next open retries.
+export function releasePrRefresh(canonical: string): void {
+    refreshedPrs.delete(canonical);
+}
