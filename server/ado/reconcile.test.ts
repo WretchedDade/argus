@@ -261,5 +261,3 @@ assert.equal(
         rmSync(dir, { recursive: true, force: true });
     }
 }
-
-console.log("reconcile self-check OK");

@@ -59,5 +59,3 @@ assert.equal(
     normalize({ ...raw, repository: { project: { id: "p-guid" } } }).projectId,
     "p-guid",
 );
-
-console.log("required approver group self-check OK");

@@ -202,5 +202,3 @@ try {
     if (storeOpen) store.close();
     rmSync(dir, { recursive: true, force: true });
 }
-
-console.log("weekly review facts self-check OK");

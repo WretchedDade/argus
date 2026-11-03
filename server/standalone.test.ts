@@ -102,4 +102,3 @@ async function checkShutdown(signal: "SIGINT" | "SIGTERM"): Promise<void> {
 
 await checkShutdown("SIGINT");
 await checkShutdown("SIGTERM");
-console.log("standalone shutdown self-check OK");

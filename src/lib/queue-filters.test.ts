@@ -127,5 +127,3 @@ assert.deepEqual(
     parseQueueFilters({ ...filters, unrelated: "ignored" }),
     filters,
 );
-
-console.log("queue filter self-check OK");

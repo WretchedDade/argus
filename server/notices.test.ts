@@ -159,4 +159,3 @@ rmSync(path.join(dest, SKILL_SIDECAR));
 assert.deepEqual(syncSkill(src, dest), { state: "none" }); // not ours
 
 rmSync(dir, { recursive: true, force: true });
-console.log("notices tests passed");

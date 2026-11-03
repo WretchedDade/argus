@@ -42,9 +42,7 @@ To test inside the Copilot app, run `npm run build`, then copy the build output 
 npm test
 ```
 
-`npm test` runs a list of test files one after the other. It uses `node` directly (no test framework in the root package) and the `node --test` runner in `packages/ado-client`.
-
-When you add a test file, add it to the `test` script in `package.json`. A test file that is not in the script does not run in CI.
+`npm test` uses the `node --test` runner. It finds every `*.test.ts` file under `server/` and `src/`, and then runs the tests in `packages/ado-client`. Name a new test file `*.test.ts` and it runs without other changes. Run `npm run test:coverage` to also print coverage.
 
 For a bug fix, write the test first. It must fail on the old code and pass on the new code.
 
