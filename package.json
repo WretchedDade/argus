@@ -3,6 +3,9 @@
     "private": true,
     "version": "0.7.1",
     "type": "module",
+    "engines": {
+        "node": ">=22.13"
+    },
     "description": "Argus - PR triage canvas. React + TanStack, served by its own Node process.",
     "scripts": {
         "dev": "vite build --watch",
@@ -10,7 +13,7 @@
         "build:server": "esbuild server/extension.ts --bundle --platform=node --format=esm --outfile=extension.mjs --external:@github/copilot-sdk --external:@azure/identity --external:@azure/identity-broker",
         "build": "npm run build:client && npm run build:server",
         "standalone": "node server/standalone.ts",
-        "prepare": "husky && npm run build",
+        "prepare": "husky",
         "test": "node --test \"server/**/*.test.ts\" \"src/**/*.test.ts\" && npm test --prefix packages/ado-client",
         "test:coverage": "node --test --experimental-test-coverage \"server/**/*.test.ts\" \"src/**/*.test.ts\" && npm test --prefix packages/ado-client",
         "typecheck": "tsc --noEmit",

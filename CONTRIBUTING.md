@@ -16,7 +16,7 @@ Install the dependencies:
 npm ci
 ```
 
-`npm ci` also builds the client and the server bundle (the `prepare` script) and installs the Git pre-commit hook.
+`npm ci` also installs the Git pre-commit hook. It does not build. Run `npm run build` to build the client and the server bundle. The repo has an `.nvmrc` file for Node version managers.
 
 ## Run and change the code
 
