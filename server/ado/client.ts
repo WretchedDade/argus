@@ -52,7 +52,9 @@ const registrationPath = () =>
 export function getRegistration(): AdoRegistration & { fromEnv: boolean } {
     let file: Partial<AdoRegistration> = {};
     try {
-        file = JSON.parse(fs.readFileSync(registrationPath(), "utf8"));
+        file = JSON.parse(
+            fs.readFileSync(registrationPath(), "utf8"),
+        ) as Partial<AdoRegistration>;
     } catch {
         // no file yet
     }
@@ -165,7 +167,7 @@ async function azJson<T>(args: string[]): Promise<T | null> {
     try {
         const [cmd, cmdArgs] = azCommand([...args, "-o", "json"]);
         const { stdout } = await pExecFile(cmd, cmdArgs, EXEC_OPTS);
-        const text = decodeAz(stdout as unknown as Buffer).trim();
+        const text = decodeAz(stdout).trim();
         return text ? (JSON.parse(text) as T) : null;
     } catch (err) {
         throw new AdoError(
@@ -192,7 +194,7 @@ export async function whoami(): Promise<string> {
         "tsv",
     ]);
     const { stdout } = await pExecFile(cmd, cmdArgs, EXEC_OPTS);
-    const me = decodeAz(stdout as unknown as Buffer).trim();
+    const me = decodeAz(stdout).trim();
     if (!me)
         throw new AdoError(
             "az not logged in (az account show returned nothing)",
@@ -243,7 +245,7 @@ export async function adoAccessToken(): Promise<string> {
         "json",
     ]);
     const { stdout } = await pExecFile(cmd, cmdArgs, EXEC_OPTS);
-    const j = JSON.parse(decodeAz(stdout as unknown as Buffer)) as {
+    const j = JSON.parse(decodeAz(stdout)) as {
         accessToken: string;
         expiresOn?: string;
     };

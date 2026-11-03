@@ -28,11 +28,14 @@ const result = await build({
 });
 // Stay inside the repo so package imports resolve. Each run gets its own directory.
 const cacheDir = "node_modules/.cache";
+type Render = (text: string) => string;
 mkdirSync(cacheDir, { recursive: true });
 const outDir = mkdtempSync(`${cacheDir}/argus-markdown-test-`);
 const outFile = `${outDir}/markdown-preview.mjs`;
 writeFileSync(outFile, result.outputFiles[0].text);
-const { renderFull, renderClamped } = await import(pathToFileURL(outFile).href);
+const { renderFull, renderClamped } = (await import(
+    pathToFileURL(outFile).href
+)) as { renderFull: Render; renderClamped: Render };
 rmSync(outDir, { recursive: true, force: true });
 
 // The clamped preview uses useLayoutEffect, which warns during server rendering.

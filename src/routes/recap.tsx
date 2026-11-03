@@ -357,7 +357,7 @@ function markdownFor(
 
 function RecapPage() {
     const [offset, setOffset] = useState(0);
-    const week = weekRange(offset);
+    const week = useMemo(() => weekRange(offset), [offset]);
     const insights = useQuery(insightsQuery).data;
     const factsQuery = useQuery(weeklyReviewFactsQuery(week.startKey));
     const facts = factsQuery.data;
@@ -372,7 +372,7 @@ function RecapPage() {
                       week,
                   )
                 : null,
-        [insights, week.start, week.end],
+        [insights, week],
     );
     const scored = useMemo(
         () =>

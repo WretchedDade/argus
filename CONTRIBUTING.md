@@ -54,15 +54,17 @@ For a bug fix, write the test first. It must fail on the old code and pass on th
 npm run format        # fix formatting
 npm run format:check  # check formatting
 npm run typecheck     # TypeScript
+npm run lint          # ESLint (typed rules, React hooks, import boundaries)
 ```
 
-The pre-commit hook formats staged files with Prettier. Use four-space indentation (set in `.prettierrc.json`). Do not edit generated files, such as `src/routeTree.gen.ts`.
+The pre-commit hook formats staged files with Prettier and fixes lint errors with ESLint. Use four-space indentation (set in `.prettierrc.json`). Do not edit generated files, such as `src/routeTree.gen.ts`.
 
 CI runs the same checks on every pull request. Run all of them before you push:
 
 ```powershell
 npm run format:check
 npm run typecheck
+npm run lint
 npm test
 ```
 

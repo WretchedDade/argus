@@ -44,7 +44,7 @@ Read [CONTRIBUTING.md](../CONTRIBUTING.md) for setup, checks, and the PR process
 - Write the test first for a bug fix. It must fail on the old code and pass on the new code.
 - Add each new test file to the `test` script in `package.json`. A file that is not in the script does not run in CI.
 - Test calculations in `server/db.test.ts`. Do not test Recharts itself.
-- Run `npm run format:check`, `npm run typecheck`, and `npm test` before you push.
+- Run `npm run format:check`, `npm run typecheck`, `npm run lint`, and `npm test` before you push.
 
 ## Code style
 

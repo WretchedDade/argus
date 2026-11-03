@@ -339,11 +339,15 @@ export interface AuthStatus {
 
 const JSON_HEADERS = { "content-type": "application/json" };
 
+function readJson<T>(res: Response): Promise<T> {
+    return res.json() as Promise<T>;
+}
+
 async function postAuth(path: string): Promise<AuthStatus> {
     const res = await fetch(path, { method: "POST", headers: JSON_HEADERS });
-    const body = await res.json();
+    const body = await readJson<AuthStatus & { error?: string }>(res);
     if (!res.ok) throw new Error(body.error ?? `${path} -> ${res.status}`);
-    return body as AuthStatus;
+    return body;
 }
 
 export interface ActivityEntry {
@@ -409,9 +413,9 @@ export const api = {
             headers: { "content-type": "application/json" },
             body: JSON.stringify(reg),
         });
-        const body = await res.json();
+        const body = await readJson<AuthRegistration & { error?: string }>(res);
         if (!res.ok) throw new Error(body.error ?? `save failed ${res.status}`);
-        return body as AuthRegistration;
+        return body;
     },
     signIn: () => postAuth("/api/auth/sign-in"),
     switchAccount: () => postAuth("/api/auth/switch-account"),
@@ -431,7 +435,7 @@ export const api = {
             headers: JSON_HEADERS,
         });
         if (!res.ok) throw new Error(`refresh -> ${res.status}`);
-        return res.json();
+        return readJson(res);
     },
     setScope: async (canonical: string, outOfScope: boolean): Promise<void> => {
         const res = await fetch("/api/pr/scope", {
@@ -460,7 +464,8 @@ export const api = {
     findPr: async (number: number): Promise<string | null> => {
         const res = await fetch(`/api/pr/find?number=${number}`);
         if (!res.ok) throw new Error(`findPr -> ${res.status}`);
-        return (await res.json()).canonical ?? null;
+        const body = await readJson<{ canonical?: string | null }>(res);
+        return body.canonical ?? null;
     },
     trackPr: async (
         number: number,
@@ -470,7 +475,7 @@ export const api = {
             headers: { "content-type": "application/json" },
             body: JSON.stringify({ number }),
         });
-        return res.json();
+        return readJson(res);
     },
     setSnooze: async (
         canonical: string,
@@ -498,7 +503,7 @@ export const api = {
             body: JSON.stringify({ canonical, automatic }),
         });
         if (!res.ok) throw new Error(`review -> ${res.status}`);
-        return res.json();
+        return readJson(res);
     },
     archivable: () =>
         getJson<{ archivable: ArchivableSession[] }>("/api/archivable").then(
@@ -510,7 +515,7 @@ export const api = {
             headers: JSON_HEADERS,
         });
         if (!res.ok) throw new Error(`archive -> ${res.status}`);
-        return res.json();
+        return readJson(res);
     },
     changes: () => getJson<ChangeFeed>("/api/changes"),
     notices: () =>
@@ -534,7 +539,7 @@ export const api = {
         });
         if (res.status === 409) throw new Error("off");
         if (!res.ok) throw new Error(`notices/check -> ${res.status}`);
-        return res.json();
+        return readJson(res);
     },
     dismissNotice: async (id: string): Promise<void> => {
         const res = await fetch("/api/notices/dismiss", {
@@ -691,7 +696,7 @@ export const configApi = {
             } | null;
             throw new Error(body?.error ?? `config -> ${res.status}`);
         }
-        return (await res.json()).config as ArgusConfig;
+        return (await readJson<{ config: ArgusConfig }>(res)).config;
     },
     teams: () =>
         getJson<{ teams: string[] }>("/api/teams").then((r) => r.teams),
@@ -719,12 +724,7 @@ export const configApi = {
             body: JSON.stringify(overrides),
         });
         if (!res.ok) throw new Error(`setup -> ${res.status}`);
-        const j = await res.json();
-        return {
-            config: j.config as ArgusConfig,
-            skill: j.skill,
-            storage: j.storage,
-        };
+        return readJson(res);
     },
 };
 

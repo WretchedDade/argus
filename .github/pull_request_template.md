@@ -7,6 +7,7 @@
 - [ ] `npm ci` (installs dependencies and builds the extension)
 - [ ] `npm run format:check`
 - [ ] `npm run typecheck`
+- [ ] `npm run lint`
 - [ ] `npm test`
 - [ ] Version: no bump, or bumped in `package.json` (see [Releasing](../README.md#releasing))
 - [ ] Title is a user-facing release note, and one category label is set (`enhancement`, `bug`, `documentation`, `maintenance`; add `breaking` or `skip-changelog` if needed)

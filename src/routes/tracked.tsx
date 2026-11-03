@@ -169,8 +169,10 @@ function TrackedGroup({
 }
 
 function TrackedPage() {
-    const prs = useQuery(prsQuery).data ?? [];
-    const labels = useQuery(configQuery).data?.teamLabels ?? {};
+    const prsData = useQuery(prsQuery).data;
+    const prs = useMemo(() => prsData ?? [], [prsData]);
+    const labelsData = useQuery(configQuery).data?.teamLabels;
+    const labels = useMemo(() => labelsData ?? {}, [labelsData]);
     const [primary, setPrimary] = useState<GroupBy>("repo");
     const [secondary, setSecondary] = useState<GroupBy>("none");
     const [q, setQ] = useState("");

@@ -65,7 +65,7 @@ const customUrl = "http://127.0.0.1:48555/api/pr/record-review";
 assert.equal(ingestUrl(), customUrl);
 for (const text of [
     reviewPrompt(customPr, "pr-review"),
-    reviewPrompt({ ...customPr, reviewSessionId: "s1" } as Pr, "pr-review"),
+    reviewPrompt({ ...customPr, reviewSessionId: "s1" }, "pr-review"),
     automaticReviewPrompt(customPr, "pr-review"),
 ]) {
     assert.ok(text.includes(customUrl));

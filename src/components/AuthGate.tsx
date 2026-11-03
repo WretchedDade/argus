@@ -33,8 +33,8 @@ export function AuthGate({ onDismiss }: { onDismiss: () => void }) {
     const busy =
         recheck.isPending || setProvider.isPending || status.isFetching;
     const error =
-        (recheck.error as Error | null)?.message ??
-        (setProvider.error as Error | null)?.message ??
+        recheck.error?.message ??
+        setProvider.error?.message ??
         (auth?.configured ? auth.error : null);
 
     return (

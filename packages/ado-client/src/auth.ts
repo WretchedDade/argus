@@ -93,7 +93,9 @@ let brokerRegistered = false;
 function ensureBrokerRegistered(): void {
     if (brokerRegistered) return;
     // Lazy load: the broker pulls in native libs (keytar) that fail on Linux without libsecret.
-    const { nativeBrokerPlugin } = nodeRequire("@azure/identity-broker");
+    const { nativeBrokerPlugin } = nodeRequire("@azure/identity-broker") as {
+        nativeBrokerPlugin: Parameters<typeof useIdentityPlugin>[0];
+    };
     useIdentityPlugin(nativeBrokerPlugin);
     brokerRegistered = true;
 }

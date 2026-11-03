@@ -676,6 +676,23 @@ function InsightsPage() {
     const data = useQuery(insightsQuery).data;
     const cfg = useQuery(configQuery).data;
     const labels = cfg?.teamLabels ?? {};
+    const [balanceWin, setBalanceWin] = useState<4 | 8 | 12>(8);
+    const [gran, setGran] = useState<"day" | "week">("week");
+    const [latView, setLatView] = useState<"scatter" | "distribution">(
+        "scatter",
+    );
+    const [reachWin, setReachWin] = useState<"7" | "30" | "90" | "all">("30");
+    const [loadWin, setLoadWin] = useState<"7" | "30" | "90" | "all">("30");
+    const [rhythmView, setRhythmView] = useState<"day" | "calendar">("day");
+    const [streamMode, setStreamMode] = useState<"person" | "repo" | "type">(
+        "person",
+    );
+    const [topPerson, setTopPerson] = useState<5 | 10 | 15 | 20>(10);
+    const [topRepo, setTopRepo] = useState<3 | 5 | 8 | 12>(5);
+    const [loadSelection, setLoadSelection] = useState<{
+        key: string;
+        granularity: "day" | "week";
+    } | null>(null);
     if (!data) return <p className="text-muted text-sm">Loading…</p>;
 
     const {
@@ -697,23 +714,6 @@ function InsightsPage() {
         (sum, c) => sum + c.count,
         0,
     );
-    const [gran, setGran] = useState<"day" | "week">("week");
-    const [latView, setLatView] = useState<"scatter" | "distribution">(
-        "scatter",
-    );
-    const [reachWin, setReachWin] = useState<"7" | "30" | "90" | "all">("30");
-    const [loadWin, setLoadWin] = useState<"7" | "30" | "90" | "all">("30");
-    const [rhythmView, setRhythmView] = useState<"day" | "calendar">("day");
-    const [streamMode, setStreamMode] = useState<"person" | "repo" | "type">(
-        "person",
-    );
-    const [topPerson, setTopPerson] = useState<5 | 10 | 15 | 20>(10);
-    const [topRepo, setTopRepo] = useState<3 | 5 | 8 | 12>(5);
-    const [loadSelection, setLoadSelection] = useState<{
-        key: string;
-        granularity: "day" | "week";
-    } | null>(null);
-    const [balanceWin, setBalanceWin] = useState<4 | 8 | 12>(8);
     const reachDays = reachWin === "all" ? null : Number(reachWin);
     const r = computeReach(reach.items, reachDays);
     const rl = computeReach(

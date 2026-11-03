@@ -129,7 +129,9 @@ export function ThroughputChart({
                 <Tooltip
                     cursor={{ fill: "rgba(148,163,184,0.08)" }}
                     contentStyle={TOOLTIP}
-                    labelFormatter={(w) => `Week of ${weekLabel(String(w))}`}
+                    labelFormatter={(w) =>
+                        `Week of ${weekLabel(String(w as string))}`
+                    }
                 />
                 <Bar dataKey="review" stackId="a" fill="#14b8a6" name="Full" />
                 <Bar
@@ -277,8 +279,8 @@ export function LoadChart({
                     itemStyle={{ color: "var(--color-fg)" }}
                     labelFormatter={(k) =>
                         granularity === "day"
-                            ? fmt(String(k))
-                            : `Week of ${weekLabel(String(k))}`
+                            ? fmt(String(k as string))
+                            : `Week of ${weekLabel(String(k as string))}`
                     }
                 />
                 <Area
@@ -2177,7 +2179,7 @@ export function RepoScatter({
                     formatter={(v, n) => [
                         n === "y"
                             ? `${Number(v).toFixed(1)} avg comments`
-                            : `${v} reviews`,
+                            : `${Number(v)} reviews`,
                         "",
                     ]}
                 />
@@ -2490,9 +2492,7 @@ export function AuthorTreemap({ authors }: { authors: AuthorMember[] }) {
                 nameKey="name"
                 stroke="var(--card-bg)"
                 isAnimationActive={false}
-                content={(props) => (
-                    <TreemapCell {...(props as unknown as TreemapCellProps)} />
-                )}
+                content={(props) => <TreemapCell {...props} />}
             >
                 <Tooltip content={<ReachTooltip />} />
             </Treemap>
