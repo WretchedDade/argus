@@ -210,6 +210,15 @@ async function runReconcile(
                 m.requiredApproverGroups,
                 cfg.vendorPattern,
             );
+        const scoped = ctx.store.applyScopePolicy();
+        if (scoped.archived)
+            note("info", `archived ${scoped.archived} out-of-scope PR(s)`);
+        if (scoped.revived)
+            note("info", `restored ${scoped.revived} in-scope PR(s)`);
+        if (ctx.store.isStaleSweepApproved()) {
+            const stale = ctx.store.archiveStale();
+            if (stale) note("info", `archived ${stale} stale PR(s)`);
+        }
 
         // Enrich my authored PRs with ADO's completability signal + comment counts.
         const authored = mine.filter((m) => m.role === "author");
@@ -244,6 +253,13 @@ async function runReconcile(
                 const name = raw?.createdBy?.displayName;
                 if (name) ctx.store.setAuthor(p.canonical, name);
             }
+        }
+
+        // Replace repository GUIDs on migrated PRs with the repository name.
+        for (const p of ctx.store.prsWithRepoId(20)) {
+            const raw = await showPr(p.number, cfg.orgUrl, cfg.project);
+            const name = raw?.repository?.name;
+            if (name) ctx.store.setRepo(p.canonical, name);
         }
 
         // Backfill "my comment count" for recorded reviews that don't have it yet
@@ -480,6 +496,7 @@ async function refreshPrInner(
     // `show` returns the full description (the bulk list truncates it), so store it
     // authoritatively here.
     ctx.store.setDescription(canonical, norm.description);
+    ctx.store.applyScopePolicy();
     ctx.store.setChangedFiles(canonical, changedFiles, norm.sha);
 }
 
@@ -552,6 +569,8 @@ async function trackByNumberInner(
         cfg.vendorPattern,
     );
     ctx.store.setDescription(norm.canonical, norm.description);
+    ctx.store.applyScopePolicy();
+    ctx.store.restorePr(norm.canonical);
     if (!existed)
         ctx.store.appendEvent(norm.canonical, "added", { source: "manual" });
     return { ok: true, canonical: norm.canonical };

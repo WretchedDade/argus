@@ -1,6 +1,7 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { ArgusStore } from "./db.ts";
 import type { ArchivableSession, Pr } from "./types.ts";
+import { STALE_ARCHIVE_DAYS } from "./types.ts";
 import type { ArgusConfig, ConfigOverrides } from "./config.ts";
 import {
     ConfigError,
@@ -490,6 +491,71 @@ export async function handleApi(
             ctx.store.setOutOfScope(body.canonical, !!body.outOfScope);
             sendJson(res, 200, { pr: ctx.store.getPr(body.canonical) });
         }
+        return true;
+    }
+
+    if (route === "/api/archived") {
+        sendJson(res, 200, { prs: ctx.store.listArchived() });
+        return true;
+    }
+
+    if (route === "/api/archive/preview") {
+        sendJson(res, 200, {
+            approved: ctx.store.isStaleSweepApproved(),
+            days: STALE_ARCHIVE_DAYS,
+            candidates: ctx.store.staleCandidates(),
+        });
+        return true;
+    }
+
+    // Approves the stale sweep and archives the PRs the user saw in the preview.
+    if (route === "/api/archive/sweep" && req.method === "POST") {
+        const body = (await readJsonBody(req)) as unknown as {
+            canonicals?: string[];
+        };
+        ctx.store.approveStaleSweep();
+        const archived = ctx.store.archiveStale(body.canonicals);
+        sendJson(res, 200, { archived });
+        return true;
+    }
+
+    if (route === "/api/pr/restore" && req.method === "POST") {
+        const body = (await readJsonBody(req)) as unknown as {
+            canonical?: string;
+        };
+        if (!body.canonical)
+            sendJson(res, 400, { error: "canonical required" });
+        else {
+            const restored = ctx.store.restorePr(body.canonical);
+            sendJson(res, 200, { restored });
+        }
+        return true;
+    }
+
+    if (route === "/api/repo-scopes") {
+        if (req.method === "POST") {
+            const body = (await readJsonBody(req)) as unknown as {
+                repo?: string;
+                scope?: string | null;
+            };
+            if (
+                !body.repo ||
+                (body.scope != null &&
+                    body.scope !== "in" &&
+                    body.scope !== "out")
+            )
+                sendJson(res, 400, { error: "repo and scope in|out|null" });
+            else {
+                const result = ctx.store.setRepoScope(
+                    body.repo,
+                    body.scope ?? null,
+                );
+                sendJson(res, 200, {
+                    ...result,
+                    repos: ctx.store.listRepoScopes(),
+                });
+            }
+        } else sendJson(res, 200, { repos: ctx.store.listRepoScopes() });
         return true;
     }
 

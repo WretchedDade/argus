@@ -7,6 +7,7 @@ import type {
     ActivityEventType,
     ActivityVerdict,
     ArchivableSession,
+    ArchiveReason,
     AuthorMeta,
     Insights,
     InsightsCount,
@@ -22,10 +23,12 @@ import type {
     PrRole,
     PrState,
     PrUpsert,
+    RepoScope,
     RunEvent,
     WeeklyReviewEffort,
     WeeklyReviewFacts,
 } from "./types.ts";
+import { ARCHIVE_REASONS, STALE_ARCHIVE_DAYS } from "./types.ts";
 import type { Plan, Snapshot } from "./ado/reconcile.ts";
 import { salvageConfigOverrides, type ConfigOverrides } from "./config.ts";
 import { runMigrations } from "./store/migrations.ts";
@@ -121,6 +124,39 @@ function rowToRun(r: PollRunRow): PollRun {
 const b = (v: boolean): number => (v ? 1 : 0);
 const AUTOMATIC_TOKEN_TTL_MS = 6 * 60 * 60 * 1000;
 const now = (): string => new Date().toISOString();
+const ARCHIVE_REASONS_SQL = ARCHIVE_REASONS.map((r) => `'${r}'`).join(", ");
+
+const isAutoArchive = (reason: string | null): reason is ArchiveReason =>
+    !!reason && (ARCHIVE_REASONS as readonly string[]).includes(reason);
+
+// A dismissal the user chose. Archived PRs stay in history analysis.
+const manuallyDismissed = (p: {
+    dismissed: number;
+    dismissedReason: string | null;
+}): boolean => !!p.dismissed && !isAutoArchive(p.dismissedReason);
+
+// Effective scope: the per-PR override, then the repo default, then "in". An "out"
+// repo default does not hide a PR you are named on (author or direct reviewer).
+export function resolveOutOfScope(
+    override: string | null,
+    repoDefault: string | null,
+    role: string | null,
+): boolean {
+    if (override === "in") return false;
+    if (override === "out") return true;
+    if (repoDefault !== "out") return false;
+    return role !== "author" && role !== "reviewer";
+}
+
+export interface StaleCandidate {
+    canonical: string;
+    repo: string;
+    number: number;
+    title: string;
+    author: string | null;
+    updatedAt: string;
+    idleDays: number;
+}
 const REVIEW_COUNT_SQL = `(
   SELECT COUNT(*) FROM pr_events e
   WHERE e.canonical = p.canonical
@@ -336,6 +372,7 @@ function rowToEvent(r: EventRow): PrEvent {
 export interface ListOptions {
     includeClosed?: boolean;
     includeDismissed?: boolean;
+    archivedOnly?: boolean;
 }
 
 export class ArgusStore {
@@ -348,6 +385,7 @@ export class ArgusStore {
         this.#db.exec("PRAGMA busy_timeout = 5000;"); // wait out transient locks (e.g. a lingering process after reload) instead of throwing SQLITE_BUSY; set before WAL so concurrent first opens wait too
         this.#enableWal();
         runMigrations(this.#db);
+        this.applyScopePolicy();
         // Baseline "changes seen" to now on first run so you start caught up rather
         // than facing the entire migrated history as unseen.
         if (!this.getChangesSeenAt()) this.setChangesSeenAt();
@@ -459,7 +497,11 @@ export class ArgusStore {
         this.#clearExpiredSnoozes();
         const where: string[] = [];
         if (!opts.includeClosed) where.push("state != 'closed'");
-        if (!opts.includeDismissed) where.push("dismissed = 0");
+        if (opts.archivedOnly)
+            where.push(
+                `dismissed = 1 AND dismissed_reason IN (${ARCHIVE_REASONS_SQL})`,
+            );
+        else if (!opts.includeDismissed) where.push("dismissed = 0");
         const clause = where.length ? `WHERE ${where.join(" AND ")}` : "";
         const rows = this.#prep(
             `SELECT p.*, ${REVIEW_COUNT_SQL} AS review_count, ${COVERED_AT_SQL} AS covered_at FROM prs p ${clause} ORDER BY updated_at DESC`,
@@ -798,6 +840,7 @@ export class ArgusStore {
       WHERE ${ArgusStore.#CHANGE_FILTER}${clause}
         AND e.id NOT IN (SELECT event_id FROM changes_read)
         AND p.out_of_scope = 0
+        AND p.dismissed = 0
         AND COALESCE(p.snooze_mode, '') != 'fte'
         AND (p.snoozed_until IS NULL OR p.snoozed_until <= ?)
       ORDER BY e.ts DESC, e.id DESC LIMIT ?
@@ -912,7 +955,7 @@ export class ArgusStore {
             `
       SELECT canonical, repo, source_branch AS sourceBranch, target_branch AS targetBranch, last_commit_sha AS sha
       FROM prs
-      WHERE state != 'closed' AND dismissed = 0
+      WHERE state != 'closed' AND dismissed = 0 AND out_of_scope = 0
         AND source_branch IS NOT NULL AND target_branch IS NOT NULL
         AND (changed_files IS NULL OR changed_files_sha IS NOT last_commit_sha)
     `,
@@ -1256,7 +1299,7 @@ export class ArgusStore {
         const prs = this.#prep(
             `
       SELECT canonical, repo, number, title, author, role, teams_json AS teamsJson, is_vendor AS isVendor,
-             lane, state, is_draft AS isDraft, dismissed, out_of_scope AS outOfScope,
+             lane, state, is_draft AS isDraft, dismissed, dismissed_reason AS dismissedReason, out_of_scope AS outOfScope,
              snoozed_until AS snoozedUntil, snooze_mode AS snoozeMode, review_state AS reviewState,
              added_at AS addedAt, pr_created_at AS prCreatedAt, last_commit_at AS lastCommitAt,
              updated_at AS updatedAt, author_meta_json AS authorMetaJson,
@@ -1277,6 +1320,7 @@ export class ArgusStore {
             state: string;
             isDraft: number;
             dismissed: number;
+            dismissedReason: string | null;
             outOfScope: number;
             snoozedUntil: string | null;
             snoozeMode: string | null;
@@ -1400,7 +1444,7 @@ export class ArgusStore {
             .filter(
                 (p) =>
                     p.role !== "author" &&
-                    !p.dismissed &&
+                    !manuallyDismissed(p) &&
                     !!p.author &&
                     !myNames.has(p.author),
             )
@@ -1433,7 +1477,7 @@ export class ArgusStore {
         for (const p of prs) {
             if (
                 p.role === "author" ||
-                p.dismissed ||
+                manuallyDismissed(p) ||
                 !p.author ||
                 myNames.has(p.author)
             )
@@ -1458,7 +1502,7 @@ export class ArgusStore {
         for (const p of prs) {
             if (
                 p.role === "author" ||
-                p.dismissed ||
+                manuallyDismissed(p) ||
                 !p.author ||
                 myNames.has(p.author)
             )
@@ -1484,7 +1528,7 @@ export class ArgusStore {
         for (const p of prs) {
             if (
                 p.role === "author" ||
-                p.dismissed ||
+                manuallyDismissed(p) ||
                 !p.author ||
                 myNames.has(p.author)
             )
@@ -1606,7 +1650,7 @@ export class ArgusStore {
         for (const p of prs) {
             if (
                 p.role === "author" ||
-                p.dismissed ||
+                manuallyDismissed(p) ||
                 !p.author ||
                 myNames.has(p.author)
             )
@@ -2156,22 +2200,29 @@ export class ArgusStore {
     // diff against. Reviewer votes come from the snapshot column.
     listSnapshots(): Map<string, Snapshot> {
         const rows = this.#prep(
-            "SELECT canonical, last_commit_sha, is_draft, state, dismissed, reviewers_json FROM prs",
+            "SELECT canonical, last_commit_sha, is_draft, state, dismissed, dismissed_reason, reviewers_json FROM prs",
         ).all() as unknown as {
             canonical: string;
             last_commit_sha: string | null;
             is_draft: number;
             state: string;
             dismissed: number;
+            dismissed_reason: string | null;
             reviewers_json: string | null;
         }[];
         const map = new Map<string, Snapshot>();
         for (const r of rows) {
+            const archived = r.dismissed
+                ? isAutoArchive(r.dismissed_reason)
+                    ? r.dismissed_reason
+                    : null
+                : null;
             map.set(r.canonical, {
                 sha: r.last_commit_sha,
                 isDraft: !!r.is_draft,
                 state: r.state as PrState,
-                dismissed: !!r.dismissed,
+                dismissed: !!r.dismissed && !archived,
+                archived,
                 votes: r.reviewers_json
                     ? (JSON.parse(r.reviewers_json) as Record<string, number>)
                     : {},
@@ -2204,6 +2255,7 @@ export class ArgusStore {
                     events += 1;
                 }
                 this.upsertPr(item.upsert);
+                if (item.revive) this.#revive(item.upsert.canonical, "updated");
                 this.#setReviewers(item.upsert.canonical, item.votes);
                 if (item.isAdd) added += 1;
                 else updated += 1;
@@ -2302,14 +2354,267 @@ export class ArgusStore {
         }
     }
 
-    // Mark a PR out of scope (I don't need to review it) or restore it. Parks the
-    // PR in its own section rather than deleting it; fully reversible.
+    // Mark a PR out of scope (I don't need to review it) or back in. This is a
+    // per-PR override of the repo default. An out-of-scope PR is archived, not
+    // deleted; fully reversible.
     setOutOfScope(canonical: string, value: boolean): void {
-        this.#prep("UPDATE prs SET out_of_scope = ? WHERE canonical = ?").run(
-            value ? 1 : 0,
+        this.#prep("UPDATE prs SET scope_override = ? WHERE canonical = ?").run(
+            value ? "out" : "in",
             canonical,
         );
         this.appendEvent(canonical, value ? "out_of_scope" : "in_scope");
+        this.applyScopePolicy();
+    }
+
+    // The default scope of a repo. null removes the default. A per-PR override
+    // that matches the new default is redundant, so it is cleared.
+    setRepoScope(
+        repo: string,
+        scope: RepoScope | null,
+    ): { archived: number; revived: number; kept: number } {
+        if (scope) {
+            this.#prep(
+                "INSERT INTO repo_scopes (repo, scope) VALUES (?, ?) ON CONFLICT(repo) DO UPDATE SET scope = excluded.scope",
+            ).run(repo, scope);
+            this.#prep(
+                "UPDATE prs SET scope_override = NULL WHERE repo = ? AND scope_override = ?",
+            ).run(repo, scope);
+        } else {
+            this.#prep("DELETE FROM repo_scopes WHERE repo = ?").run(repo);
+        }
+        const result = this.applyScopePolicy();
+        // Open PRs that stay visible in an out repo: you author them or review by name.
+        const kept =
+            scope === "out"
+                ? (
+                      this.#prep(
+                          "SELECT COUNT(*) AS n FROM prs WHERE repo = ? AND state != 'closed' AND dismissed = 0 AND out_of_scope = 0 AND role IN ('author', 'reviewer')",
+                      ).get(repo) as { n: number }
+                  ).n
+                : 0;
+        return { ...result, kept };
+    }
+
+    // Every repo with tracked PRs, with its default scope and PR counts.
+    listRepoScopes(): {
+        repo: string;
+        scope: RepoScope | null;
+        open: number;
+        hidden: number;
+    }[] {
+        const rows = this.#prep(
+            `
+      SELECT p.repo AS repo, s.scope AS scope,
+             SUM(CASE WHEN p.dismissed = 0 THEN 1 ELSE 0 END) AS open,
+             SUM(CASE WHEN p.dismissed = 1 THEN 1 ELSE 0 END) AS hidden
+      FROM prs p LEFT JOIN repo_scopes s ON s.repo = p.repo
+      WHERE p.state != 'closed' AND p.repo != ''
+      GROUP BY p.repo
+      UNION
+      SELECT repo, scope, 0, 0 FROM repo_scopes
+      WHERE repo NOT IN (SELECT repo FROM prs WHERE state != 'closed')
+      ORDER BY repo
+    `,
+        ).all() as unknown as {
+            repo: string;
+            scope: string | null;
+            open: number;
+            hidden: number;
+        }[];
+        return rows.map((r) => ({
+            repo: r.repo,
+            scope: r.scope as RepoScope | null,
+            open: r.open,
+            hidden: r.hidden,
+        }));
+    }
+
+    // Bring every open PR in line with the scope policy: refresh the effective
+    // `out_of_scope` flag, archive PRs that are now out, and revive PRs that were
+    // archived as out of scope and are now in. Never touches a manual dismissal.
+    applyScopePolicy(): { archived: number; revived: number } {
+        const defaults = new Map(
+            (
+                this.#prep(
+                    "SELECT repo, scope FROM repo_scopes",
+                ).all() as unknown as {
+                    repo: string;
+                    scope: string;
+                }[]
+            ).map((r) => [r.repo, r.scope]),
+        );
+        const rows = this.#prep(
+            `SELECT canonical, repo, role, scope_override, out_of_scope, dismissed, dismissed_reason
+             FROM prs WHERE state != 'closed'`,
+        ).all() as unknown as {
+            canonical: string;
+            repo: string;
+            role: string | null;
+            scope_override: string | null;
+            out_of_scope: number;
+            dismissed: number;
+            dismissed_reason: string | null;
+        }[];
+        let archived = 0;
+        let revived = 0;
+        this.#db.exec("BEGIN IMMEDIATE");
+        try {
+            for (const r of rows) {
+                const out = resolveOutOfScope(
+                    r.scope_override,
+                    defaults.get(r.repo) ?? null,
+                    r.role,
+                );
+                if (out !== !!r.out_of_scope)
+                    this.#prep(
+                        "UPDATE prs SET out_of_scope = ? WHERE canonical = ?",
+                    ).run(b(out), r.canonical);
+                if (r.dismissed && !isAutoArchive(r.dismissed_reason)) continue;
+                if (out && !r.dismissed) {
+                    this.#archive(r.canonical, "out_of_scope");
+                    archived += 1;
+                } else if (
+                    !out &&
+                    r.dismissed &&
+                    r.dismissed_reason === "out_of_scope"
+                ) {
+                    this.#revive(r.canonical, "in_scope");
+                    revived += 1;
+                }
+            }
+            this.#db.exec("COMMIT");
+        } catch (err) {
+            this.#db.exec("ROLLBACK");
+            throw err;
+        }
+        return { archived, revived };
+    }
+
+    #archive(canonical: string, reason: ArchiveReason): void {
+        const ts = now();
+        const info = this.#prep(
+            "UPDATE prs SET dismissed = 1, dismissed_reason = ?, dismissed_at = ? WHERE canonical = ? AND dismissed = 0",
+        ).run(reason, ts, canonical);
+        if (info.changes > 0)
+            this.appendEvent(canonical, "archived", { reason }, ts);
+    }
+
+    // Clears an Argus archive only. A manual dismissal is never revived. A PR that
+    // was archived as stale also drops its old review session, so a fresh one starts.
+    #revive(canonical: string, because: string): void {
+        const row = this.#prep(
+            "SELECT dismissed_reason AS reason FROM prs WHERE canonical = ? AND dismissed = 1",
+        ).get(canonical) as { reason: string | null } | undefined;
+        if (!row || !isAutoArchive(row.reason)) return;
+        this.#prep(
+            `UPDATE prs SET dismissed = 0, dismissed_reason = NULL, dismissed_at = NULL${
+                row.reason === "stale" ? ", review_session_id = NULL" : ""
+            } WHERE canonical = ?`,
+        ).run(canonical);
+        this.appendEvent(canonical, "revived", { reason: row.reason, because });
+    }
+
+    // Manual restore from the Archived view. A restored PR stays visible even if it
+    // is out of scope or idle: the scope override and the revived event guard it.
+    restorePr(canonical: string): boolean {
+        const row = this.#prep(
+            "SELECT dismissed, dismissed_reason AS reason, out_of_scope FROM prs WHERE canonical = ?",
+        ).get(canonical) as
+            | { dismissed: number; reason: string | null; out_of_scope: number }
+            | undefined;
+        if (!row?.dismissed || !isAutoArchive(row.reason)) return false;
+        if (row.out_of_scope) {
+            this.#prep(
+                "UPDATE prs SET scope_override = 'in', out_of_scope = 0 WHERE canonical = ?",
+            ).run(canonical);
+            this.appendEvent(canonical, "in_scope");
+        }
+        this.#revive(canonical, "manual");
+        return true;
+    }
+
+    listArchived(): Pr[] {
+        return this.listPrs({ archivedOnly: true });
+    }
+
+    // Open PRs with no tracked change for `days` or more. Skips snoozed PRs, PRs
+    // with a review session that has no verdict yet, and PRs restored within the
+    // window (a restore resets the clock).
+    staleCandidates(
+        nowMs = Date.now(),
+        days = STALE_ARCHIVE_DAYS,
+    ): StaleCandidate[] {
+        this.#clearExpiredSnoozes();
+        const cutoffMs = nowMs - days * 86_400_000;
+        const rows = this.#prep(
+            `
+      SELECT p.canonical, p.repo, p.number, p.title, p.author, p.updated_at AS updatedAt
+      FROM prs p
+      WHERE p.state != 'closed' AND p.dismissed = 0
+        AND p.snoozed_until IS NULL AND p.snooze_mode IS NULL
+        AND (p.review_session_id IS NULL OR p.reviewed_at IS NOT NULL)
+        AND NOT EXISTS (
+          SELECT 1 FROM pr_events e
+          WHERE e.canonical = p.canonical AND e.type = 'revived' AND e.ts > ?
+        )
+    `,
+        ).all(new Date(cutoffMs).toISOString()) as unknown as {
+            canonical: string;
+            repo: string;
+            number: number;
+            title: string;
+            author: string | null;
+            updatedAt: string;
+        }[];
+        return rows
+            .filter((r) => Date.parse(r.updatedAt) <= cutoffMs)
+            .map((r) => ({
+                ...r,
+                idleDays: Math.floor(
+                    (nowMs - Date.parse(r.updatedAt)) / 86_400_000,
+                ),
+            }))
+            .sort((a, c) => c.idleDays - a.idleDays);
+    }
+
+    // Archive stale PRs. Pass canonicals to limit the sweep to a reviewed preview.
+    archiveStale(only?: readonly string[], nowMs = Date.now()): number {
+        const allowed = only ? new Set(only) : null;
+        let count = 0;
+        for (const c of this.staleCandidates(nowMs)) {
+            if (allowed && !allowed.has(c.canonical)) continue;
+            this.#archive(c.canonical, "stale");
+            count += 1;
+        }
+        return count;
+    }
+
+    // The first stale sweep waits for the user's approval of a preview. After
+    // that, the poller sweeps on its own.
+    isStaleSweepApproved(): boolean {
+        return this.#getSetting("stale_sweep_approved") === "1";
+    }
+
+    approveStaleSweep(): void {
+        this.#setSetting("stale_sweep_approved", "1");
+    }
+
+    // Migrated PRs may carry a repository GUID instead of its name.
+    prsWithRepoId(limit = 50): { canonical: string; number: number }[] {
+        return this.#prep(
+            `SELECT canonical, number FROM prs
+             WHERE state != 'closed'
+               AND repo GLOB '[0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]-[0-9a-f][0-9a-f][0-9a-f][0-9a-f]-*'
+             LIMIT ?`,
+        ).all(limit) as unknown as { canonical: string; number: number }[];
+    }
+
+    setRepo(canonical: string, repo: string): void {
+        this.#prep("UPDATE prs SET repo = ? WHERE canonical = ?").run(
+            repo,
+            canonical,
+        );
+        this.applyScopePolicy();
     }
 
     // Move a PR between the quick and full-review lanes (manual triage).
@@ -2504,7 +2809,7 @@ export class ArgusStore {
          WHERE e.canonical = p.canonical AND e.type = 'closed'
          ORDER BY e.ts DESC LIMIT 1) AS closeReason
       FROM prs p
-      WHERE p.review_session_id IS NOT NULL AND p.dismissed = 0
+      WHERE p.review_session_id IS NOT NULL AND (p.dismissed = 0 OR p.dismissed_reason IN (${ARCHIVE_REASONS_SQL}))
       ORDER BY p.updated_at DESC
     `,
         ).all() as unknown as {
@@ -2583,7 +2888,7 @@ export class ArgusStore {
     // Size of the active queue (what the Board shows): not closed, not dismissed.
     countTracked(): number {
         const r = this.#prep(
-            "SELECT COUNT(*) AS n FROM prs WHERE state != 'closed' AND dismissed = 0",
+            "SELECT COUNT(*) AS n FROM prs WHERE state != 'closed' AND dismissed = 0 AND out_of_scope = 0",
         ).get() as {
             n: number;
         };
