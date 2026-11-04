@@ -14,6 +14,7 @@ const canonical =
 const context = {
     store,
     getConfig: () => defaultConfig(),
+    deleteAllData: async () => store.deleteAllData(),
 } as unknown as ApiContext;
 const server = createServer((req, res) => {
     void handleApi(req, res, context).catch(() => {
@@ -62,6 +63,7 @@ try {
 
     // Without the confirm word, nothing is deleted.
     assert.equal((await post({})).status, 400);
+    assert.equal((await post(null)).status, 400);
     assert.equal(store.listPrs().length, 1);
 
     assert.equal((await post({ confirm: "delete" })).status, 200);

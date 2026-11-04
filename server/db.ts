@@ -2796,8 +2796,9 @@ export class ArgusStore {
             throw err;
         }
         // Free the pages so deleted text does not stay in the file.
-        this.#db.exec("PRAGMA wal_checkpoint(TRUNCATE)");
+        // VACUUM runs in the WAL, so checkpoint after it to shrink the main file.
         this.#db.exec("VACUUM");
+        this.#db.exec("PRAGMA wal_checkpoint(TRUNCATE)");
     }
 
     // User config overrides (set from the Settings screen), merged onto defaults.

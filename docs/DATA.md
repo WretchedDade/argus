@@ -12,6 +12,15 @@ This document lists everything Argus stores. Update it when you add a table, a c
 | `storage.json`      | Next to the local database. Holds only the database location choice (`local` or `onedrive`). |
 | `argus.config.json` | Optional. Org values that you write yourself. It is gitignored.                              |
 
+Sign-in data is outside the database, in `%LOCALAPPDATA%\devstart\` (or `~\.devstart`):
+
+| File                   | Content                                                                                                   |
+| ---------------------- | --------------------------------------------------------------------------------------------------------- |
+| `ado-auth-config.json` | The Entra client ID and tenant ID. Override the path with `DEVSTART_ADO_CONFIG_PATH`.                     |
+| `ado-auth.json`        | Your account name, user name, and sign-in record (no tokens). Override with `DEVSTART_ADO_ACCOUNT_STORE`. |
+
+The "Delete all data" action and deleting the database do not remove these files. Delete them yourself to sign out.
+
 The database location is chosen in this order: the `ARGUS_DB_FILE` variable, the saved choice, an older file that already exists, then the local default `%LOCALAPPDATA%\argus\argus.db`. See `server/storage.ts` and `docs/INSTALL.md`.
 
 ## What is not stored
@@ -112,4 +121,4 @@ The database holds work data about you and your colleagues: display names of aut
 
 In Argus, open Settings, then System, then "Your data", and choose "Delete all data". Argus asks you to confirm. It then deletes all PRs, events, logs, read marks, and review tokens, and compacts the database file. Your settings and setup state stay. Argus reads your open PRs from ADO again on the next poll, but the old history does not come back.
 
-To remove everything, including your settings, stop Argus and delete `argus.db` (and the `argus.db-wal` and `argus.db-shm` files if they exist) from the folder in the table above. Argus creates a new empty database at the next start.
+To remove everything, including your settings, stop Argus. Then delete every copy of the database, with its `-wal` and `-shm` files if they exist: `%LOCALAPPDATA%\argus\argus.db`, `argus.db` in your OneDrive Desktop folder, and `data\argus.db` in the extension folder. Also delete `storage.json`. Argus can copy an old database that remains into a new location, so a copy that you leave can bring back old data. Argus creates a new empty database at the next start.

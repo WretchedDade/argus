@@ -76,6 +76,13 @@ export function reconcileOnce(
     return inFlight;
 }
 
+// Run fn once no poll is in flight. fn runs synchronously after the check, so a
+// new poll cannot start between the check and fn.
+export async function runWhenPollerIdle(fn: () => void): Promise<void> {
+    while (inFlight) await inFlight.catch(() => undefined);
+    fn();
+}
+
 async function runReconcile(
     ctx: PollerContext,
 ): Promise<ReconcileSummary | null> {

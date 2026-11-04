@@ -114,6 +114,8 @@ export interface ApiContext {
     store: ArgusStore;
     bootAt: string;
     reconcile: () => Promise<ReconcileSummary | null>;
+    // Deletes all stored PR data once no poll is in flight.
+    deleteAllData: () => Promise<void>;
     refreshPr: (canonical: string) => Promise<void>;
     trackPr: (
         number: number,
@@ -790,12 +792,12 @@ export async function handleApi(
     }
 
     if (route === "/api/data/delete-all" && req.method === "POST") {
-        const body = (await readJsonBody(req)) as { confirm?: unknown };
-        if (body.confirm !== "delete") {
+        const body = (await readJsonBody(req)) as { confirm?: unknown } | null;
+        if (body?.confirm !== "delete") {
             sendJson(res, 400, { error: 'confirm must be "delete"' });
             return true;
         }
-        ctx.store.deleteAllData();
+        await ctx.deleteAllData();
         sendJson(res, 200, { ok: true });
         return true;
     }
