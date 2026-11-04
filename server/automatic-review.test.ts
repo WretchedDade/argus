@@ -20,6 +20,10 @@ const prompt = automaticReviewPrompt(
     "tok-123",
 );
 assert.match(prompt, /"token":"tok-123"/);
+assert.match(
+    prompt,
+    /kickoff prompt must include[^]*"release":true[^]*\(the skill reads/,
+);
 assert.match(prompt, /Review mode: automatic/);
 assert.match(prompt, /coordinate_with_creator: false/);
 assert.match(prompt, /kickoff\.mode: "autopilot"/);
