@@ -26,8 +26,12 @@ export function ArchiveBanner() {
 
     const dismiss = () => {
         const ids = sessions.map((s) => s.sessionId);
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(ids));
         setDismissed(ids);
+        try {
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(ids));
+        } catch {
+            // Storage is blocked or full: the banner still hides for this page load.
+        }
     };
     const archive = useArchive(dismiss);
 
