@@ -6,7 +6,7 @@ import { ArchiveSection } from "./notifications/ArchiveSection";
 import { SkillNotice } from "./notifications/SkillNotice";
 import { StorageNotice } from "./notifications/StorageNotice";
 import { UpdateNotice } from "./notifications/UpdateNotice";
-import { useUpdate, useUpdateToasts } from "../lib/useUpdate";
+import { useUpdate } from "../lib/useUpdate";
 
 // The bell lists things that need attention: Argus notices (new release,
 // updated baseline skill) and review sessions whose PR has merged/closed with
@@ -23,7 +23,6 @@ export function NotificationsBell() {
     );
     const badge = archivable.length + notices.length;
     const close = () => setOpen(false);
-    useUpdateToasts();
 
     return (
         <div className="relative">

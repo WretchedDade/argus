@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
     api,
@@ -15,6 +15,14 @@ const PHASE_LABEL: Partial<Record<UpdatePhase, string>> = {
     installing: "Installing…",
 };
 
+// The start mutation and the status observer share this one live toast.
+let liveToast: number | null = null;
+
+function showPhase(message: string): void {
+    if (liveToast === null) liveToast = pushToast(message, "progress");
+    else updateToast(liveToast, { message, kind: "progress" });
+}
+
 // The server runs the update, so this state survives closing the bell. Mount
 // `useUpdateToasts` once, in a component that is always on screen.
 export function useUpdate() {
@@ -22,8 +30,17 @@ export function useUpdate() {
     const status = useQuery(updateStatusQuery).data;
     const start = useMutation({
         mutationFn: () => api.applyUpdate(),
-        onSuccess: () =>
-            qc.invalidateQueries({ queryKey: updateStatusQuery.queryKey }),
+        onSuccess: () => {
+            // Show the toast now, so a fast result is not missed between polls.
+            showPhase(`Updating Argus: ${PHASE_LABEL.downloading}`);
+            qc.setQueryData(updateStatusQuery.queryKey, {
+                phase: "downloading",
+                error: null,
+            });
+            void qc.invalidateQueries({
+                queryKey: updateStatusQuery.queryKey,
+            });
+        },
         onError: (err) => pushToast(`Update failed: ${err.message}`, "error"),
     });
     return {
@@ -38,25 +55,21 @@ export function useUpdate() {
 export function useUpdateToasts() {
     const qc = useQueryClient();
     const status = useQuery(updateStatusQuery).data;
-    const toastId = useRef<number | null>(null);
 
     useEffect(() => {
         const phase = status?.phase;
         if (!phase) return;
         if (isUpdateRunning(phase)) {
-            const message = `Updating Argus: ${PHASE_LABEL[phase]}`;
-            if (toastId.current === null) {
-                toastId.current = pushToast(message, "progress");
-            } else {
-                updateToast(toastId.current, { message, kind: "progress" });
-            }
+            showPhase(`Updating Argus: ${PHASE_LABEL[phase]}`);
             return;
         }
-        if (toastId.current === null) return;
+        if (liveToast === null) return;
+        const id = liveToast;
+        liveToast = null;
         if (phase === "done") {
             // Sticky: the user must see the reload step.
             updateToast(
-                toastId.current,
+                id,
                 {
                     message: "Update installed. Reload extensions to finish.",
                     kind: "success",
@@ -65,7 +78,7 @@ export function useUpdateToasts() {
             );
         } else if (phase === "error") {
             updateToast(
-                toastId.current,
+                id,
                 {
                     message: `Update failed: ${status?.error ?? "unknown error"}`,
                     kind: "error",
@@ -73,7 +86,6 @@ export function useUpdateToasts() {
                 6000,
             );
         }
-        toastId.current = null;
         void qc.invalidateQueries({ queryKey: ["notices"] });
     }, [status, qc]);
 }

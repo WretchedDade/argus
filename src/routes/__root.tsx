@@ -10,6 +10,7 @@ import { useState } from "react";
 import { ChevronDown, Settings as SettingsIcon } from "lucide-react";
 import { configQuery, healthQuery, prsQuery } from "../lib/api";
 import { needsYouCount } from "../lib/triage";
+import { useUpdateToasts } from "../lib/useUpdate";
 import { BrandMark } from "../components/BrandMark";
 import { NotificationsBell } from "../components/NotificationsBell";
 import { ArchiveBanner } from "../components/notifications/ArchiveBanner";
@@ -125,7 +126,8 @@ function RootLayout() {
     const prs = useQuery(prsQuery).data ?? [];
     const recencyDays = useQuery(configQuery).data?.recencyDays ?? 7;
     const [authDismissed, setAuthDismissed] = useState(false);
-
+    // Above the early returns, so the update toast survives the setup and auth gates.
+    useUpdateToasts();
     // First-run gate: until the user confirms their org/project/reviewer groups,
     // the board would be empty and mis-classified, so show setup instead.
     if (health && !health.setup_complete) {
