@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { mock } from "node:test";
 import { DatabaseSync } from "node:sqlite";
 import { ArgusStore, resolveOutOfScope } from "./db.ts";
 import type { Plan } from "./ado/reconcile.ts";
@@ -185,6 +186,25 @@ try {
     assert.ok(
         s.staleCandidates(t0).some((c) => c.canonical === reReview.canonical),
         "completed review with a linked session is stale",
+    );
+
+    // Events that share one millisecond keep their order (the clock is frozen).
+    const sameMs = upsert(8);
+    s.upsertPr(sameMs);
+    setUpdated(file, sameMs.canonical, t0 - 40 * DAY);
+    mock.timers.enable({ apis: ["Date"], now: t0 });
+    try {
+        s.setReviewSession(sameMs.canonical, "session-4");
+        s.recordReview(sameMs.canonical, {
+            verdict: "approved",
+            sessionId: "session-4",
+        });
+    } finally {
+        mock.timers.reset();
+    }
+    assert.ok(
+        s.staleCandidates(t0).some((c) => c.canonical === sameMs.canonical),
+        "completed review in the same millisecond is stale",
     );
 
     // A refresh that sees a new commit revives a stale archive.
