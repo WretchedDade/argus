@@ -282,6 +282,9 @@ export interface Pr {
     state: PrState;
     isDraft: boolean;
     outOfScope: boolean;
+    dismissed: boolean;
+    dismissedReason: string | null;
+    dismissedAt: string | null;
     snoozedUntil: string | null;
     snoozeMode: "time" | "fte" | null;
     reviewSessionId: string | null;
@@ -292,6 +295,29 @@ export interface Pr {
     authorMeta: AuthorMeta | null;
     prCreatedAt: string | null;
     updatedAt: string;
+}
+
+export interface StaleCandidate {
+    canonical: string;
+    repo: string;
+    number: number;
+    title: string;
+    author: string | null;
+    updatedAt: string;
+    idleDays: number;
+}
+
+export interface StalePreview {
+    approved: boolean;
+    days: number;
+    candidates: StaleCandidate[];
+}
+
+export interface RepoScopeRow {
+    repo: string;
+    scope: "in" | "out" | null;
+    open: number;
+    hidden: number;
 }
 
 export interface PollerStatus {
@@ -405,6 +431,16 @@ async function getJson<T>(path: string): Promise<T> {
     return (await res.json()) as T;
 }
 
+async function postJson<T>(path: string, body: object): Promise<T> {
+    const res = await fetch(path, {
+        method: "POST",
+        headers: JSON_HEADERS,
+        body: JSON.stringify(body),
+    });
+    if (!res.ok) throw new Error(`${path} -> ${res.status}`);
+    return (await res.json()) as T;
+}
+
 export const api = {
     prs: () => getJson<{ prs: Pr[] }>("/api/prs").then((r) => r.prs),
     health: () => getJson<Health>("/api/health"),
@@ -508,6 +544,27 @@ export const api = {
         if (!res.ok) throw new Error(`review -> ${res.status}`);
         return readJson(res);
     },
+    archivedPrs: () =>
+        getJson<{ prs: Pr[] }>("/api/archived").then((r) => r.prs),
+    stalePreview: () => getJson<StalePreview>("/api/archive/preview"),
+    sweepStale: (canonicals: string[]) =>
+        postJson<{ archived: number }>("/api/archive/sweep", { canonicals }),
+    restorePr: (canonical: string) =>
+        postJson<{ restored: boolean }>("/api/pr/restore", { canonical }),
+    repoScopes: () =>
+        getJson<{ repos: RepoScopeRow[] }>("/api/repo-scopes").then(
+            (r) => r.repos,
+        ),
+    setRepoScope: (repo: string, scope: "in" | "out" | null) =>
+        postJson<{
+            archived: number;
+            revived: number;
+            kept: number;
+            repos: RepoScopeRow[];
+        }>("/api/repo-scopes", {
+            repo,
+            scope,
+        }),
     archivable: () =>
         getJson<{ archivable: ArchivableSession[] }>("/api/archivable").then(
             (r) => r.archivable,
@@ -619,6 +676,20 @@ export const prsQuery = queryOptions({
     queryKey: ["prs"],
     queryFn: api.prs,
     refetchInterval: 10_000,
+});
+export const archivedQuery = queryOptions({
+    queryKey: ["archived"],
+    queryFn: api.archivedPrs,
+    refetchInterval: 15_000,
+});
+export const stalePreviewQuery = queryOptions({
+    queryKey: ["stale-preview"],
+    queryFn: api.stalePreview,
+    refetchInterval: 60_000,
+});
+export const repoScopesQuery = queryOptions({
+    queryKey: ["repo-scopes"],
+    queryFn: api.repoScopes,
 });
 export const archivableQuery = queryOptions({
     queryKey: ["archivable"],

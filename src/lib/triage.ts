@@ -46,6 +46,7 @@ export function needsYouCount(
         (p) =>
             p.role !== "author" &&
             !p.outOfScope &&
+            !p.dismissed &&
             !isSnoozed(p, now) &&
             !isStale(p, recencyDays, now) &&
             needsAction(p) &&

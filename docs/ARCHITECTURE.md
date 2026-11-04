@@ -62,7 +62,7 @@ flowchart LR
 - reconciles the result with the store (`reconcile.ts`), which writes `prs` rows and appends `pr_events`;
 - records the run in `poll_runs`.
 
-Each tick catches its own errors, so one failed run does not stop the schedule. Every ADO call has a timeout (30 s for REST, 60 s for `az`). `withRetry` in `packages/ado-client/src/retry.ts` retries timeouts, network errors, 408, 429, and 5xx with backoff, and it honors `Retry-After`. It does not retry auth errors. A hung call therefore ends, and the run finishes. Several hosts can share one database, but only the host that holds the `poll_lease` row polls. It renews the lease while its poller runs, and another host takes over after the lease expires. A host without the lease skips its runs, and a manual refresh on it returns no summary. The poller does not change user choices such as lane, scope, or dismissal. It can clear a snooze: the store clears an expired snooze, and an FTE approval wakes an "until FTE approves" snooze.
+Each tick catches its own errors, so one failed run does not stop the schedule. Every ADO call has a timeout (30 s for REST, 60 s for `az`). `withRetry` in `packages/ado-client/src/retry.ts` retries timeouts, network errors, 408, 429, and 5xx with backoff, and it honors `Retry-After`. It does not retry auth errors. A hung call therefore ends, and the run finishes. Several hosts can share one database, but only the host that holds the `poll_lease` row polls. It renews the lease while its poller runs, and another host takes over after the lease expires. A host without the lease skips its runs, and a manual refresh on it returns no summary. The poller does not change user choices such as lane, scope, or manual dismissal. It can clear a snooze: the store clears an expired snooze, and an FTE approval wakes an "until FTE approves" snooze. After each run it also applies the archive rules (see "Archive and scope").
 
 ## Store
 
@@ -73,11 +73,22 @@ Each tick catches its own errors, so one failed run does not stop the schedule. 
 
 Some metrics also read `prs` snapshot columns. For example, review latency uses `prs.reviewed_at` and `prs.reviewed_sha_authored_at`, and the backlog and authored-PR summaries use snapshot rows.
 
-Other tables: `poll_runs`, `activity_log`, `settings` (key/value, holds the saved config overrides), `changes_read`, and `poll_lease`.
+Other tables: `poll_runs`, `activity_log`, `settings` (key/value, holds the saved config overrides), `changes_read`, `repo_scopes`, and `poll_lease`.
 
 User-managed columns live on `prs`. Only the dedicated action methods write them. `upsertPr` never does.
 
 The schema lives in `server/store/migrations.ts` as an ordered list of migrations. `PRAGMA user_version` stores how many have run. At startup, `runMigrations` runs the pending ones in one `BEGIN IMMEDIATE` transaction, so two processes cannot race and a failure changes nothing.
+
+## Archive and scope
+
+Argus archives a PR to keep the board clean. An archive reuses the `dismissed`, `dismissed_reason`, and `dismissed_at` columns on `prs`. The reason is `stale` or `out_of_scope`. Any other reason is a manual dismissal, and Argus never revives it. Archive and revive each append an `archived` or `revived` event to `pr_events`.
+
+- **Archived PRs stay polled.** When a stale PR changes, `reconcile.ts` marks the plan item `revive`, and `applyPlan` clears the archive and the old review session link.
+- **Repo scope policy.** The `repo_scopes` table holds an `in` or `out` default for each repo. `prs.scope_override` holds a per-PR choice, and it wins over the repo default. `applyScopePolicy` computes the effective `out_of_scope` flag, archives the PRs that are out, and revives the `out_of_scope` archives that are now in. A PR in an `out` repo stays visible when you are its author or a named reviewer (`resolveOutOfScope`). A team-group match does not keep it visible.
+- **Stale sweep.** `archiveStale` archives PRs with no activity for `STALE_ARCHIVE_DAYS` (30). It skips snoozed PRs and PRs with a review session in progress. The first sweep needs approval: `/api/archive/preview` lists the candidates, and `/api/archive/sweep` archives them and saves `stale_sweep_approved` in `settings`. After that, the poller sweeps each run.
+- **Restore.** `restorePr` clears an archive by hand. It sets an `in` override when the PR was out of scope, so the policy does not archive it again.
+
+Queries that count or list the board must exclude archived PRs. The audited queries are `countTracked`, `prsNeedingFileCount`, `listUnreadChanges`, `getArchivable`, the weekly-arrived query, the load counts, and the insights history filters. Insights history uses `manuallyDismissed`, so it still includes archived PRs.
 
 ## API
 
