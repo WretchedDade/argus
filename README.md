@@ -324,9 +324,13 @@ skills directory:
 cp -r skills/pr-review ~/.copilot/skills/pr-review
 ```
 
-Argus updates an installed copy that you have not edited. Do not edit the
-installed copy, or Argus shows a notice on every update. Put personal rules in
-your global instructions or skills instead.
+A manual copy has no `.argus-skill.json` sidecar file, so Argus cannot track it.
+It gets no automatic updates and no update notices. To get both, let Argus
+install the skill (**Install the baseline skill** in setup). Argus writes
+the sidecar and then updates the copy when you have not edited it.
+
+Do not edit an installed copy, or Argus shows a notice on every update. Put
+personal rules in your global instructions or skills instead.
 
 If you write your own skill, keep this contract, because Argus drives it:
 
