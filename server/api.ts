@@ -109,7 +109,6 @@ export function automaticReviewPrompt(
 export interface ApiContext {
     store: ArgusStore;
     bootAt: string;
-    migrated: { imported: number };
     reconcile: () => Promise<ReconcileSummary | null>;
     refreshPr: (canonical: string) => Promise<void>;
     trackPr: (
@@ -277,7 +276,6 @@ export async function handleApi(
             ok: true,
             boot_at: ctx.bootAt,
             store: ctx.store.counts(),
-            migrated: ctx.migrated,
             poller: ctx.pollerStatus(),
             storage: ctx.storage?.() ?? null,
             auth: useBroker() ? await authStatus() : null,

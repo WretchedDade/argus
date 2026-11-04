@@ -104,7 +104,6 @@ const unavailable = async (): Promise<void> => {
 const ctx: ServerContext = {
     store,
     bootAt: new Date().toISOString(),
-    migrated: { imported: 0 },
     distDir: path.join(root, "dist"),
     reconcile: () => reconcileOnce(pollerCtx),
     refreshPr: (canonical: string) => refreshPr(pollerCtx, canonical),
