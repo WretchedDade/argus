@@ -270,6 +270,7 @@ export class AdoAuth {
     private lastError: string | null = null;
     private needsInteraction = false;
     private signedOut = false;
+    private markerSeen = false; // whether the sign-out marker existed at the last check
     private storeStamp = -1; // mtime of the shared account file when last read or written
     private epoch = 0; // bumps on sign-in/out so in-flight token requests can be discarded
     private currentAccount: AuthAccount | null = null;
@@ -307,7 +308,7 @@ export class AdoAuth {
         const stored = this.readStoredAuth();
         this.currentAccount = stored?.account ?? null;
         this.brokerRecord = stored?.brokerRecord ?? null;
-        this.signedOut = this.signedOutMarkerExists();
+        this.signedOut = this.markerSeen = this.signedOutMarkerExists();
     }
 
     private get signedOutMarkerPath(): string {
@@ -321,10 +322,12 @@ export class AdoAuth {
     private writeSignedOutMarker(): void {
         fs.mkdirSync(path.dirname(this.accountStorePath), { recursive: true });
         fs.writeFileSync(this.signedOutMarkerPath, "", "utf8");
+        this.markerSeen = true;
     }
 
     private clearSignedOutMarker(): void {
         fs.rmSync(this.signedOutMarkerPath, { force: true });
+        this.markerSeen = false;
     }
 
     private get configured(): boolean {
@@ -398,6 +401,17 @@ export class AdoAuth {
 
     // Other Argus hosts share the account file. Pick up their sign-in, switch or sign-out.
     private syncFromDisk(): void {
+        // React to a new sign-out marker even when the account file did not change.
+        const marker = this.signedOutMarkerExists();
+        if (marker && !this.markerSeen) {
+            this.currentAccount = null;
+            this.brokerRecord = null;
+            this.signedOut = true;
+            this.lastError = null;
+            this.needsInteraction = false;
+            this.epoch++;
+        }
+        this.markerSeen = marker;
         const stamp = this.statStore();
         if (stamp === this.storeStamp) return;
         this.storeStamp = stamp;

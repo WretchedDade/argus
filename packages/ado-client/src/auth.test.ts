@@ -71,25 +71,47 @@ test("stays signed out after sign-out even if developer credentials work", async
     fs.rmSync(dir, { recursive: true, force: true });
 });
 
-test("stays signed out in a new client after sign-out", async (t) => {
-    const { auth, dir } = testAuth();
-    t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
-    await auth.signOut();
-    const silent: SilentCredential = {
-        getToken: async () => ({ token: "access-token" }),
-    };
-    const next = new AdoAuth({
+const userToken = `header.${Buffer.from(
+    JSON.stringify({ oid: "o", tid: "tenant", upn: "user@microsoft.com" }),
+).toString("base64url")}.signature`;
+
+function hostAt(dir: string, silentCredential: SilentCredential): AdoAuth {
+    return new AdoAuth({
         clientId: "client",
         tenantId: "tenant",
         platform: "win32",
         accountStorePath: path.join(dir, "account.json"),
         parentWindowHandle: encodeWindowHandle(17_832_816n),
-        silentCredential: silent,
+        silentCredential,
         credentialFactory: () => mockCredential(),
     });
+}
+
+test("stays signed out in a new client after sign-out", async (t) => {
+    const { auth, dir } = testAuth();
+    t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+    await auth.signOut();
+    const next = hostAt(dir, { getToken: async () => ({ token: userToken }) });
     await assert.rejects(next.getAccessToken(), AuthInteractionRequiredError);
-    await next.signIn(true);
-    assert.equal(await next.getAccessToken(), "access-token");
+    const status = await next.signIn(true);
+    assert.equal(status.account?.homeAccountId, account.homeAccountId);
+    assert.equal(
+        fs.existsSync(path.join(dir, "account.json.signed-out")),
+        false,
+    );
+});
+
+test("a running host picks up a sign-out from another host with no account file", async (t) => {
+    const { auth, dir } = testAuth();
+    t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+    const running = hostAt(dir, {
+        getToken: async () => ({ token: userToken }),
+    });
+    await auth.signOut();
+    await assert.rejects(
+        running.getAccessToken(),
+        AuthInteractionRequiredError,
+    );
 });
 
 test("uses the selected broker account instead of developer credentials", async () => {
