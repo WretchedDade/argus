@@ -556,6 +556,14 @@ export const api = {
             throw new Error(body?.error ?? `update/apply -> ${res.status}`);
         }
     },
+    deleteAllData: async (): Promise<void> => {
+        const res = await fetch("/api/data/delete-all", {
+            method: "POST",
+            headers: JSON_HEADERS,
+            body: JSON.stringify({ confirm: "delete" }),
+        });
+        if (!res.ok) throw new Error(`data/delete-all -> ${res.status}`);
+    },
     checkForUpdatesNow: async (): Promise<{
         ok: boolean;
         latest: string | null;

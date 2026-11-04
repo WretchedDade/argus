@@ -789,6 +789,17 @@ export async function handleApi(
         return true;
     }
 
+    if (route === "/api/data/delete-all" && req.method === "POST") {
+        const body = (await readJsonBody(req)) as { confirm?: unknown };
+        if (body.confirm !== "delete") {
+            sendJson(res, 400, { error: 'confirm must be "delete"' });
+            return true;
+        }
+        ctx.store.deleteAllData();
+        sendJson(res, 200, { ok: true });
+        return true;
+    }
+
     if (route === "/api/teams") {
         sendJson(res, 200, { teams: ctx.store.getSeenTeams() });
         return true;
