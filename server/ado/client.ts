@@ -4,13 +4,33 @@ import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
 import type { AuthStatus } from "@devstart/ado-client";
+import {
+    isTransientError,
+    isTransientStatus,
+    parseRetryAfter,
+    withRetry,
+} from "@devstart/ado-client/retry";
 import type { AdoRawPr } from "./types.ts";
 import { resolveAzCommand } from "./az-command.ts";
 import { validateRegistration } from "../../src/lib/auth-registration.ts";
 
 const pExecFile = promisify(execFile);
 const MAX_BUFFER = 64 * 1024 * 1024;
-const EXEC_OPTS = { maxBuffer: MAX_BUFFER, encoding: "buffer" as const }; // raw Buffer so we control decoding
+const AZ_TIMEOUT_MS = 60_000;
+const FETCH_TIMEOUT_MS = 30_000;
+// raw Buffer so we control decoding
+const EXEC_OPTS = {
+    maxBuffer: MAX_BUFFER,
+    encoding: "buffer" as const,
+    timeout: AZ_TIMEOUT_MS,
+};
+
+// A timed-out az process is killed; retry it, but not a real az failure such as a login error.
+const runAz = (cmd: string, cmdArgs: string[]) =>
+    withRetry(() => pExecFile(cmd, cmdArgs, EXEC_OPTS), {
+        maxAttempts: 2,
+        shouldRetry: isTransientError,
+    });
 
 // Azure CLI on Windows emits Windows-1252 (ANSI), not UTF-8, so a lone byte like
 // 0x97 (em dash) is invalid UTF-8 and renders as a replacement char. Decode as
@@ -27,7 +47,47 @@ function azCommand(args: string[]): [string, string[]] {
     return resolveAzCommand(args);
 }
 
-export class AdoError extends Error {}
+export class AdoError extends Error {
+    readonly status?: number;
+    readonly retryAfterMs?: number;
+
+    constructor(
+        message: string,
+        extra: { status?: number; retryAfterMs?: number } = {},
+    ) {
+        super(message);
+        this.status = extra.status;
+        this.retryAfterMs = extra.retryAfterMs;
+    }
+}
+
+// fetch with a timeout; retries 408, 429, 5xx and network errors, then returns the final response.
+async function fetchWithRetry(
+    url: string,
+    init: RequestInit,
+): Promise<Response> {
+    let last: Response | undefined;
+    try {
+        return await withRetry(async () => {
+            const res = await fetch(url, {
+                ...init,
+                signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+            });
+            last = res;
+            if (!res.ok && isTransientStatus(res.status))
+                throw new AdoError(`HTTP ${res.status}`, {
+                    status: res.status,
+                    retryAfterMs: parseRetryAfter(
+                        res.headers.get("retry-after"),
+                    ),
+                });
+            return res;
+        });
+    } catch (err) {
+        if (last && err instanceof AdoError) return last;
+        throw err;
+    }
+}
 
 // `az` is the default; the `adoAuth` setting (or ARGUS_ADO_AUTH) selects the Windows
 // account broker with REST calls instead. The provider can change at runtime. The
@@ -167,7 +227,7 @@ export async function signOut(): Promise<AdoAuthStatus> {
 async function azJson<T>(args: string[]): Promise<T | null> {
     try {
         const [cmd, cmdArgs] = azCommand([...args, "-o", "json"]);
-        const { stdout } = await pExecFile(cmd, cmdArgs, EXEC_OPTS);
+        const { stdout } = await runAz(cmd, cmdArgs);
         const text = decodeAz(stdout).trim();
         return text ? (JSON.parse(text) as T) : null;
     } catch (err) {
@@ -194,7 +254,7 @@ export async function whoami(): Promise<string> {
         "-o",
         "tsv",
     ]);
-    const { stdout } = await pExecFile(cmd, cmdArgs, EXEC_OPTS);
+    const { stdout } = await runAz(cmd, cmdArgs);
     const me = decodeAz(stdout).trim();
     if (!me)
         throw new AdoError(
@@ -245,7 +305,7 @@ export async function adoAccessToken(): Promise<string> {
         "-o",
         "json",
     ]);
-    const { stdout } = await pExecFile(cmd, cmdArgs, EXEC_OPTS);
+    const { stdout } = await runAz(cmd, cmdArgs);
     const j = JSON.parse(decodeAz(stdout)) as {
         accessToken: string;
         expiresOn?: string;
@@ -292,7 +352,7 @@ export async function prChangedFileCount(
     let skip = 0;
     while (true) {
         params.set("$skip", String(skip));
-        const res = await fetch(`${base}/diffs/commits?${params}`, {
+        const res = await fetchWithRetry(`${base}/diffs/commits?${params}`, {
             headers: { Authorization: `Bearer ${token}` },
         });
         if (!res.ok)

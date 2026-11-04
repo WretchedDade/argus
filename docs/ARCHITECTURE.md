@@ -62,7 +62,7 @@ flowchart LR
 - reconciles the result with the store (`reconcile.ts`), which writes `prs` rows and appends `pr_events`;
 - records the run in `poll_runs`.
 
-Each tick catches its own errors, so one failed run does not stop the schedule. Several hosts can share one database, but only the host that holds the `poll_lease` row polls. It renews the lease while its poller runs, and another host takes over after the lease expires. A host without the lease skips its runs, and a manual refresh on it returns no summary. The poller does not change user choices such as lane, scope, or dismissal. It can clear a snooze: the store clears an expired snooze, and an FTE approval wakes an "until FTE approves" snooze.
+Each tick catches its own errors, so one failed run does not stop the schedule. Every ADO call has a timeout (30 s for REST, 60 s for `az`). `withRetry` in `packages/ado-client/src/retry.ts` retries timeouts, network errors, 408, 429, and 5xx with backoff, and it honors `Retry-After`. It does not retry auth errors. A hung call therefore ends, and the run finishes. Several hosts can share one database, but only the host that holds the `poll_lease` row polls. It renews the lease while its poller runs, and another host takes over after the lease expires. A host without the lease skips its runs, and a manual refresh on it returns no summary. The poller does not change user choices such as lane, scope, or dismissal. It can clear a snooze: the store clears an expired snooze, and an FTE approval wakes an "until FTE approves" snooze.
 
 ## Store
 
