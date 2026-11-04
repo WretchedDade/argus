@@ -21,12 +21,7 @@ export default tseslint.config(
     {
         languageOptions: {
             parserOptions: {
-                projectService: {
-                    allowDefaultProject: [
-                        "scripts/*.ts",
-                        "packages/ado-client/src/*.test.ts",
-                    ],
-                },
+                projectService: true,
                 tsconfigRootDir: import.meta.dirname,
             },
         },

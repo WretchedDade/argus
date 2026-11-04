@@ -26,6 +26,26 @@ export interface Notice {
     secondaryActionLabel?: string;
 }
 
+export type UpdatePhase =
+    | "idle"
+    | "downloading"
+    | "verifying"
+    | "extracting"
+    | "installing"
+    | "done"
+    | "error";
+
+export interface UpdateStatus {
+    phase: UpdatePhase;
+    error: string | null;
+}
+
+export const isUpdateRunning = (phase: UpdatePhase | undefined): boolean =>
+    phase === "downloading" ||
+    phase === "verifying" ||
+    phase === "extracting" ||
+    phase === "installing";
+
 export interface ArchivableSession {
     repo: string;
     number: number;
@@ -613,6 +633,11 @@ export const api = {
             throw new Error(body?.error ?? `update/apply -> ${res.status}`);
         }
     },
+    updateStatus: async (): Promise<UpdateStatus> => {
+        const res = await fetch("/api/update/status");
+        if (!res.ok) throw new Error(`update/status -> ${res.status}`);
+        return readJson(res);
+    },
     deleteAllData: async (): Promise<void> => {
         const res = await fetch("/api/data/delete-all", {
             method: "POST",
@@ -700,6 +725,12 @@ export const noticesQuery = queryOptions({
     queryKey: ["notices"],
     queryFn: api.notices,
     refetchInterval: 60_000,
+});
+export const updateStatusQuery = queryOptions({
+    queryKey: ["update-status"],
+    queryFn: api.updateStatus,
+    refetchInterval: (query) =>
+        isUpdateRunning(query.state.data?.phase) ? 1_000 : false,
 });
 export const changesQuery = queryOptions({
     queryKey: ["changes"],
