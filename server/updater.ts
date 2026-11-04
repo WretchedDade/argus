@@ -6,6 +6,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
 import type { ReleaseInfo } from "./update-check.ts";
+import type { UpdatePhase } from "./update-job.ts";
 
 const execFileAsync = promisify(execFile);
 
@@ -72,15 +73,18 @@ export async function applyUpdate(
     release: ReleaseInfo,
     installDir: string,
     deps: UpdateDeps = {},
+    setPhase: (phase: UpdatePhase) => void = () => {},
 ): Promise<void> {
     const fetchFn = deps.fetchFn ?? fetch;
     const extract = deps.extract ?? extractZip;
     const install = deps.install ?? runInstaller;
 
+    setPhase("downloading");
     const [zip, checksumText] = await Promise.all([
         download(fetchFn, release.zipUrl),
         download(fetchFn, release.checksumUrl),
     ]);
+    setPhase("verifying");
     const expected = parseChecksum(checksumText.toString("utf-8"));
     if (!expected) throw new Error("The checksum file is not valid.");
     const actual = createHash("sha256").update(zip).digest("hex");
@@ -94,6 +98,7 @@ export async function applyUpdate(
     try {
         const zipFile = path.join(work, "release.zip");
         const extracted = path.join(work, "extracted");
+        setPhase("extracting");
         await writeFile(zipFile, zip);
         await extract(zipFile, extracted);
         const script = path.join(
@@ -104,6 +109,7 @@ export async function applyUpdate(
         if (!existsSync(script)) {
             throw new Error("The ZIP does not contain install.ps1.");
         }
+        setPhase("installing");
         await install(script, installDir);
     } finally {
         await rm(work, { recursive: true, force: true });

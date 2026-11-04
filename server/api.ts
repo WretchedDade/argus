@@ -28,6 +28,7 @@ import {
     useBroker,
 } from "./ado/client.ts";
 import { ingestUrl } from "./ingest.ts";
+import { UpdateJob, type UpdatePhase } from "./update-job.ts";
 import { sendJson } from "./respond.ts";
 import type { Notice } from "./notices.ts";
 import type { DbLocation } from "./storage.ts";
@@ -143,7 +144,8 @@ export interface ApiContext {
     appVersion?: string;
     checkForUpdatesNow?: () => Promise<UpdateCheckResult>;
     // Downloads, verifies, and installs the latest release. Absent in standalone mode.
-    applyUpdate?: () => Promise<void>;
+    applyUpdate?: (setPhase: (phase: UpdatePhase) => void) => Promise<void>;
+    updateJob?: UpdateJob;
 }
 
 export interface StorageInfo {
@@ -827,14 +829,22 @@ export async function handleApi(
             sendJson(res, 404, { error: "No update is available to install." });
             return true;
         }
-        try {
-            await ctx.applyUpdate();
-        } catch (err) {
-            sendJson(res, 500, { error: (err as Error).message });
+        const job = (ctx.updateJob ??= new UpdateJob());
+        const apply = ctx.applyUpdate;
+        const started = job.start(async (setPhase) => {
+            await apply(setPhase);
+            ctx.store.dismissNotice(notice.id);
+        });
+        if (!started) {
+            sendJson(res, 409, { error: "An update is already running." });
             return true;
         }
-        ctx.store.dismissNotice(notice.id);
-        sendJson(res, 200, { ok: true });
+        sendJson(res, 202, job.status());
+        return true;
+    }
+
+    if (route === "/api/update/status" && req.method === "GET") {
+        sendJson(res, 200, (ctx.updateJob ??= new UpdateJob()).status());
         return true;
     }
 

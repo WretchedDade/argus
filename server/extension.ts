@@ -354,9 +354,9 @@ const serverCtx = (): ServerContext => ({
     getNotices,
     appVersion: APP_VERSION,
     checkForUpdatesNow,
-    applyUpdate: async () => {
+    applyUpdate: async (setPhase) => {
         if (!latestRelease) throw new Error("No release is known yet.");
-        await applyUpdate(latestRelease, __dirname);
+        await applyUpdate(latestRelease, __dirname, {}, setPhase);
     },
 });
 
