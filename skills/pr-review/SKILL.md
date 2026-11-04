@@ -136,8 +136,12 @@ claim success after a partial failure.
 
 Do this in every mode, in this order:
 
-1. If the PR is already completed or merged, use **post-merge mode**: skip
-   comments and the vote, and discuss findings in the chat as learning.
+1. If the PR status is `completed`, use **post-complete mode**: skip comments
+   and the vote, and discuss findings in the chat as learning. Do not use the
+   `lastMergeCommit` or merge-source/target fields to decide this. ADO creates
+   that merge commit to test the PR (the merge-validation commit). It exists on
+   active PRs and does not mean the PR is merged. Only the PR status tells you
+   the PR is complete. Treat dates and merge options as supporting context.
 2. Set up a worktree or a read context, so you can use code intelligence. Keep
    dependency installs lazy.
 3. Read the PR: metadata, linked work items, **all** existing threads whatever
@@ -209,7 +213,7 @@ Example (the details are made up):
 ## Phase 2 — Record the verdict to Argus
 
 Record the verdict that was actually cast in ADO. If the reviewer cast no vote,
-or the PR was already merged, record nothing.
+or the PR was already completed, record nothing.
 
 Send an HTTP POST to the exact ingest URL from the kickoff prompt. Do not assume a
 port.
