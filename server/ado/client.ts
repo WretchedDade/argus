@@ -75,13 +75,16 @@ async function fetchWithRetry(
                 signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
             });
             last = res;
-            if (!res.ok && isTransientStatus(res.status))
+            if (!res.ok && isTransientStatus(res.status)) {
+                // Free the connection before the retry; the caller only needs the status.
+                await res.body?.cancel().catch(() => undefined);
                 throw new AdoError(`HTTP ${res.status}`, {
                     status: res.status,
                     retryAfterMs: parseRetryAfter(
                         res.headers.get("retry-after"),
                     ),
                 });
+            }
             return res;
         });
     } catch (err) {
