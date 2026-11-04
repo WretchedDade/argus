@@ -45,6 +45,7 @@ function snap(overrides: Partial<Snapshot> = {}): Snapshot {
         isDraft: false,
         state: "pending",
         dismissed: false,
+        archived: null,
         votes: {},
         ...overrides,
     };

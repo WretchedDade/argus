@@ -4,6 +4,17 @@
 export type Lane = "quick" | "review";
 export type PrState = "pending" | "reviewed" | "closed";
 
+// Why Argus hid a PR on its own. Any other `dismissed_reason` is a manual choice.
+export type ArchiveReason = "stale" | "out_of_scope";
+export const ARCHIVE_REASONS: readonly ArchiveReason[] = [
+    "stale",
+    "out_of_scope",
+];
+export type RepoScope = "in" | "out";
+
+// Days without a tracked change before a PR is archived as stale.
+export const STALE_ARCHIVE_DAYS = 30;
+
 // How this PR is mine: I authored it, I'm a direct reviewer, or a team I'm on
 // is a reviewer. `teams` holds the matched team display names (may be several).
 export type PrRole = "author" | "reviewer" | "team";
@@ -27,6 +38,8 @@ export type PrEventType =
     | "snoozed"
     | "fte_woke"
     | "dismissed"
+    | "archived"
+    | "revived"
     | "out_of_scope"
     | "in_scope"
     | "removed"

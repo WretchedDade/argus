@@ -1,8 +1,16 @@
 import { useMemo, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ChevronDown, ChevronRight, Search } from "lucide-react";
-import { configQuery, prsQuery, type Pr, type PrReviewState } from "../lib/api";
+import {
+    api,
+    archivedQuery,
+    configQuery,
+    prsQuery,
+    stalePreviewQuery,
+    type Pr,
+    type PrReviewState,
+} from "../lib/api";
 import { SegToggle } from "../components/SegToggle";
 import { REVIEW_STATE_META } from "../lib/triage";
 import { resolveTeamLabel, shortAge, shortRepo } from "../lib/format";
@@ -168,7 +176,89 @@ function TrackedGroup({
     );
 }
 
+function ArchivedRow({ pr, onRestore }: { pr: Pr; onRestore: () => void }) {
+    const reason = pr.dismissedReason === "stale" ? "Stale" : "Out of scope";
+    const when = pr.dismissedAt
+        ? new Date(pr.dismissedAt).toLocaleDateString()
+        : "";
+    return (
+        <div className="flex items-center gap-3 px-4 py-2">
+            <div className="min-w-0 flex-1">
+                <a
+                    href={pr.canonical}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-fg block truncate text-sm hover:underline"
+                >
+                    {pr.title}
+                </a>
+                <div className="text-muted truncate text-xs">
+                    {`${shortRepo(pr.repo)} #${pr.number} · ${reason}, archived ${when}`}
+                </div>
+            </div>
+            <button
+                type="button"
+                onClick={onRestore}
+                className="border-line text-muted hover:text-fg rounded-md border px-2 py-0.5 text-xs"
+            >
+                Restore
+            </button>
+        </div>
+    );
+}
+
+// The first stale sweep needs approval. Until then, show who it would archive.
+function StaleSweepBanner() {
+    const queryClient = useQueryClient();
+    const preview = useQuery(stalePreviewQuery).data;
+    const sweep = useMutation({
+        mutationFn: (canonicals: string[]) => api.sweepStale(canonicals),
+        onSuccess: () => queryClient.invalidateQueries(),
+    });
+    if (!preview || preview.approved || preview.candidates.length === 0)
+        return null;
+    return (
+        <section className="border-line rounded-xl border p-4">
+            <div className="text-fg text-sm font-semibold">
+                {preview.candidates.length} PR
+                {preview.candidates.length === 1 ? "" : "s"} idle for{" "}
+                {preview.days}+ days
+            </div>
+            <p className="text-muted mt-1 text-xs">
+                Argus can archive these. Archived PRs keep their history and
+                come back when they change. After you approve, Argus archives
+                stale PRs on its own.
+            </p>
+            <ul className="text-muted mt-2 max-h-40 overflow-auto text-xs">
+                {preview.candidates.map((c) => (
+                    <li key={c.canonical} className="truncate">
+                        {shortRepo(c.repo)} #{c.number} · {c.title} ·{" "}
+                        {c.idleDays}d idle
+                    </li>
+                ))}
+            </ul>
+            <button
+                type="button"
+                disabled={sweep.isPending}
+                onClick={() =>
+                    sweep.mutate(preview.candidates.map((c) => c.canonical))
+                }
+                className="border-line text-fg hover:bg-surface mt-3 rounded-md border px-3 py-1 text-xs disabled:opacity-60"
+            >
+                Archive these and approve auto-archive
+            </button>
+        </section>
+    );
+}
+
 function TrackedPage() {
+    const queryClient = useQueryClient();
+    const [showArchived, setShowArchived] = useState(false);
+    const archived = useQuery(archivedQuery).data ?? [];
+    const restore = useMutation({
+        mutationFn: (canonical: string) => api.restorePr(canonical),
+        onSuccess: () => queryClient.invalidateQueries(),
+    });
     const prsData = useQuery(prsQuery).data;
     const prs = useMemo(() => prsData ?? [], [prsData]);
     const labelsData = useQuery(configQuery).data?.teamLabels;
@@ -225,6 +315,8 @@ function TrackedPage() {
                 </div>
             </div>
 
+            <StaleSweepBanner />
+
             <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-xs">
                 <div className="flex items-center gap-2">
                     <span className="text-muted">Group by</span>
@@ -280,6 +372,44 @@ function TrackedPage() {
                     ))}
                 </div>
             )}
+
+            <div className="border-line border-t pt-3">
+                <button
+                    type="button"
+                    onClick={() => setShowArchived((v) => !v)}
+                    className="text-muted hover:text-fg flex items-center gap-1.5 text-xs"
+                >
+                    {showArchived ? (
+                        <ChevronDown size={14} />
+                    ) : (
+                        <ChevronRight size={14} />
+                    )}
+                    Archived
+                    <span className="opacity-70">{archived.length}</span>
+                </button>
+                {showArchived && (
+                    <section
+                        className="border-line mt-2 overflow-hidden rounded-xl border"
+                        style={{ background: "var(--card-bg)" }}
+                    >
+                        {archived.length === 0 ? (
+                            <p className="text-muted px-4 py-3 text-xs">
+                                Nothing archived.
+                            </p>
+                        ) : (
+                            archived.map((pr) => (
+                                <ArchivedRow
+                                    key={pr.canonical}
+                                    pr={pr}
+                                    onRestore={() =>
+                                        restore.mutate(pr.canonical)
+                                    }
+                                />
+                            ))
+                        )}
+                    </section>
+                )}
+            </div>
         </div>
     );
 }
