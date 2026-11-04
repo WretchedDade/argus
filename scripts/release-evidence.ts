@@ -11,6 +11,19 @@ import {
 import path from "node:path";
 import { z } from "zod";
 
+// Null sources are generated during staging.
+export const RELEASE_FILES: Readonly<Record<string, string | null>> = {
+    "extension/extension.mjs": "extension.mjs",
+    "extension/dist/index.html": "dist/index.html",
+    "extension/skills/pr-review/SKILL.md": "skills/pr-review/SKILL.md",
+    "extension/argus.config.example.json": "argus.config.example.json",
+    "extension/package.json": null,
+    "extension/ado-auth-config.example.json": null,
+    "INSTALL.md": "docs/INSTALL.md",
+    "install.ps1": "scripts/install.ps1",
+    LICENSE: "LICENSE",
+};
+
 const packageSchema = z.object({
     version: z.string(),
     scripts: z.unknown().optional(),
@@ -146,12 +159,21 @@ export function writeReleaseEvidence(
     );
 }
 
-export function verifyReleaseEvidence(stage: string): void {
+export function verifyReleaseEvidence(
+    stage: string,
+    expectedSourceCommit?: string,
+): void {
     const manifest = releaseManifestSchema.parse(
         JSON.parse(
             readFileSync(path.join(stage, "release-manifest.json"), "utf8"),
         ),
     );
+    if (expectedSourceCommit) {
+        if (manifest.sourceDirty)
+            throw new Error("Release source must be clean");
+        if (manifest.sourceCommit !== expectedSourceCommit)
+            throw new Error("Release source commit does not match GITHUB_SHA");
+    }
     const actual = payloadChecksums(stage);
     const expected = manifest.files;
     if (
@@ -160,16 +182,7 @@ export function verifyReleaseEvidence(stage: string): void {
         Object.entries(actual).some(([file, hash]) => expected[file] !== hash)
     )
         throw new Error("Release payload checksum mismatch");
-    for (const file of [
-        "extension/extension.mjs",
-        "extension/dist/index.html",
-        "extension/skills/pr-review/SKILL.md",
-        "extension/package.json",
-        "extension/ado-auth-config.example.json",
-        "INSTALL.md",
-        "install.ps1",
-        "LICENSE",
-    ])
+    for (const file of Object.keys(RELEASE_FILES))
         if (!actual[file]) throw new Error(`Missing release file: ${file}`);
     const pkg = packageSchema.parse(
         JSON.parse(

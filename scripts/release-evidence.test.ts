@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import {
     existsSync,
@@ -13,6 +14,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import {
     payloadChecksums,
+    RELEASE_FILES,
     releaseStage,
     resetReleaseStage,
     releaseManifestSchema,
@@ -69,6 +71,7 @@ try {
     for (const file of [
         "extension/dist/index.html",
         "extension/skills/pr-review/SKILL.md",
+        "extension/argus.config.example.json",
         "extension/package.json",
         "extension/ado-auth-config.example.json",
         "INSTALL.md",
@@ -102,6 +105,52 @@ try {
     assert.equal(manifest.dependencies.length, 1);
     assert.equal(manifest.dependencies[0].integrity, "sha512-fixture");
     assert.equal(manifest.dependencies[0].license, "MIT");
+    verifyReleaseEvidence(stage);
+    verifyReleaseEvidence(stage, "a".repeat(40));
+    assert.throws(
+        () => verifyReleaseEvidence(stage, "b".repeat(40)),
+        /source commit does not match/,
+    );
+    const verifyFromCi = (sha: string) =>
+        spawnSync(process.execPath, ["scripts/verify-release.ts", stage], {
+            cwd: path.resolve(import.meta.dirname, ".."),
+            env: { ...process.env, GITHUB_SHA: sha },
+            encoding: "utf8",
+        });
+    const wrongCommit = verifyFromCi("b".repeat(40));
+    assert.notEqual(wrongCommit.status, 0);
+    assert.match(wrongCommit.stderr, /source commit does not match/);
+    writeReleaseEvidence(source, stage, {
+        commit: "a".repeat(40),
+        dirty: true,
+    });
+    assert.throws(
+        () => verifyReleaseEvidence(stage, "a".repeat(40)),
+        /source must be clean/,
+    );
+    const dirtySource = verifyFromCi("a".repeat(40));
+    assert.notEqual(dirtySource.status, 0);
+    assert.match(dirtySource.stderr, /source must be clean/);
+    verifyReleaseEvidence(stage);
+    for (const file of Object.keys(RELEASE_FILES)) {
+        const target = path.join(stage, file);
+        const original = readFileSync(target);
+        rmSync(target);
+        writeReleaseEvidence(source, stage, {
+            commit: "a".repeat(40),
+            dirty: false,
+        });
+        assert.throws(
+            () => verifyReleaseEvidence(stage),
+            /Missing release file/,
+            file,
+        );
+        writeFileSync(target, original);
+    }
+    writeReleaseEvidence(source, stage, {
+        commit: "a".repeat(40),
+        dirty: false,
+    });
     verifyReleaseEvidence(stage);
     writeReleaseEvidence(source, stage, {
         commit: "a".repeat(40),

@@ -68,7 +68,8 @@ export function RegistrationImport() {
             setDraft(null);
             pushToast("Setup saved");
             try {
-                await api.refresh();
+                const { summary } = await api.refresh();
+                if (summary === null) setRefreshError(true);
             } catch {
                 setRefreshError(true);
             }
@@ -93,7 +94,6 @@ export function RegistrationImport() {
     return (
         <fieldset
             className="flex min-w-0 flex-col gap-2"
-            disabled={save.isPending}
             aria-busy={save.isPending || registration.isPending}
             aria-describedby={`${id}-help`}
             onKeyDown={(e) => {
@@ -156,6 +156,7 @@ export function RegistrationImport() {
                         type="text"
                         aria-required="true"
                         disabled={!registration.data}
+                        readOnly={save.isPending}
                         autoComplete="off"
                         spellCheck={false}
                         value={values[key]}
@@ -197,6 +198,7 @@ export function RegistrationImport() {
             <button
                 type="button"
                 disabled={!registration.data}
+                aria-disabled={save.isPending}
                 onClick={submit}
                 className="border-line self-start rounded-md border px-3 py-1 text-xs disabled:opacity-50"
             >

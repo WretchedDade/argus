@@ -437,7 +437,7 @@ export const api = {
             headers: JSON_HEADERS,
         });
         if (!res.ok) throw new Error(`refresh -> ${res.status}`);
-        return readJson(res);
+        return readJson<{ summary: object | null }>(res);
     },
     setScope: async (canonical: string, outOfScope: boolean): Promise<void> => {
         const res = await fetch("/api/pr/scope", {

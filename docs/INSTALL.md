@@ -50,6 +50,10 @@ node scripts/verify-release.ts "$env:TEMP\argus-acquisition\argus-X.Y.Z"
 Staging replaces only `argus-X.Y.Z` under that output root, not other versions or
 archives. Verification checks the file inventory, entry-point syntax, runtime
 imports and Windows x64 native MSAL loading without starting Argus or signing in.
+When `GITHUB_SHA` is set, verification also requires a clean source tree and a
+manifest source commit that matches that SHA. Both release CI verification
+steps enforce this check. Local runs without `GITHUB_SHA` can verify dirty
+development builds; the manifest still records their dirty-source flag.
 It does **not** prove interactive WAM login, window association, app canvas
 discovery or host-injected SDK availability. Never copy a real registration file
 into an archive. The empty example is informational; the current canvas continues

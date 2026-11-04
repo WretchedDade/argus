@@ -11,7 +11,11 @@ import {
     writeFileSync,
 } from "node:fs";
 import path from "node:path";
-import { resetReleaseStage, writeReleaseEvidence } from "./release-evidence.ts";
+import {
+    RELEASE_FILES,
+    resetReleaseStage,
+    writeReleaseEvidence,
+} from "./release-evidence.ts";
 
 const root = path.resolve(import.meta.dirname, "..");
 const readJson = <T>(file: string) =>
@@ -31,15 +35,8 @@ const outputRoot = args[1] ? path.resolve(args[1]) : path.join(root, "release");
 const stage = path.join(outputRoot, name);
 const ext = path.join(stage, "extension");
 
-for (const required of [
-    "extension.mjs",
-    "dist/index.html",
-    "skills/pr-review/SKILL.md",
-    "argus.config.example.json",
-    "docs/INSTALL.md",
-    "scripts/install.ps1",
-    "LICENSE",
-]) {
+for (const required of Object.values(RELEASE_FILES)) {
+    if (!required) continue;
     if (!existsSync(path.join(root, required)))
         throw new Error(`Missing ${required}. Run "npm run build" first.`);
 }
@@ -47,17 +44,18 @@ for (const required of [
 resetReleaseStage(outputRoot, pkg.version);
 mkdirSync(ext, { recursive: true });
 
-cpSync(path.join(root, "extension.mjs"), path.join(ext, "extension.mjs"));
+for (const [destination, source] of Object.entries(RELEASE_FILES)) {
+    if (!source) continue;
+    const target = path.join(stage, destination);
+    mkdirSync(path.dirname(target), { recursive: true });
+    cpSync(path.join(root, source), target);
+}
 cpSync(path.join(root, "dist"), path.join(ext, "dist"), { recursive: true });
 // The first-run setup copies this bundled skill when the user accepts it.
 cpSync(
     path.join(root, "skills", "pr-review"),
     path.join(ext, "skills", "pr-review"),
     { recursive: true },
-);
-cpSync(
-    path.join(root, "argus.config.example.json"),
-    path.join(ext, "argus.config.example.json"),
 );
 // Template only: never copy registration values from a developer's machine.
 writeFileSync(
@@ -111,13 +109,6 @@ rmSync(path.join(ext, "node_modules", "@devstart"), {
     recursive: true,
     force: true,
 });
-
-cpSync(path.join(root, "docs", "INSTALL.md"), path.join(stage, "INSTALL.md"));
-cpSync(
-    path.join(root, "scripts", "install.ps1"),
-    path.join(stage, "install.ps1"),
-);
-cpSync(path.join(root, "LICENSE"), path.join(stage, "LICENSE"));
 
 // Fail early if the runtime dependencies do not resolve from the staged folder.
 execFileSync(

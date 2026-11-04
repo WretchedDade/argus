@@ -8,7 +8,7 @@ const args = process.argv.slice(2);
 if (args.length !== 1)
     throw new Error("Usage: node scripts/verify-release.ts RELEASE_DIRECTORY");
 const stage = path.resolve(args[0]);
-verifyReleaseEvidence(stage);
+verifyReleaseEvidence(stage, process.env.GITHUB_SHA);
 const ext = path.join(stage, "extension");
 const env = { ...process.env };
 delete env.NODE_PATH;
