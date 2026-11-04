@@ -122,8 +122,10 @@ Then choose one outcome:
   verdict `approved`.
 - **Anything else** (any finding, genuine uncertainty, a review you could not
   complete, or an operational failure): **post no ADO comments**, **cast no ADO
-  vote**, and record no verdict. The PR stays in the reviewer's queue. Put the
-  findings or the blocker in the chat so the reviewer can continue from there.
+  vote**, and record no verdict. If the kickoff prompt has a release command,
+  run it so the token does not stay active. The PR stays in the reviewer's queue.
+  Put the findings or the blocker in the chat so the reviewer can continue from
+  there.
 
 End with the PR brief and a summary in the chat: what you reviewed and checked,
 the ADO vote status, and the Argus recording status. If you did not approve, list every
