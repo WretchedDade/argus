@@ -17,7 +17,6 @@ let failDispatch = false;
 const context: ApiContext = {
     store,
     bootAt: new Date().toISOString(),
-    migrated: { imported: 0 },
     reconcile: async () => null,
     refreshPr: async () => {},
     trackPr: async () => ({ ok: false }),

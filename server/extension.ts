@@ -70,18 +70,7 @@ try {
     throw err;
 }
 
-// Legacy pr-tracker archive: read-only input for the one-time migration, only
-// when explicitly pointed at a file. No default, so a shared install doesn't look
-// for another user's paths.
-const INVOLVEMENT_FILE = process.env.ARGUS_INVOLVEMENT_FILE;
-
-// Old pr-tracker state file, imported once when explicitly provided.
-const LEGACY_STATE_FILE = process.env.ARGUS_LEGACY_STATE_FILE;
-
 const store = new ArgusStore(DB_FILE);
-const migrated = INVOLVEMENT_FILE
-    ? store.importInvolvement(INVOLVEMENT_FILE)
-    : { imported: 0 };
 
 // Effective config = env defaults + saved overrides, read fresh on every call so
 // any store write (Settings save, or the poller backfilling `me`) is reflected.
@@ -96,10 +85,6 @@ const saveConfig = (overrides: ConfigOverrides): ArgusConfig => {
     store.saveConfigOverrides(overrides);
     return getConfig();
 };
-
-const legacyImported = LEGACY_STATE_FILE
-    ? store.importLegacyState(LEGACY_STATE_FILE, getConfig().teamPatterns)
-    : { imported: 0 };
 
 // Backfill the first-run gate for installs that predate it: anyone with saved
 // config or tracked PRs has already set things up, so don't show them setup.
@@ -332,7 +317,6 @@ function getNotices(): Notice[] {
 const serverCtx = (): ServerContext => ({
     store,
     bootAt: BOOT_AT,
-    migrated,
     distDir: DIST_DIR,
     reconcile: () => reconcileOnce(pollerCtx),
     refreshPr: (canonical: string) => refreshPr(pollerCtx, canonical),
@@ -496,9 +480,7 @@ const INGEST_PORT = Number(
 setIngestPort(INGEST_PORT);
 const ingestServer = startIngestServer(serverCtx(), INGEST_PORT);
 
-log(
-    `argus loaded; store ${JSON.stringify(store.counts())}, migrated ${migrated.imported}, legacy ${legacyImported.imported}`,
-);
+log(`argus loaded; store ${JSON.stringify(store.counts())}`);
 
 // Release loopback ports and close the store cleanly on teardown.
 let shuttingDown = false;

@@ -1,5 +1,5 @@
 import { DatabaseSync, type StatementSync } from "node:sqlite";
-import { mkdirSync, readFileSync } from "node:fs";
+import { mkdirSync } from "node:fs";
 import { randomUUID } from "node:crypto";
 import path from "node:path";
 import type {
@@ -311,46 +311,6 @@ function weeklyReviewEffort(pr: {
     };
 }
 
-// Subset of the old pr-tracker state records used by importLegacyState.
-interface LegacyPr {
-    url?: string;
-    org?: string;
-    project?: string;
-    repo?: string;
-    pr_number?: number;
-    title?: string;
-    author_display_name?: string | null;
-    is_vendor?: boolean;
-    is_draft?: boolean;
-    lane?: string;
-    state?: string;
-    last_commit_sha?: string | null;
-    last_commit_at?: string | null;
-    pr_created_at?: string | null;
-    added_at?: string | null;
-    last_refreshed_at?: string | null;
-    reviewers?: {
-        id?: string;
-        display_name?: string;
-        vote_code?: number;
-        is_container?: boolean;
-    }[];
-}
-
-// Case-insensitive `*`-glob match, for team display-name patterns.
-function globMatch(pattern: string, value: string): boolean {
-    const rx = new RegExp(
-        "^" +
-            pattern
-                .split("*")
-                .map((s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))
-                .join(".*") +
-            "$",
-        "i",
-    );
-    return rx.test(value);
-}
-
 interface PrRow {
     canonical: string;
     org: string;
@@ -525,64 +485,6 @@ export class ArgusStore {
       UPDATE prs SET reviewed_sha_authored_at = last_commit_at
       WHERE reviewed_sha IS NOT NULL AND reviewed_sha_authored_at IS NULL
         AND reviewed_sha = last_commit_sha AND last_commit_at IS NOT NULL
-    `);
-        // Backfill a `verdict` onto migrated review events from the old tracker's
-        // vote label, so historical reviews feed the verdict-based metrics (rhythm,
-        // throughput). Idempotent: only touches migration reviews still lacking a
-        // verdict whose vote maps to a known state ("No Vote" stays excluded).
-        this.#db.exec(`
-      UPDATE pr_events
-      SET payload = json_set(payload, '$.verdict',
-        CASE lower(json_extract(payload, '$.vote'))
-          WHEN 'approved' THEN 'approved'
-          WHEN 'approve' THEN 'approved'
-          WHEN 'approved with suggestions' THEN 'suggestions'
-          WHEN 'waiting for author' THEN 'waiting'
-          WHEN 'rejected' THEN 'rejected'
-        END)
-      WHERE type = 'reviewed'
-        AND json_extract(payload, '$.source') = 'migration'
-        AND json_extract(payload, '$.verdict') IS NULL
-        AND lower(json_extract(payload, '$.vote')) IN
-            ('approved', 'approve', 'approved with suggestions', 'waiting for author', 'rejected')
-    `);
-        // Backfill final verdict + comment count onto migrated PRs from their latest
-        // migrated review, so historical reviews feed How-you-vote, Review depth, and
-        // the vote journey. Migrated rows have null role/teams, so they stay out of
-        // team-coverage (no source data) but count where only a verdict is needed.
-        this.#db.exec(`
-      UPDATE prs SET review_state = (
-        SELECT json_extract(e.payload, '$.verdict') FROM pr_events e
-        WHERE e.canonical = prs.canonical AND e.type = 'reviewed'
-          AND json_extract(e.payload, '$.source') = 'migration'
-          AND json_extract(e.payload, '$.verdict') IS NOT NULL
-        ORDER BY e.ts DESC, e.id DESC LIMIT 1
-      )
-      WHERE review_state IS NULL AND EXISTS (
-        SELECT 1 FROM pr_events e
-        WHERE e.canonical = prs.canonical AND e.type = 'reviewed'
-          AND json_extract(e.payload, '$.source') = 'migration'
-          AND json_extract(e.payload, '$.verdict') IS NOT NULL
-      )
-    `);
-        this.#db.exec(`
-      UPDATE prs SET my_comments = (
-        SELECT COALESCE(json_extract(e.payload, '$.comments_posted.critical'), 0)
-             + COALESCE(json_extract(e.payload, '$.comments_posted.important'), 0)
-             + COALESCE(json_extract(e.payload, '$.comments_posted.suggestion'), 0)
-             + COALESCE(json_extract(e.payload, '$.comments_posted.praise'), 0)
-        FROM pr_events e
-        WHERE e.canonical = prs.canonical AND e.type = 'reviewed'
-          AND json_extract(e.payload, '$.source') = 'migration'
-          AND json_extract(e.payload, '$.verdict') IS NOT NULL
-        ORDER BY e.ts DESC, e.id DESC LIMIT 1
-      )
-      WHERE my_comments IS NULL AND EXISTS (
-        SELECT 1 FROM pr_events e
-        WHERE e.canonical = prs.canonical AND e.type = 'reviewed'
-          AND json_extract(e.payload, '$.source') = 'migration'
-          AND json_extract(e.payload, '$.verdict') IS NOT NULL
-      )
     `);
         // Baseline "changes seen" to now on first run so you start caught up rather
         // than facing the entire migrated history as unseen.
@@ -2976,86 +2878,6 @@ export class ArgusStore {
         this.#setSetting("seen_teams", JSON.stringify(merged));
     }
 
-    // One-time, guarded import of the old pr-tracker state file so we have real
-    // (mostly stale) PRs to work with. INSERT OR IGNORE won't clobber live rows;
-    // updated_at is set to the old last-refreshed time so they read as stale.
-    importLegacyState(
-        file: string,
-        teamPatterns: string[],
-    ): { imported: number } {
-        if (this.#getSetting("legacy_imported")) return { imported: 0 };
-        let text: string;
-        try {
-            text = readFileSync(file, "utf-8");
-        } catch {
-            return { imported: 0 };
-        }
-        const parsed = JSON.parse(text) as { prs?: Record<string, LegacyPr> };
-        const prs = parsed.prs ? Object.values(parsed.prs) : [];
-
-        let imported = 0;
-        this.#db.exec("BEGIN");
-        try {
-            for (const p of prs) {
-                if (!p.url) continue;
-                const teams = (p.reviewers ?? [])
-                    .filter(
-                        (r) =>
-                            r.is_container &&
-                            r.display_name &&
-                            teamPatterns.some((pat) =>
-                                globMatch(pat, r.display_name!),
-                            ),
-                    )
-                    .map((r) => r.display_name!);
-                const votes = Object.fromEntries(
-                    (p.reviewers ?? [])
-                        .filter((r) => r.id)
-                        .map((r): [string, number] => [
-                            r.id!,
-                            r.vote_code ?? 0,
-                        ]),
-                );
-                const ts = p.last_refreshed_at || p.added_at || now();
-                const info = this.#prep(
-                    `
-          INSERT OR IGNORE INTO prs (canonical, org, project, repo, number, title, author, is_vendor,
-                                     role, teams_json, is_draft, lane, state, last_commit_sha, last_commit_at,
-                                     pr_created_at, added_at, updated_at, reviewers_json)
-          VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
-        `,
-                ).run(
-                    p.url,
-                    p.org ?? "",
-                    p.project ?? "",
-                    p.repo ?? "",
-                    p.pr_number ?? 0,
-                    p.title ?? "",
-                    p.author_display_name ?? null,
-                    p.is_vendor ? 1 : 0,
-                    teams.length ? "team" : "reviewer",
-                    JSON.stringify(teams),
-                    p.is_draft ? 1 : 0,
-                    p.lane === "quick" ? "quick" : "review",
-                    p.state === "reviewed" ? "reviewed" : "pending",
-                    p.last_commit_sha ?? null,
-                    p.last_commit_at ?? null,
-                    p.pr_created_at ?? null,
-                    p.added_at ?? ts,
-                    ts,
-                    JSON.stringify(votes),
-                );
-                if (info.changes) imported += 1;
-            }
-            this.#setSetting("legacy_imported", now());
-            this.#db.exec("COMMIT");
-        } catch (err) {
-            this.#db.exec("ROLLBACK");
-            throw err;
-        }
-        return { imported };
-    }
-
     counts(): { prs: number; events: number } {
         const prs = this.#prep("SELECT COUNT(*) AS n FROM prs").get() as {
             n: number;
@@ -3066,104 +2888,6 @@ export class ArgusStore {
         return { prs: prs.n, events: events.n };
     }
 
-    // Read-only import of the legacy pr-tracker involvement archive so Insights
-    // has real history. Idempotent: safe to re-run to pick up new departures as
-    // pr-tracker keeps appending. Reconstructs a timeline per record; never writes
-    // back to the archive.
-    importInvolvement(file: string): { imported: number } {
-        let text: string;
-        try {
-            text = readFileSync(file, "utf-8");
-        } catch {
-            return { imported: 0 }; // archive absent; nothing to migrate
-        }
-
-        let imported = 0;
-        this.#db.exec("BEGIN");
-        try {
-            for (const line of text.split("\n")) {
-                const trimmed = line.trim();
-                if (!trimmed) continue;
-                const rec = JSON.parse(trimmed) as InvolvementRecord;
-                if (!rec.url || this.#recordImported(rec)) continue;
-                this.#importRecord(rec);
-                imported += 1;
-            }
-            this.#db.exec("COMMIT");
-        } catch (err) {
-            this.#db.exec("ROLLBACK");
-            throw err;
-        }
-        return { imported };
-    }
-
-    #importRecord(rec: InvolvementRecord): void {
-        const parsed = parseAdoPrUrl(rec.url!);
-        const added = rec.added_at || rec.archived_at || now();
-
-        // Historical PRs are terminal; store a closed snapshot so joins/counts work.
-        this.#prep(
-            `
-      INSERT OR IGNORE INTO prs (canonical, org, project, repo, number, title,
-                                 author, is_vendor, lane, state, added_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'closed', ?, ?)
-    `,
-        ).run(
-            rec.url!,
-            parsed?.org ?? "",
-            parsed?.project ?? "",
-            rec.repo ?? parsed?.repo ?? "",
-            rec.pr_number ?? parsed?.number ?? 0,
-            rec.title ?? "",
-            rec.author_display_name ?? null,
-            b(!!rec.is_vendor || !!rec.is_agency),
-            rec.lane === "quick" ? "quick" : "review",
-            added,
-            rec.archived_at ?? added,
-        );
-
-        if (rec.added_at)
-            this.appendEvent(
-                rec.url!,
-                "added",
-                { source: "migration" },
-                rec.added_at,
-            );
-        for (const rv of rec.reviews ?? []) {
-            this.appendEvent(
-                rec.url!,
-                "reviewed",
-                {
-                    source: "migration",
-                    mode: rv.mode,
-                    vote: rv.vote,
-                    comments_posted: rv.comments_posted,
-                },
-                rv.reviewed_at || added,
-            );
-        }
-        const terminal: PrEventType =
-            rec.reason === "removed" ? "removed" : "closed";
-        this.appendEvent(
-            rec.url!,
-            terminal,
-            { source: "migration", reason: rec.reason },
-            rec.archived_at || added,
-        );
-    }
-
-    // A record is already imported if its terminal event exists. Dedups by the
-    // PR's departure timestamp, so re-running only adds new departures — and it's
-    // idempotent against data already in the DB, no separate bookkeeping.
-    #recordImported(rec: InvolvementRecord): boolean {
-        const terminalTs = rec.archived_at || rec.added_at;
-        if (!terminalTs) return false; // no stable timestamp; let it import
-        const type = rec.reason === "removed" ? "removed" : "closed";
-        return !!this.#prep(
-            "SELECT 1 FROM pr_events WHERE canonical = ? AND ts = ? AND type = ? LIMIT 1",
-        ).get(rec.url!, terminalTs, type);
-    }
-
     // Consistent snapshot into a new file. Fails if the target file exists.
     copyTo(file: string): void {
         mkdirSync(path.dirname(file), { recursive: true });
@@ -3172,53 +2896,5 @@ export class ArgusStore {
 
     close(): void {
         this.#db.close();
-    }
-}
-
-// Shape of one line in the legacy pr-involvement.jsonl archive.
-interface InvolvementRecord {
-    url?: string;
-    repo?: string;
-    pr_number?: number;
-    title?: string;
-    author_display_name?: string | null;
-    is_vendor?: boolean;
-    is_agency?: boolean;
-    lane?: string | null;
-    added_at?: string | null;
-    archived_at?: string;
-    reason?: string;
-    reviews?: {
-        mode?: string;
-        reviewed_at?: string;
-        vote?: unknown;
-        comments_posted?: unknown;
-    }[];
-}
-
-// Best-effort parse of dev.azure.com and *.visualstudio.com PR URLs.
-function parseAdoPrUrl(
-    url: string,
-): { org: string; project: string; repo: string; number: number } | null {
-    try {
-        const u = new URL(url);
-        const parts = u.pathname.split("/").filter(Boolean);
-        const gitIdx = parts.indexOf("_git");
-        const prIdx = parts.indexOf("pullrequest");
-        if (gitIdx === -1 || prIdx === -1) return null;
-        const org = u.hostname.endsWith("visualstudio.com")
-            ? u.hostname.split(".")[0]
-            : parts[0];
-        const project = u.hostname.endsWith("visualstudio.com")
-            ? parts[0]
-            : parts[1];
-        return {
-            org: org ?? "",
-            project: project ?? "",
-            repo: parts[gitIdx + 1] ?? "",
-            number: Number(parts[prIdx + 1]) || 0,
-        };
-    } catch {
-        return null;
     }
 }
