@@ -12,6 +12,7 @@ import { configQuery, healthQuery, prsQuery } from "../lib/api";
 import { needsYouCount } from "../lib/triage";
 import { BrandMark } from "../components/BrandMark";
 import { NotificationsBell } from "../components/NotificationsBell";
+import { ArchiveBanner } from "../components/notifications/ArchiveBanner";
 import { PrSearch } from "../components/PrSearch";
 import { RefreshButton } from "../components/RefreshButton";
 import { StatusCluster } from "../components/StatusCluster";
@@ -223,6 +224,7 @@ function RootLayout() {
                     </div>
                 </header>
                 <main className="p-4">
+                    <ArchiveBanner />
                     <Outlet />
                 </main>
             </div>

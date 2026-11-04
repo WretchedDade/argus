@@ -1,8 +1,7 @@
-import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Archive } from "lucide-react";
-import { api, type ArchivableSession } from "../../lib/api";
+import type { ArchivableSession } from "../../lib/api";
 import { shortRepo } from "../../lib/format";
-import { pushToast } from "../../lib/toast";
+import { useArchive } from "../../lib/useArchive";
 import { IconBadge } from "./IconBadge";
 import { PrimaryButton } from "./NoticeRow";
 
@@ -15,16 +14,7 @@ export function ArchiveSection({
     sessions: ArchivableSession[];
     onDone: () => void;
 }) {
-    const qc = useQueryClient();
-    const archive = useMutation({
-        mutationFn: () => api.archive(),
-        onSuccess: () => {
-            pushToast("Archive request sent to chat");
-            void qc.invalidateQueries({ queryKey: ["archivable"] });
-            onDone();
-        },
-        onError: () => pushToast("Couldn't send archive request", "error"),
-    });
+    const archive = useArchive(onDone);
     const plural = sessions.length === 1 ? "" : "s";
 
     return (
