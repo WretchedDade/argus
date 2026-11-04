@@ -7,10 +7,14 @@ import {
     existsSync,
     mkdirSync,
     readFileSync,
-    rmSync,
     writeFileSync,
 } from "node:fs";
 import path from "node:path";
+import {
+    generateNotices,
+    pruneLockfile,
+    type Lockfile,
+} from "./release-deps.ts";
 import {
     RELEASE_FILES,
     resetReleaseStage,
@@ -22,9 +26,7 @@ const readJson = <T>(file: string) =>
     JSON.parse(readFileSync(path.join(root, file), "utf8")) as T;
 
 const pkg = readJson<{ version: string }>("package.json");
-const lock = readJson<{ packages: Record<string, { version: string }> }>(
-    "package-lock.json",
-);
+const lock = readJson<Lockfile>("package-lock.json");
 const name = `argus-${pkg.version}`;
 const args = process.argv.slice(2);
 if (args.length && (args.length !== 2 || args[0] !== "--output-root"))
@@ -63,53 +65,38 @@ writeFileSync(
     JSON.stringify({ clientId: "", tenantId: "" }, null, 4) + "\n",
 );
 
-// extension.mjs bundles everything except these packages. Pin them to the
-// versions in package-lock.json.
+// extension.mjs bundles everything except these packages. Install only them,
+// with the versions and integrity values from the committed lockfile.
 const external = ["@azure/identity", "@azure/identity-broker"];
-const dependencies = Object.fromEntries(
-    external.map((dep) => {
-        const entry = lock.packages[`node_modules/${dep}`];
-        if (!entry) throw new Error(`${dep} not found in package-lock.json`);
-        return [dep, entry.version];
-    }),
+const stagedLock = pruneLockfile(
+    lock,
+    { name: "argus", version: pkg.version },
+    external,
 );
-const stagedManifest =
-    JSON.stringify(
-        {
-            name: "argus",
-            version: pkg.version,
-            private: true,
-            type: "module",
-            dependencies,
-        },
-        null,
-        4,
-    ) + "\n";
-
-// Install from the root lockfile so the production tree matches the tested
-// one. The manifest has no scripts, so the root "prepare" hook does not run.
+const stagedManifest = {
+    name: "argus",
+    version: pkg.version,
+    private: true,
+    type: "module",
+    dependencies: stagedLock.packages[""].dependencies,
+};
 writeFileSync(
     path.join(ext, "package.json"),
-    JSON.stringify({ ...pkg, scripts: undefined }, null, 4) + "\n",
+    JSON.stringify(stagedManifest, null, 4) + "\n",
 );
-cpSync(
-    path.join(root, "package-lock.json"),
+writeFileSync(
     path.join(ext, "package-lock.json"),
+    JSON.stringify(stagedLock, null, 4) + "\n",
 );
 execFileSync("npm", ["ci", "--omit=dev", "--no-audit", "--no-fund"], {
     cwd: ext,
     stdio: "inherit",
     shell: true,
 });
-writeFileSync(path.join(ext, "package.json"), stagedManifest);
-rmSync(path.join(ext, "package-lock.json"), { force: true });
-// The lockfile links the workspace package, which esbuild already bundles. The
-// link points outside the ZIP, so remove it.
-rmSync(path.join(ext, "node_modules", "@devstart"), {
-    recursive: true,
-    force: true,
-});
-
+writeFileSync(
+    path.join(stage, "THIRD-PARTY-NOTICES"),
+    generateNotices(ext, stagedLock),
+);
 // Fail early if the runtime dependencies do not resolve from the staged folder.
 execFileSync(
     process.execPath,
