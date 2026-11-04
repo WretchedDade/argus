@@ -73,13 +73,13 @@ export function getPollerStatus(): PollerStatus {
 
 // Single-flight: a manual refresh and the timer never run concurrently; callers
 // share the in-progress run. Across hosts, only the poll lease holder runs; any
-// other host skips the run and returns null.
+// other host skips the run and returns "skipped".
 export function reconcileOnce(
     ctx: PollerContext,
-): Promise<ReconcileSummary | null> {
+): Promise<ReconcileSummary | null | "skipped"> {
     if (inFlight) return inFlight;
     if (!ctx.store.acquirePollLease(hostId, LEASE_TTL_MS)) {
-        return Promise.resolve(null);
+        return Promise.resolve("skipped");
     }
     inFlight = runReconcile(ctx).finally(() => {
         inFlight = null;
