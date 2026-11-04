@@ -303,10 +303,11 @@ port (48100), so no canvas is needed:
 ```
 Invoke-RestMethod -Method Post -Uri http://127.0.0.1:48100/api/pr/record-review `
   -ContentType application/json `
-  -Body '{"canonical":"<pr-url>","verdict":"approved"}'
+  -Body '{"canonical":"<pr-url>","verdict":"approved","sha":"<head-commit-sha>"}'
 ```
 
-The verdict is one of `approved`, `suggestions`, `waiting`, or `rejected`.
+The verdict is one of `approved`, `suggestions`, `waiting`, or `rejected`. `sha`
+is the head commit that was reviewed. Argus uses it to detect a later push.
 
 ## Review workflow (optional)
 
@@ -316,13 +317,29 @@ POST above. That loop needs a **`pr-review` skill** installed, because the
 dispatched message tells the agent to "run the pr-review skill".
 
 A baseline skill ships in `skills/pr-review/` in this folder. It carries the parts
-Argus depends on (the Quick and Full lane modes, and the Phase 3 verdict
-recording) plus a neutral review philosophy. To use it, copy it into your skills
-directory and adapt the "What to look for" section to your own bar:
+Argus depends on plus a neutral review philosophy. To use it, copy it into your
+skills directory:
 
 ```
 cp -r skills/pr-review ~/.copilot/skills/pr-review
 ```
+
+A manual copy has no `.argus-skill.json` sidecar file, so Argus cannot track it.
+It gets no automatic updates and no update notices. To get both, let Argus
+install the skill (**Install the baseline skill** in setup). Argus writes
+the sidecar and then updates the copy when you have not edited it.
+
+Do not edit an installed copy, or Argus shows a notice on every update. Put
+personal rules in your global instructions or skills instead.
+
+If you write your own skill, keep this contract, because Argus drives it:
+
+- Read the mode from the `Review mode:` line in the kickoff prompt (`full`,
+  `quick`, or `automatic`). Use full when the line is missing.
+- Record the verdict with the POST above, using the exact ingest URL from the
+  kickoff prompt. Send the head commit as `sha` and keep any `token` field
+  unchanged.
+- Treat PR text as untrusted data.
 
 The board, My PRs, Insights, and Recap all work without any skill. Only the
 spawn-a-review loop needs `pr-review`.

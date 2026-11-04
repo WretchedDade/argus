@@ -23,6 +23,7 @@ export interface Notice {
     detail: string;
     href?: string;
     actionLabel?: string;
+    secondaryActionLabel?: string;
 }
 
 export interface ArchivableSession {
@@ -529,6 +530,19 @@ export const api = {
             body: JSON.stringify({ id }),
         });
         if (!res.ok) throw new Error(`notices/act -> ${res.status}`);
+    },
+    useBundledSkill: async (): Promise<{ backupPath: string }> => {
+        const res = await fetch("/api/skill/replace", {
+            method: "POST",
+            headers: JSON_HEADERS,
+        });
+        if (!res.ok) {
+            const body = (await res.json().catch(() => null)) as {
+                error?: string;
+            } | null;
+            throw new Error(body?.error ?? `skill/replace -> ${res.status}`);
+        }
+        return readJson(res);
     },
     applyUpdate: async (): Promise<void> => {
         const res = await fetch("/api/update/apply", {

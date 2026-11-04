@@ -107,6 +107,25 @@ try {
         "no outstanding tokens remain after the review",
     );
 
+    // An escalation releases its token without recording a verdict.
+    const dispatchedAgain = await post("/api/pr/review", {
+        canonical,
+        automatic: true,
+    });
+    assert.equal(dispatchedAgain.status, 200);
+    const releaseToken = /"token":"([^"]+)"/.exec(prompts.at(-1) ?? "")?.[1];
+    assert.ok(releaseToken);
+    assert.equal((await verdict("approved")).status, 403);
+    recorded.length = 0;
+    const released = await post("/api/pr/record-review", {
+        canonical,
+        token: releaseToken,
+        release: true,
+    });
+    assert.equal(released.status, 200);
+    assert.equal(recorded.length, 0, "a release records no verdict");
+    assert.equal((await verdict("approved")).status, 200);
+
     // A failed dispatch revokes its own token only.
     const keep = store.issueAutomaticReviewToken(canonical);
     failDispatch = true;

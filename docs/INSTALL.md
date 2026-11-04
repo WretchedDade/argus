@@ -117,7 +117,7 @@ Once a day, Argus checks GitHub for a new release. When one exists, the bell sho
 
 To upgrade by hand, extract the new ZIP and run `install.ps1` from it with the same command as the install. To check the ZIP first, compare `(Get-FileHash <zip>).Hash` with the hash in the `.sha256` file on the release page. Your `argus.config.json` and database are not in the ZIP, so the copy keeps them. Then reload extensions.
 
-An unedited `pr-review` skill that Argus installed updates by itself. If you edited it, Argus leaves it and shows a notice with **Merge with Copilot**.
+An unedited `pr-review` skill that Argus installed updates by itself. If you edited it, Argus leaves it and shows a notice with **Merge with Copilot** and **Use new version**. **Use new version** replaces your copy with the bundled one and saves your old copy in `~/.copilot/skill-backups/`.
 
 If your database is still on OneDrive from an earlier version, Argus keeps using it and shows a notice with **Choose with Copilot**. Choose to move it to `%LOCALAPPDATA%\argus\argus.db`, or to keep it on OneDrive as a backup. The notice clears after you choose and reload extensions. Argus never moves the file without your approval.
 

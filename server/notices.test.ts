@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import {
     mkdirSync,
     mkdtempSync,
+    readdirSync,
     readFileSync,
     rmSync,
     writeFileSync,
@@ -14,6 +15,7 @@ import {
     acknowledgeSkill,
     hashDir,
     installSkill,
+    replaceSkill,
     SKILL_SIDECAR,
     syncSkill,
 } from "./skill-sync.ts";
@@ -168,5 +170,39 @@ assert.equal(syncSkill(src, dest).state, "pending");
 assert.equal(readFileSync(path.join(dest, "SKILL.md"), "utf-8"), "my edit\n");
 rmSync(path.join(dest, SKILL_SIDECAR));
 assert.deepEqual(syncSkill(src, dest), { state: "none" }); // not ours
+
+// Using the new version replaces the edited copy and keeps a backup.
+installSkill(src, dest);
+writeFileSync(path.join(dest, "SKILL.md"), "my edit\n");
+writeFileSync(path.join(src, "SKILL.md"), "v5\n");
+assert.equal(syncSkill(src, dest).state, "pending");
+const backup = path.join(dir, "backups", "pr-review");
+replaceSkill(src, dest, backup);
+assert.equal(readFileSync(path.join(dest, "SKILL.md"), "utf-8"), "v5\n");
+assert.equal(readFileSync(path.join(backup, "SKILL.md"), "utf-8"), "my edit\n");
+assert.deepEqual(syncSkill(src, dest), { state: "none" });
+writeFileSync(path.join(src, "SKILL.md"), "v6\n");
+assert.deepEqual(syncSkill(src, dest), { state: "updated" }); // baseline again
+
+// A failed replacement keeps the working install.
+writeFileSync(path.join(dest, "SKILL.md"), "my edit\n");
+assert.throws(() =>
+    replaceSkill(path.join(dir, "missing-src"), dest, path.join(dir, "b2")),
+);
+assert.equal(readFileSync(path.join(dest, "SKILL.md"), "utf-8"), "my edit\n");
+assert.deepEqual(
+    readdirSync(path.dirname(dest)).filter((n) => n.includes("-swap-")),
+    [],
+);
+
+// Sibling folders that the user owns survive a replacement.
+const userBackup = `${dest}.old`;
+mkdirSync(userBackup);
+writeFileSync(path.join(userBackup, "SKILL.md"), "user backup\n");
+replaceSkill(src, dest, path.join(dir, "b3"));
+assert.equal(
+    readFileSync(path.join(userBackup, "SKILL.md"), "utf-8"),
+    "user backup\n",
+);
 
 rmSync(dir, { recursive: true, force: true });

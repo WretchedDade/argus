@@ -8,6 +8,7 @@ export interface Notice {
     detail: string;
     href?: string;
     actionLabel?: string; // button that sends `prompt` to the chat
+    secondaryActionLabel?: string; // button that replaces the installed skill (skill-update only)
     prompt?: string; // server only; never sent to the browser
 }
 
@@ -50,8 +51,9 @@ export function buildNotices(inputs: NoticeInputs): Notice[] {
             id: `skill-update:${inputs.skill.bundledHash}`,
             kind: "skill-update",
             title: "A newer baseline pr-review skill is available",
-            detail: `Your edited copy was left as it is.\nCopilot can merge the new version into it.`,
+            detail: `Your edited copy was left as it is.\nCopilot can merge the new version into it, or you can use the new version. Argus saves a backup of your copy first.`,
             actionLabel: "Merge with Copilot",
+            secondaryActionLabel: "Use new version",
             prompt: [
                 skillSteps(
                     inputs.skill.bundledPath,
