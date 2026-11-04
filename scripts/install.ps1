@@ -15,6 +15,8 @@ foreach ($required in "extension.mjs", "package.json", "dist") {
 }
 
 # Copy over the install and do not delete it first. This keeps argus.config.json.
+# Only node_modules is replaced, so packages that the release dropped do not remain.
+Remove-Item -Recurse -Force (Join-Path $Destination "node_modules") -ErrorAction SilentlyContinue
 New-Item -ItemType Directory -Force -Path $Destination | Out-Null
 Copy-Item -Recurse -Force (Join-Path $source "*") $Destination
 

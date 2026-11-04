@@ -73,7 +73,7 @@ No plugin persistent-data migration has been enabled.
 
     The `-ExecutionPolicy Bypass` option applies to this one command only. It lets the script run under the default `Restricted` policy, or when the extracted file has the download mark. It does not change your policy.
 
-    To use a different folder, pass `-Destination <path>`. The script copies over the existing files and does not delete the folder first, so `argus.config.json` stays.
+    To use a different folder, pass `-Destination <path>`. The script copies over the existing files and does not delete the folder first, so `argus.config.json` stays. It replaces only `node_modules`, so packages that a release drops do not remain.
 
 3. Reload extensions in the Copilot app, or restart it.
 4. Open the Argus canvas.
