@@ -570,14 +570,21 @@ export function startPoller(ctx: PollerContext): void {
 export function stopPoller(): void {
     if (timer) clearTimeout(timer);
     timer = null;
-    if (leaseTimer) clearInterval(leaseTimer);
+    // Keep the lease until an active run ends, so no other host polls beside it.
+    const beat = leaseTimer;
+    const store = leaseStore;
     leaseTimer = null;
-    try {
-        leaseStore?.releasePollLease(hostId);
-    } catch {
-        // The lease expires by itself.
-    }
     leaseStore = null;
+    const release = () => {
+        if (beat) clearInterval(beat);
+        try {
+            store?.releasePollLease(hostId);
+        } catch {
+            // The lease expires by itself.
+        }
+    };
+    if (inFlight) inFlight.then(release, release);
+    else release();
 }
 
 function scheduleNext(ctx: PollerContext): void {
