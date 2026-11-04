@@ -3,12 +3,16 @@
     "version": "0.1.0",
     "private": true,
     "type": "module",
-    "exports": "./src/index.ts",
+    "exports": {
+        ".": "./src/index.ts",
+        "./retry": "./src/retry.ts"
+    },
     "scripts": {
         "test": "node --test src/*.test.ts"
     },
     "dependencies": {
         "@azure/identity": "^4.14.0",
-        "@azure/identity-broker": "^1.4.2"
+        "@azure/identity-broker": "^1.4.2",
+        "cockatiel": "^4.0.0"
     }
 }
