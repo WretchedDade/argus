@@ -56,7 +56,10 @@ export function withRetry<T>(
         signal,
     } = options;
     const policy = retry(
-        handleWhen((err) => shouldRetry(err)),
+        // A Retry-After beyond the cap is not honored by waiting less, so stop retrying.
+        handleWhen(
+            (err) => shouldRetry(err) && (retryAfterOf(err) ?? 0) <= maxDelayMs,
+        ),
         {
             maxAttempts: maxAttempts - 1,
             backoff: new DelegateBackoff(
@@ -65,7 +68,7 @@ export function withRetry<T>(
                         "error" in ctx.result
                             ? retryAfterOf(ctx.result.error)
                             : undefined;
-                    if (hint !== undefined) return Math.min(hint, maxDelayMs);
+                    if (hint !== undefined) return hint;
                     const ceiling = Math.min(
                         maxDelayMs,
                         baseDelayMs * 2 ** (ctx.attempt - 1),
@@ -76,6 +79,27 @@ export function withRetry<T>(
         },
     );
     return policy.execute(() => fn(), signal);
+}
+
+// Rejects with a retryable TimeoutError when `promise` does not settle in `ms`.
+export async function withTimeout<T>(
+    promise: Promise<T>,
+    ms: number,
+): Promise<T> {
+    let handle: NodeJS.Timeout | undefined;
+    try {
+        return await Promise.race([
+            promise,
+            new Promise<never>((_, reject) => {
+                handle = setTimeout(
+                    () => reject(new DOMException("timed out", "TimeoutError")),
+                    ms,
+                );
+            }),
+        ]);
+    } finally {
+        clearTimeout(handle);
+    }
 }
 
 // Parses a Retry-After header: delta-seconds or an HTTP date. Returns milliseconds.

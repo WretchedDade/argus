@@ -9,6 +9,7 @@ import {
     isTransientStatus,
     parseRetryAfter,
     withRetry,
+    withTimeout,
 } from "@devstart/ado-client/retry";
 import type { AdoRawPr } from "./types.ts";
 import { resolveAzCommand } from "./az-command.ts";
@@ -294,7 +295,11 @@ let tokenCache: { token: string; exp: number } | null = null;
 // A bearer token for ADO REST calls (used to proxy auth-gated PR attachments).
 // Cached in-process until ~1 min before expiry.
 export async function adoAccessToken(): Promise<string> {
-    if (useBroker()) return (await broker()).auth.getAccessToken();
+    if (useBroker())
+        return withTimeout(
+            (await broker()).auth.getAccessToken(),
+            FETCH_TIMEOUT_MS,
+        );
     if (tokenCache && tokenCache.exp - 60_000 > Date.now())
         return tokenCache.token;
     const [cmd, cmdArgs] = azCommand([

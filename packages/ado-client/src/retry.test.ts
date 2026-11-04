@@ -89,6 +89,41 @@ test("withRetry does not retry a non-transient error", async () => {
     assert.equal(calls, 1);
 });
 
+test("does not retry when Retry-After is longer than the delay cap", async (t) => {
+    const calls = stubFetch(
+        t,
+        async () =>
+            new Response("", {
+                status: 429,
+                headers: { "retry-after": "120" },
+            }),
+    );
+    const client = new AdoRestClient(auth, { baseDelayMs: 1 });
+    await assert.rejects(() => client.json(URL), /429/);
+    assert.equal(calls(), 1);
+});
+
+test("times out a token request that never settles", async (t) => {
+    const keepAlive = setInterval(() => {}, 1000);
+    t.after(() => clearInterval(keepAlive));
+    const calls = stubFetch(t, async () => new Response("{}", { status: 200 }));
+    let tokenCalls = 0;
+    const hungAuth = {
+        getAccessToken: () =>
+            ++tokenCalls === 1
+                ? new Promise<string>(() => {})
+                : Promise.resolve("test-token"),
+        requireInteraction: () => {},
+    } as unknown as AdoAuth;
+    const client = new AdoRestClient(hungAuth, {
+        timeoutMs: 20,
+        baseDelayMs: 1,
+    });
+    assert.deepEqual(await client.json(URL), {});
+    assert.equal(tokenCalls, 2);
+    assert.equal(calls(), 1);
+});
+
 test("parses Retry-After seconds and dates", () => {
     assert.equal(parseRetryAfter("3"), 3000);
     assert.equal(

@@ -1,6 +1,11 @@
 import type { AdoAuth } from "./auth.ts";
 import { AuthInteractionRequiredError } from "./auth.ts";
-import { isTransientError, parseRetryAfter, withRetry } from "./retry.ts";
+import {
+    isTransientError,
+    parseRetryAfter,
+    withRetry,
+    withTimeout,
+} from "./retry.ts";
 
 const REQUEST_TIMEOUT_MS = 30_000;
 
@@ -84,7 +89,10 @@ export class AdoRestClient {
         url: string,
         init: RequestInit,
     ): Promise<Response> {
-        const token = await this.auth.getAccessToken();
+        const token = await withTimeout(
+            this.auth.getAccessToken(),
+            this.options.timeoutMs,
+        );
         const headers = new Headers(init.headers);
         headers.set("authorization", `Bearer ${token}`);
         if (!headers.has("accept")) headers.set("accept", "application/json");
