@@ -1,84 +1,22 @@
 import { useState } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Archive, Bell, Download, RefreshCw } from "lucide-react";
-import { api, archivableQuery, noticesQuery, type Notice } from "../lib/api";
-import { shortRepo } from "../lib/format";
-import { pushToast } from "../lib/toast";
-import { usePending } from "../lib/usePending";
+import { useQuery } from "@tanstack/react-query";
+import { Bell } from "lucide-react";
+import { archivableQuery, noticesQuery } from "../lib/api";
+import { ArchiveSection } from "./notifications/ArchiveSection";
+import { SkillNotice } from "./notifications/SkillNotice";
+import { StorageNotice } from "./notifications/StorageNotice";
+import { UpdateNotice } from "./notifications/UpdateNotice";
 
 // The bell lists things that need attention: Argus notices (new release,
 // updated baseline skill) and review sessions whose PR has merged/closed with
-// no further work. Archiving dispatches a request to chat, which cleans up the
-// finished worktree sessions in bulk.
+// no further work. Each kind of item owns its own actions.
 export function NotificationsBell() {
-    const qc = useQueryClient();
     const [open, setOpen] = useState(false);
-    const { pending, run } = usePending();
 
     const archivable = useQuery(archivableQuery).data ?? [];
     const notices = useQuery(noticesQuery).data ?? [];
     const badge = archivable.length + notices.length;
-
-    const act = (n: Notice) =>
-        run(async () => {
-            if (n.kind === "app-update") {
-                try {
-                    await api.applyUpdate();
-                    pushToast("Update installed. Reload extensions to finish.");
-                    void qc.invalidateQueries({ queryKey: ["notices"] });
-                    setOpen(false);
-                } catch (err) {
-                    pushToast(
-                        `Update failed: ${(err as Error).message}`,
-                        "error",
-                    );
-                }
-                return;
-            }
-            try {
-                await api.actOnNotice(n.id);
-                pushToast("Request sent to chat");
-                void qc.invalidateQueries({ queryKey: ["notices"] });
-                setOpen(false);
-            } catch {
-                pushToast("Couldn't send the request to chat", "error");
-            }
-        });
-
-    const replaceWithBundled = () =>
-        run(async () => {
-            try {
-                const { backupPath } = await api.useBundledSkill();
-                pushToast(`Skill replaced. Your old copy is in ${backupPath}`);
-                void qc.invalidateQueries({ queryKey: ["notices"] });
-                setOpen(false);
-            } catch (err) {
-                pushToast(
-                    `Couldn't replace the skill: ${(err as Error).message}`,
-                    "error",
-                );
-            }
-        });
-
-    const dismiss = async (id: string) => {
-        try {
-            await api.dismissNotice(id);
-            void qc.invalidateQueries({ queryKey: ["notices"] });
-        } catch {
-            pushToast("Couldn't dismiss the notice", "error");
-        }
-    };
-    const archive = () =>
-        run(async () => {
-            try {
-                await api.archive();
-                pushToast("Archive request sent to chat");
-                void qc.invalidateQueries({ queryKey: ["archivable"] });
-                setOpen(false);
-            } catch {
-                pushToast("Couldn't send archive request", "error");
-            }
-        });
+    const close = () => setOpen(false);
 
     return (
         <div className="relative">
@@ -104,10 +42,7 @@ export function NotificationsBell() {
 
             {open && (
                 <>
-                    <div
-                        className="fixed inset-0 z-40"
-                        onClick={() => setOpen(false)}
-                    />
+                    <div className="fixed inset-0 z-40" onClick={close} />
                     <div
                         className="border-line text-fg absolute right-0 top-full z-50 mt-2 max-h-[70vh] w-96 overflow-y-auto rounded-lg border shadow-lg"
                         style={{ background: "var(--card-bg)" }}
@@ -131,140 +66,42 @@ export function NotificationsBell() {
 
                         {notices.length > 0 && (
                             <div className="divide-line divide-y overflow-y-auto">
-                                {notices.map((n) => (
-                                    <div
-                                        key={n.id}
-                                        className="flex items-start gap-3 px-3.5 py-2.5"
-                                    >
-                                        <span
-                                            className="mt-px flex h-6 w-6 shrink-0 items-center justify-center rounded-full"
-                                            style={{
-                                                background:
-                                                    "color-mix(in srgb, var(--peacock-teal) 18%, transparent)",
-                                                color: "var(--peacock-teal)",
-                                            }}
-                                        >
-                                            {n.kind === "app-update" ? (
-                                                <Download size={12} />
-                                            ) : (
-                                                <RefreshCw size={12} />
-                                            )}
-                                        </span>
-                                        <div className="min-w-0 flex-1">
-                                            <div className="text-fg text-sm font-medium">
-                                                {n.title}
-                                            </div>
-                                            <div className="text-muted mt-1 whitespace-pre-line break-words text-xs leading-relaxed">
-                                                {n.detail}
-                                            </div>
-                                            <div className="mt-2.5 flex gap-2 text-xs">
-                                                {n.actionLabel && (
-                                                    <button
-                                                        type="button"
-                                                        onClick={() =>
-                                                            void act(n)
-                                                        }
-                                                        disabled={pending}
-                                                        className="rounded-md px-2.5 py-1 font-semibold text-white disabled:opacity-60"
-                                                        style={{
-                                                            background:
-                                                                "var(--peacock-teal)",
-                                                        }}
-                                                    >
-                                                        {pending
-                                                            ? "Sending…"
-                                                            : n.actionLabel}
-                                                    </button>
-                                                )}
-                                                {n.secondaryActionLabel && (
-                                                    <button
-                                                        type="button"
-                                                        onClick={() =>
-                                                            void replaceWithBundled()
-                                                        }
-                                                        disabled={pending}
-                                                        className="border-line text-muted hover:text-fg rounded-md border px-2.5 py-1 font-medium disabled:opacity-60"
-                                                    >
-                                                        {n.secondaryActionLabel}
-                                                    </button>
-                                                )}
-                                                {n.href && (
-                                                    <a
-                                                        href={n.href}
-                                                        target="_blank"
-                                                        rel="noreferrer"
-                                                        className="border-line text-muted hover:text-fg rounded-md border px-2.5 py-1 font-medium"
-                                                    >
-                                                        View release
-                                                    </a>
-                                                )}
-                                                <button
-                                                    type="button"
-                                                    onClick={() =>
-                                                        void dismiss(n.id)
-                                                    }
-                                                    className="border-line text-muted hover:text-fg rounded-md border px-2.5 py-1 font-medium"
-                                                >
-                                                    Dismiss
-                                                </button>
-                                            </div>
-                                        </div>
-                                    </div>
-                                ))}
+                                {notices.map((n) => {
+                                    switch (n.kind) {
+                                        case "app-update":
+                                            return (
+                                                <UpdateNotice
+                                                    key={n.id}
+                                                    notice={n}
+                                                    onDone={close}
+                                                />
+                                            );
+                                        case "skill-update":
+                                            return (
+                                                <SkillNotice
+                                                    key={n.id}
+                                                    notice={n}
+                                                    onDone={close}
+                                                />
+                                            );
+                                        case "storage":
+                                            return (
+                                                <StorageNotice
+                                                    key={n.id}
+                                                    notice={n}
+                                                    onDone={close}
+                                                />
+                                            );
+                                    }
+                                })}
                             </div>
                         )}
 
                         {archivable.length > 0 && (
-                            <div className="border-line flex flex-col border-t first:border-t-0">
-                                <div className="text-muted border-line border-b px-3.5 py-2.5 text-xs">
-                                    {archivable.length} review session
-                                    {archivable.length === 1 ? "" : "s"} from
-                                    merged or stale PRs, ready to clean up.
-                                </div>
-                                <div className="divide-line max-h-[calc(70vh-8rem)] divide-y overflow-y-auto">
-                                    {archivable.map((a) => (
-                                        <div
-                                            key={a.sessionId}
-                                            className="flex items-start gap-3 px-3.5 py-2.5"
-                                        >
-                                            <span
-                                                className="mt-px flex h-6 w-6 shrink-0 items-center justify-center rounded-full"
-                                                style={{
-                                                    background:
-                                                        "color-mix(in srgb, var(--peacock-gold) 18%, transparent)",
-                                                    color: "color-mix(in srgb, var(--peacock-gold) 78%, var(--color-fg))",
-                                                }}
-                                            >
-                                                <Archive size={12} />
-                                            </span>
-                                            <div className="min-w-0 flex-1">
-                                                <div className="text-fg truncate text-sm font-medium">
-                                                    {shortRepo(a.repo)} #
-                                                    {a.number}
-                                                </div>
-                                                <div className="text-muted text-[11px] capitalize">
-                                                    {a.status}
-                                                </div>
-                                            </div>
-                                        </div>
-                                    ))}
-                                </div>
-                                <div className="border-line border-t p-2.5">
-                                    <button
-                                        type="button"
-                                        onClick={archive}
-                                        disabled={pending}
-                                        className="w-full rounded-md px-2.5 py-1.5 text-xs font-semibold text-white disabled:opacity-60"
-                                        style={{
-                                            background: "var(--peacock-teal)",
-                                        }}
-                                    >
-                                        {pending
-                                            ? "Sending…"
-                                            : `Archive ${archivable.length} session${archivable.length === 1 ? "" : "s"}`}
-                                    </button>
-                                </div>
-                            </div>
+                            <ArchiveSection
+                                sessions={archivable}
+                                onDone={close}
+                            />
                         )}
                     </div>
                 </>
