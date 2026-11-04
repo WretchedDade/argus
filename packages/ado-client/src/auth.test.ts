@@ -114,6 +114,33 @@ test("a running host picks up a sign-out from another host with no account file"
     );
 });
 
+test("sign-in keeps the silent path when it is the first sync after another host signs out", async (t) => {
+    const { auth, dir } = testAuth();
+    t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+    const running = hostAt(dir, {
+        getToken: async () => ({ token: userToken }),
+    });
+    await auth.signOut();
+    const status = await running.signIn();
+    assert.ok(status.account);
+    assert.notEqual(status.account.homeAccountId, account.homeAccountId);
+});
+
+test("a running host allows tokens again after the marker is removed", async (t) => {
+    const { auth, dir } = testAuth();
+    t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+    await auth.signIn(true);
+    const running = hostAt(dir, {
+        getToken: async () => ({ token: userToken }),
+    });
+    // Simulate another host between writing the account file and clearing the marker.
+    const marker = path.join(dir, "account.json.signed-out");
+    fs.writeFileSync(marker, "");
+    await running.status();
+    fs.rmSync(marker);
+    assert.equal(await running.getAccessToken(), "access-token");
+});
+
 test("uses the selected broker account instead of developer credentials", async () => {
     const { auth, dir } = testAuth(
         mockCredential({ getToken: async () => ({ token: "broker-token" }) }),

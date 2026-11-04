@@ -410,6 +410,16 @@ export class AdoAuth {
             this.lastError = null;
             this.needsInteraction = false;
             this.epoch++;
+        } else if (!marker && this.markerSeen) {
+            // Another host finished sign-in: reload its account and allow tokens again.
+            const stored = this.readStoredAuth();
+            this.currentAccount = stored?.account ?? null;
+            this.brokerRecord = stored?.brokerRecord ?? null;
+            this.storeStamp = this.statStore();
+            this.signedOut = false;
+            this.lastError = null;
+            this.needsInteraction = false;
+            this.epoch++;
         }
         this.markerSeen = marker;
         const stamp = this.statStore();
@@ -576,6 +586,7 @@ export class AdoAuth {
                 "Windows Web Account Manager is not available.",
             );
         }
+        this.syncFromDisk();
         const wasSignedOut = this.signedOut;
         // A 401 already proved the cached token is bad, so skip the silent shortcut.
         if (!selectAccount && !this.needsInteraction) {
