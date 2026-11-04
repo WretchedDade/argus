@@ -81,6 +81,10 @@ function eventLabel(e: PrEvent): string {
             return "Marked out of scope";
         case "in_scope":
             return "Restored to review";
+        case "archived":
+            return `Archived (${String(p.reason ?? "")})`;
+        case "revived":
+            return "Restored to the board";
         case "removed":
             return "Removed";
         case "closed":

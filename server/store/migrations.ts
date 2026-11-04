@@ -126,6 +126,24 @@ CREATE TABLE IF NOT EXISTS poll_lease (
 );`);
         },
     },
+    {
+        // Repo scope policy. `scope_override` is the per-PR choice ('in' | 'out');
+        // `out_of_scope` stays as the effective value the board queries read.
+        // Existing out-of-scope PRs keep that choice as an override.
+        up(db) {
+            const cols = db.prepare("PRAGMA table_info(prs)").all() as {
+                name: string;
+            }[];
+            if (!cols.some((c) => c.name === "scope_override"))
+                db.exec("ALTER TABLE prs ADD COLUMN scope_override TEXT");
+            db.exec(`
+UPDATE prs SET scope_override = 'out' WHERE out_of_scope = 1 AND scope_override IS NULL;
+CREATE TABLE IF NOT EXISTS repo_scopes (
+  repo  TEXT PRIMARY KEY,
+  scope TEXT NOT NULL CHECK (scope IN ('in', 'out'))
+);`);
+        },
+    },
 ];
 
 export function runMigrations(

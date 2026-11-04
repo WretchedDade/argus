@@ -1,12 +1,20 @@
 import type { CurrentPr } from "./types.ts";
-import type { Lane, PrEventType, PrState, PrUpsert } from "../types.ts";
+import type {
+    ArchiveReason,
+    Lane,
+    PrEventType,
+    PrState,
+    PrUpsert,
+} from "../types.ts";
 
 // Prior state of a tracked PR, enough to decompose a change into typed events.
+// `dismissed` is a manual dismissal only. `archived` is Argus hiding the PR.
 export interface Snapshot {
     sha: string | null;
     isDraft: boolean;
     state: PrState;
     dismissed: boolean;
+    archived: ArchiveReason | null;
     votes: Record<string, number>;
 }
 
@@ -19,12 +27,14 @@ export interface EventInsert {
 
 // One PR's worth of writes: metadata upsert, the events its change produced, the
 // new reviewer-vote snapshot, and (for a first sighting) its suggested lane.
+// `revive` brings back a PR that was archived as stale.
 export interface PlanItem {
     upsert: PrUpsert;
     isAdd: boolean;
     lane: Lane;
     events: EventInsert[];
     votes: Record<string, number>;
+    revive?: boolean;
 }
 
 export interface Plan {
@@ -71,7 +81,7 @@ export function reconcile(
     for (const c of currents) {
         const snap = snapshots.get(c.canonical);
         if (snap?.dismissed) {
-            stats.dismissed += 1; // never resurrect a dismissed PR
+            stats.dismissed += 1; // never resurrect a manually dismissed PR
             continue;
         }
 
@@ -112,6 +122,7 @@ export function reconcile(
             lane: "review",
             events,
             votes,
+            revive: snap.archived === "stale",
         });
     }
 

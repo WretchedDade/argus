@@ -7,6 +7,7 @@ import {
     api,
     configApi,
     configQuery,
+    repoScopesQuery,
     teamsQuery,
     versionQuery,
     type ArgusConfig,
@@ -31,6 +32,95 @@ export const Route = createFileRoute("/settings")({
 });
 
 const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
+// Out-of-scope repos are archived. You still see PRs you author or review by name.
+function RepoScopePanel() {
+    const queryClient = useQueryClient();
+    const repos = useQuery(repoScopesQuery).data ?? [];
+    const change = async (repo: string, value: string) => {
+        try {
+            const r = await api.setRepoScope(
+                repo,
+                value === "default" ? null : (value as "in" | "out"),
+            );
+            const plural = (n: number) => `${n} PR${n === 1 ? "" : "s"}`;
+            const parts = [
+                r.archived > 0 ? `archived ${plural(r.archived)}` : "",
+                r.revived > 0 ? `restored ${plural(r.revived)}` : "",
+                r.kept > 0
+                    ? `${plural(r.kept)} still shown (you author or review by name)`
+                    : "",
+            ].filter(Boolean);
+            pushToast(
+                `${repo}: ${parts.length ? parts.join(", ") : "no PRs changed"}`,
+                "success",
+                6000,
+            );
+            await queryClient.invalidateQueries();
+        } catch (err) {
+            pushToast(`Could not change scope: ${String(err)}`, "error");
+        }
+    };
+    return (
+        <section className="flex flex-col gap-3">
+            <h2 className="text-muted text-xs font-medium uppercase tracking-wide">
+                Repo scope
+            </h2>
+            <p className="text-muted text-xs">
+                PRs in an out-of-scope repo are archived. A PR still shows if
+                you are its author or a named reviewer.
+            </p>
+            {repos.length === 0 ? (
+                <p className="text-muted text-xs">No repos yet.</p>
+            ) : (
+                <table className="w-full text-sm">
+                    <thead>
+                        <tr className="text-muted text-left text-xs">
+                            <th className="py-1 font-medium">Repo</th>
+                            <th className="py-1 font-medium">Open</th>
+                            <th className="py-1 font-medium">Archived</th>
+                            <th className="py-1 text-right font-medium">
+                                Scope
+                            </th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {repos.map((r) => (
+                            <tr key={r.repo} className="border-line border-t">
+                                <td className="text-fg py-1.5 pr-3">
+                                    {r.repo}
+                                </td>
+                                <td className="text-muted py-1.5 pr-3 text-xs tabular-nums">
+                                    {r.open}
+                                </td>
+                                <td className="text-muted py-1.5 pr-3 text-xs tabular-nums">
+                                    {r.hidden}
+                                </td>
+                                <td className="py-1.5 text-right">
+                                    <select
+                                        aria-label={`Scope for ${r.repo}`}
+                                        className="border-line bg-canvas rounded-md border px-2 py-1 text-xs"
+                                        value={r.scope ?? "default"}
+                                        onChange={(e) =>
+                                            void change(r.repo, e.target.value)
+                                        }
+                                    >
+                                        <option value="default">
+                                            In scope
+                                        </option>
+                                        <option value="out">
+                                            Out of scope
+                                        </option>
+                                    </select>
+                                </td>
+                            </tr>
+                        ))}
+                    </tbody>
+                </table>
+            )}
+        </section>
+    );
+}
 
 function Row({
     label,
@@ -389,6 +479,7 @@ function Settings() {
                                 )}
                             </form.Field>
                         </section>
+                        <RepoScopePanel />
                     </Group>
 
                     <Group id="general" active={tab}>
