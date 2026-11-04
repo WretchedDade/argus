@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import {
+    existsSync,
     mkdirSync,
     mkdtempSync,
     readFileSync,
@@ -182,5 +183,14 @@ assert.equal(readFileSync(path.join(backup, "SKILL.md"), "utf-8"), "my edit\n");
 assert.deepEqual(syncSkill(src, dest), { state: "none" });
 writeFileSync(path.join(src, "SKILL.md"), "v6\n");
 assert.deepEqual(syncSkill(src, dest), { state: "updated" }); // baseline again
+
+// A failed replacement keeps the working install.
+writeFileSync(path.join(dest, "SKILL.md"), "my edit\n");
+assert.throws(() =>
+    replaceSkill(path.join(dir, "missing-src"), dest, path.join(dir, "b2")),
+);
+assert.equal(readFileSync(path.join(dest, "SKILL.md"), "utf-8"), "my edit\n");
+assert.equal(existsSync(`${dest}.new`), false);
+assert.equal(existsSync(`${dest}.old`), false);
 
 rmSync(dir, { recursive: true, force: true });

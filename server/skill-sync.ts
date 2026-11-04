@@ -4,6 +4,7 @@ import {
     existsSync,
     readdirSync,
     readFileSync,
+    renameSync,
     rmSync,
     writeFileSync,
 } from "node:fs";
@@ -85,6 +86,33 @@ export function installSkill(src: string, dest: string): void {
     writeSidecar(src, dest);
 }
 
+// Install the bundled skill over dest without a window where dest is missing.
+// The new copy is built beside dest first. If any step fails, the old copy
+// returns.
+function swapInSkill(src: string, dest: string): void {
+    const staging = `${dest}.new`;
+    const previous = `${dest}.old`;
+    rmSync(staging, { recursive: true, force: true });
+    rmSync(previous, { recursive: true, force: true });
+    try {
+        installSkill(src, staging);
+    } catch (err) {
+        rmSync(staging, { recursive: true, force: true });
+        throw err;
+    }
+    const hadOld = existsSync(dest);
+    try {
+        if (hadOld) renameSync(dest, previous);
+        renameSync(staging, dest);
+    } catch (err) {
+        rmSync(staging, { recursive: true, force: true });
+        if (hadOld && !existsSync(dest) && existsSync(previous))
+            renameSync(previous, dest);
+        throw err;
+    }
+    rmSync(previous, { recursive: true, force: true });
+}
+
 // Replace the installed skill with the bundled one. Copies the old skill to
 // backupDir first, so the user can recover their edits.
 export function replaceSkill(
@@ -93,8 +121,7 @@ export function replaceSkill(
     backupDir: string,
 ): void {
     if (existsSync(dest)) cpSync(dest, backupDir, { recursive: true });
-    rmSync(dest, { recursive: true, force: true });
-    installSkill(src, dest);
+    swapInSkill(src, dest);
 }
 
 // Run when Argus starts. Updates an unmodified installed skill in place. Leaves
@@ -116,7 +143,6 @@ export function syncSkill(src: string, dest: string): SkillSyncResult {
     )
         return { state: "pending", bundledHash };
 
-    rmSync(dest, { recursive: true, force: true });
-    installSkill(src, dest);
+    swapInSkill(src, dest);
     return { state: "updated" };
 }
