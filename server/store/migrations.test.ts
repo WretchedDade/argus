@@ -121,7 +121,9 @@ test(
         const dbModule = pathToFileURL(
             path.resolve(import.meta.dirname, "../db.ts"),
         ).href;
-        const script = `const { ArgusStore } = await import(${JSON.stringify(dbModule)}); new ArgusStore(${JSON.stringify(file)}).close();`;
+        // Each worker imports first, then spins until a shared start time, so the opens collide.
+        const startAt = Date.now() + 1500;
+        const script = `const { ArgusStore } = await import(${JSON.stringify(dbModule)}); while (Date.now() < ${startAt}) {} new ArgusStore(${JSON.stringify(file)}).close();`;
         const open = () =>
             new Promise<{ code: number | null; stderr: string }>((resolve) => {
                 const child = spawn(

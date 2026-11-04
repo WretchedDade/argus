@@ -345,12 +345,32 @@ export class ArgusStore {
     constructor(file: string) {
         mkdirSync(path.dirname(file), { recursive: true });
         this.#db = new DatabaseSync(file);
-        this.#db.exec("PRAGMA journal_mode = WAL;");
-        this.#db.exec("PRAGMA busy_timeout = 5000;"); // wait out transient locks (e.g. a lingering process after reload) instead of throwing SQLITE_BUSY
+        this.#db.exec("PRAGMA busy_timeout = 5000;"); // wait out transient locks (e.g. a lingering process after reload) instead of throwing SQLITE_BUSY; set before WAL so concurrent first opens wait too
+        this.#enableWal();
         runMigrations(this.#db);
         // Baseline "changes seen" to now on first run so you start caught up rather
         // than facing the entire migrated history as unseen.
         if (!this.getChangesSeenAt()) this.setChangesSeenAt();
+    }
+
+    // SQLite does not apply busy_timeout to the first switch to WAL, so retry while another process holds the lock.
+    #enableWal(): void {
+        for (let attempt = 0; ; attempt++) {
+            try {
+                this.#db.exec("PRAGMA journal_mode = WAL;");
+                return;
+            } catch (err) {
+                if (attempt >= 50 || !/locked|busy/i.test(String(err))) {
+                    throw err;
+                }
+                Atomics.wait(
+                    new Int32Array(new SharedArrayBuffer(4)),
+                    0,
+                    0,
+                    100,
+                );
+            }
+        }
     }
 
     // Cache prepared statements by SQL text so hot paths don't recompile.
