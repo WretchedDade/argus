@@ -71,7 +71,14 @@ assert.equal(good.calls.install.length, 0);
 
 // A matching checksum runs the script from the ZIP against the install folder.
 const ok = deps(`${goodHash}  file.zip`, true);
-await applyUpdate(release, "C:\\ext", ok.deps);
+const seen: string[] = [];
+await applyUpdate(release, "C:\\ext", ok.deps, (p) => seen.push(p));
+assert.deepEqual(seen, [
+    "downloading",
+    "verifying",
+    "extracting",
+    "installing",
+]);
 assert.equal(ok.calls.install.length, 1);
 assert.match(ok.calls.install[0][0], /argus-v0\.2\.0[\\/]install\.ps1$/);
 assert.equal(ok.calls.install[0][1], "C:\\ext");

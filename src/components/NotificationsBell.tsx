@@ -6,6 +6,7 @@ import { ArchiveSection } from "./notifications/ArchiveSection";
 import { SkillNotice } from "./notifications/SkillNotice";
 import { StorageNotice } from "./notifications/StorageNotice";
 import { UpdateNotice } from "./notifications/UpdateNotice";
+import { useUpdate } from "../lib/useUpdate";
 
 // The bell lists things that need attention: Argus notices (new release,
 // updated baseline skill) and review sessions whose PR has merged/closed with
@@ -14,7 +15,12 @@ export function NotificationsBell() {
     const [open, setOpen] = useState(false);
 
     const archivable = useQuery(archivableQuery).data ?? [];
-    const notices = useQuery(noticesQuery).data ?? [];
+    const updating = useUpdate().running;
+    const allNotices = useQuery(noticesQuery).data ?? [];
+    // The toast shows the progress, so the update notice hides while it runs.
+    const notices = allNotices.filter(
+        (n) => !(updating && n.kind === "app-update"),
+    );
     const badge = archivable.length + notices.length;
     const close = () => setOpen(false);
 

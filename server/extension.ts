@@ -15,6 +15,7 @@ import {
     type ReleaseInfo,
 } from "./update-check.ts";
 import { buildNotices, type Notice } from "./notices.ts";
+import { UpdateJob } from "./update-job.ts";
 import { applyUpdate } from "./updater.ts";
 import { joinSession, createCanvas } from "@github/copilot-sdk/extension";
 import { ArgusStore } from "./db.ts";
@@ -333,8 +334,12 @@ function getNotices(): Notice[] {
     });
 }
 
+// One job for every canvas and the ingest server, so only one install runs.
+const updateJob = new UpdateJob();
+
 const serverCtx = (): ServerContext => ({
     store,
+    updateJob,
     bootAt: BOOT_AT,
     distDir: DIST_DIR,
     reconcile: () => reconcileOnce(pollerCtx),
@@ -354,9 +359,9 @@ const serverCtx = (): ServerContext => ({
     getNotices,
     appVersion: APP_VERSION,
     checkForUpdatesNow,
-    applyUpdate: async () => {
+    applyUpdate: async (setPhase) => {
         if (!latestRelease) throw new Error("No release is known yet.");
-        await applyUpdate(latestRelease, __dirname);
+        await applyUpdate(latestRelease, __dirname, {}, setPhase);
     },
 });
 

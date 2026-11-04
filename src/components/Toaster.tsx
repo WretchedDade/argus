@@ -1,6 +1,12 @@
 import { useSyncExternalStore } from "react";
-import { Check, X } from "lucide-react";
+import { Check, Loader2, X } from "lucide-react";
 import { dismissToast, getToasts, subscribeToasts } from "../lib/toast";
+
+const TONE = {
+    success: "var(--peacock-teal)",
+    progress: "var(--peacock-teal)",
+    error: "#d64545",
+};
 
 export function Toaster() {
     const toasts = useSyncExternalStore(subscribeToasts, getToasts, getToasts);
@@ -13,36 +19,30 @@ export function Toaster() {
                     key={t.id}
                     className="toast-in border-line bg-surface pointer-events-auto flex items-center gap-2 rounded-lg border px-3 py-2 text-sm shadow-lg"
                     style={{
-                        borderColor:
-                            t.kind === "success"
-                                ? "color-mix(in srgb, var(--peacock-teal) 55%, var(--color-line))"
-                                : "color-mix(in srgb, #d64545 55%, var(--color-line))",
+                        borderColor: `color-mix(in srgb, ${TONE[t.kind]} 55%, var(--color-line))`,
                     }}
                 >
                     <span
                         className="flex h-4 w-4 items-center justify-center rounded-full text-white"
-                        style={{
-                            background:
-                                t.kind === "success"
-                                    ? "var(--peacock-teal)"
-                                    : "#d64545",
-                        }}
+                        style={{ background: TONE[t.kind] }}
                     >
-                        {t.kind === "success" ? (
-                            <Check size={12} />
-                        ) : (
-                            <X size={12} />
+                        {t.kind === "success" && <Check size={12} />}
+                        {t.kind === "error" && <X size={12} />}
+                        {t.kind === "progress" && (
+                            <Loader2 size={12} className="animate-spin" />
                         )}
                     </span>
                     <span className="text-fg">{t.message}</span>
-                    <button
-                        type="button"
-                        onClick={() => dismissToast(t.id)}
-                        className="text-muted hover:text-fg ml-1"
-                        aria-label="Dismiss"
-                    >
-                        <X size={13} />
-                    </button>
+                    {t.kind !== "progress" && (
+                        <button
+                            type="button"
+                            onClick={() => dismissToast(t.id)}
+                            className="text-muted hover:text-fg ml-1"
+                            aria-label="Dismiss"
+                        >
+                            <X size={13} />
+                        </button>
+                    )}
                 </div>
             ))}
         </div>

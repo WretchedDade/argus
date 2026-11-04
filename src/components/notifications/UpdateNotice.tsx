@@ -1,10 +1,10 @@
-import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Download } from "lucide-react";
-import { api, type Notice } from "../../lib/api";
-import { pushToast } from "../../lib/toast";
+import type { Notice } from "../../lib/api";
+import { useUpdate } from "../../lib/useUpdate";
 import { NoticeRow, PrimaryButton } from "./NoticeRow";
 
-// A new Argus release. "Install" applies the update in place.
+// A new Argus release. "Update now" starts the install on the server and closes
+// the bell. A toast shows the progress from there.
 export function UpdateNotice({
     notice,
     onDone,
@@ -12,25 +12,19 @@ export function UpdateNotice({
     notice: Notice;
     onDone: () => void;
 }) {
-    const qc = useQueryClient();
-    const applyUpdate = useMutation({
-        mutationFn: () => api.applyUpdate(),
-        onSuccess: () => {
-            pushToast("Update installed. Reload extensions to finish.");
-            void qc.invalidateQueries({ queryKey: ["notices"] });
-            onDone();
-        },
-        onError: (err) => pushToast(`Update failed: ${err.message}`, "error"),
-    });
+    const update = useUpdate();
 
     return (
         <NoticeRow notice={notice} icon={<Download size={12} />}>
             {notice.actionLabel && (
                 <PrimaryButton
-                    onClick={() => applyUpdate.mutate()}
-                    disabled={applyUpdate.isPending}
+                    onClick={() => {
+                        update.start();
+                        onDone();
+                    }}
+                    disabled={update.running}
                 >
-                    {applyUpdate.isPending ? "Installing…" : notice.actionLabel}
+                    {update.running ? "Starting…" : notice.actionLabel}
                 </PrimaryButton>
             )}
             {notice.href && (
