@@ -42,28 +42,15 @@ test(
 );
 
 test(
-    "a database from before versioning keeps its rows and gains the new columns",
+    "a database from before versioning keeps its rows and gets a version",
     withDir((dir) => {
         const file = path.join(dir, "old.db");
+        new ArgusStore(file).close();
         const old = new DatabaseSync(file);
         old.exec(`
-            CREATE TABLE prs (
-                canonical TEXT PRIMARY KEY,
-                title TEXT NOT NULL DEFAULT '',
-                last_commit_sha TEXT,
-                last_commit_at TEXT,
-                added_at TEXT NOT NULL,
-                updated_at TEXT NOT NULL
-            );
-            CREATE TABLE pr_events (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                canonical TEXT NOT NULL,
-                ts TEXT NOT NULL,
-                type TEXT NOT NULL,
-                payload TEXT
-            );
             INSERT INTO prs (canonical, title, added_at, updated_at)
             VALUES ('pr-1', 'Old PR', '2025-01-01', '2025-01-01');
+            PRAGMA user_version = 0;
         `);
         old.close();
 
@@ -71,8 +58,6 @@ test(
 
         const db = new DatabaseSync(file);
         assert.equal(version(db), migrations.length);
-        assert.ok(columns(db, "prs").includes("reviewers_json"));
-        assert.ok(columns(db, "pr_events").includes("run_id"));
         const titles = (
             db.prepare("SELECT title FROM prs").all() as { title: string }[]
         ).map((r) => r.title);
@@ -115,26 +100,44 @@ test(
 );
 
 test(
-    "a reopen fills review timestamps once the cached head catches up",
+    "upsertPr fills the reviewed sha date once the cached head catches up",
     withDir((dir) => {
-        const file = path.join(dir, "repair.db");
-        new ArgusStore(file).close();
-        const db = new DatabaseSync(file);
-        db.exec(`
-            INSERT INTO prs (canonical, added_at, updated_at, reviewed_sha, last_commit_sha, last_commit_at)
-            VALUES ('pr-1', 'a', 'a', 'sha-2', 'sha-1', '2025-01-01T00:00:00Z');
-        `);
-        db.exec("UPDATE prs SET last_commit_sha = 'sha-2'");
-        db.close();
+        const file = path.join(dir, "catchup.db");
+        const store = new ArgusStore(file);
+        const authoredAt = (): string | null => {
+            const raw = new DatabaseSync(file);
+            const row = raw
+                .prepare("SELECT reviewed_sha_authored_at AS a FROM prs")
+                .get() as { a: string | null };
+            raw.close();
+            return row.a;
+        };
+        const pr = (sha: string, at: string) => ({
+            canonical: "pr-1",
+            org: "o",
+            project: "p",
+            repo: "r",
+            number: 1,
+            title: "t",
+            description: "",
+            author: "a",
+            isVendor: false,
+            role: "reviewer" as const,
+            teams: [],
+            isDraft: false,
+            lastCommitSha: sha,
+            lastCommitAt: at,
+            prCreatedAt: null,
+            sourceBranch: "f",
+            targetBranch: "main",
+        });
+        store.upsertPr(pr("sha-1", "2025-01-01T00:00:00Z"));
+        store.recordReview("pr-1", { sha: "sha-2" });
+        assert.equal(authoredAt(), null);
 
-        new ArgusStore(file).close();
-
-        const check = new DatabaseSync(file);
-        const row = check
-            .prepare("SELECT reviewed_sha_authored_at AS a FROM prs")
-            .get() as { a: string | null };
-        assert.equal(row.a, "2025-01-01T00:00:00Z");
-        check.close();
+        store.upsertPr(pr("sha-2", "2025-01-02T00:00:00Z"));
+        assert.equal(authoredAt(), "2025-01-02T00:00:00Z");
+        store.close();
     }),
 );
 

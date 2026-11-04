@@ -28,7 +28,7 @@ import type {
 } from "./types.ts";
 import type { Plan, Snapshot } from "./ado/reconcile.ts";
 import { salvageConfigOverrides, type ConfigOverrides } from "./config.ts";
-import { repairReviewTimestamps, runMigrations } from "./store/migrations.ts";
+import { runMigrations } from "./store/migrations.ts";
 import { isVendorName } from "./ado/normalize.ts";
 import { log } from "./log.ts";
 import type { ReleaseInfo } from "./update-check.ts";
@@ -348,7 +348,6 @@ export class ArgusStore {
         this.#db.exec("PRAGMA busy_timeout = 5000;"); // wait out transient locks (e.g. a lingering process after reload) instead of throwing SQLITE_BUSY; set before WAL so concurrent first opens wait too
         this.#enableWal();
         runMigrations(this.#db);
-        repairReviewTimestamps(this.#db);
         // Baseline "changes seen" to now on first run so you start caught up rather
         // than facing the entire migrated history as unseen.
         if (!this.getChangesSeenAt()) this.setChangesSeenAt();
@@ -407,6 +406,10 @@ export class ArgusStore {
         is_draft = excluded.is_draft,
         last_commit_sha = excluded.last_commit_sha,
         last_commit_at = excluded.last_commit_at,
+        reviewed_sha_authored_at = CASE
+          WHEN reviewed_sha IS NOT NULL AND reviewed_sha_authored_at IS NULL
+            AND reviewed_sha = excluded.last_commit_sha
+          THEN excluded.last_commit_at ELSE reviewed_sha_authored_at END,
         pr_created_at = excluded.pr_created_at,
         source_branch = excluded.source_branch,
         target_branch = excluded.target_branch,

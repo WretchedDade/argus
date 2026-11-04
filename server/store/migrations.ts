@@ -32,7 +32,25 @@ CREATE TABLE IF NOT EXISTS prs (
   added_at          TEXT NOT NULL,
   updated_at        TEXT NOT NULL,
   review_session_id TEXT,
-  reviewers_json    TEXT
+  reviewers_json    TEXT,
+  role              TEXT,
+  teams_json        TEXT,
+  required_approver_groups_json TEXT,
+  review_state      TEXT,
+  description       TEXT,
+  out_of_scope      INTEGER NOT NULL DEFAULT 0,
+  snooze_mode       TEXT,
+  reviewed_sha      TEXT,
+  reviewed_at       TEXT,
+  reviewed_sha_authored_at TEXT,
+  my_comments       INTEGER,
+  other_comments    INTEGER,
+  approvals_json    TEXT,
+  author_meta_json  TEXT,
+  source_branch     TEXT,
+  target_branch     TEXT,
+  changed_files     INTEGER,
+  changed_files_sha TEXT
 );
 
 CREATE TABLE IF NOT EXISTS pr_events (
@@ -40,7 +58,8 @@ CREATE TABLE IF NOT EXISTS pr_events (
   canonical TEXT NOT NULL,
   ts        TEXT NOT NULL,
   type      TEXT NOT NULL,
-  payload   TEXT
+  payload   TEXT,
+  run_id    INTEGER
 );
 CREATE INDEX IF NOT EXISTS idx_events_canonical ON pr_events(canonical);
 CREATE INDEX IF NOT EXISTS idx_events_ts        ON pr_events(ts);
@@ -57,7 +76,8 @@ CREATE TABLE IF NOT EXISTS poll_runs (
   updated     INTEGER,
   events      INTEGER,
   closed      INTEGER,
-  error       TEXT
+  error       TEXT,
+  tracked     INTEGER
 );
 CREATE INDEX IF NOT EXISTS idx_pollruns_started ON poll_runs(started_at);
 
@@ -87,96 +107,12 @@ CREATE TABLE IF NOT EXISTS automatic_review_tokens (
 );
 `;
 
-// Columns that earlier releases added one by one.
-const LEGACY_COLUMNS: [table: string, column: string, type: string][] = [
-    ["prs", "reviewers_json", "TEXT"],
-    ["pr_events", "run_id", "INTEGER"], // links an event to its poll run
-    ["poll_runs", "tracked", "INTEGER"], // queue size at end of run
-    ["prs", "role", "TEXT"], // author | reviewer | team
-    ["prs", "teams_json", "TEXT"], // matched team display names
-    ["prs", "required_approver_groups_json", "TEXT"],
-    ["prs", "review_state", "TEXT"], // needs | covered | approved | ...
-    ["prs", "description", "TEXT"], // PR description body (for card preview)
-    ["prs", "out_of_scope", "INTEGER NOT NULL DEFAULT 0"], // user marked "not my review"
-    ["prs", "snooze_mode", "TEXT"], // null | "time" | "fte"
-    ["prs", "reviewed_sha", "TEXT"], // commit sha at the time of my recorded review
-    ["prs", "reviewed_at", "TEXT"], // when I recorded my verdict (latency end)
-    ["prs", "reviewed_sha_authored_at", "TEXT"], // authored date of reviewed_sha (latency start)
-    ["prs", "my_comments", "INTEGER"], // # of comments I authored on this PR
-    ["prs", "other_comments", "INTEGER"], // # of non-system comments authored by others
-    ["prs", "approvals_json", "TEXT"], // individuals who approved (name + vote)
-    ["prs", "author_meta_json", "TEXT"], // completability + comment counts for authored PRs
-    ["prs", "source_branch", "TEXT"], // PR source branch
-    ["prs", "target_branch", "TEXT"], // PR target branch
-    ["prs", "changed_files", "INTEGER"], // # of files changed in the PR
-    ["prs", "changed_files_sha", "TEXT"], // head sha the file count was computed at
-];
-
-// Settings flags from the releases that ran one-time fixes at every start.
-const LEGACY_RESET_FLAGS = [
-    "changed_files_reset", // the first file-count pass stored 0s
-    "changed_files_blob_count_reset", // pre-blob-only counts were inflated
-];
-
-function addMissingColumns(db: DatabaseSync): void {
-    for (const [table, column, type] of LEGACY_COLUMNS) {
-        const cols = db.prepare(`PRAGMA table_info(${table})`).all() as {
-            name: string;
-        }[];
-        if (!cols.some((c) => c.name === column)) {
-            db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${type}`);
-        }
-    }
-}
-
-function runLegacyResets(db: DatabaseSync): void {
-    const hasFlag = db.prepare("SELECT 1 FROM settings WHERE key = ?");
-    const setFlag = db.prepare(
-        "INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)",
-    );
-    for (const flag of LEGACY_RESET_FLAGS) {
-        if (hasFlag.get(flag)) continue;
-        db.exec(
-            "UPDATE prs SET changed_files = NULL, changed_files_sha = NULL",
-        );
-        setFlag.run(flag, new Date().toISOString());
-    }
-}
-
-// Idempotent backfills that the store runs at every start, not once. A review
-// can be recorded before the poller caches its head sha, so the timestamps may
-// only become derivable on a later start.
-export function repairReviewTimestamps(db: DatabaseSync): void {
-    // Backfill reviewed_at from the latest recorded verdict event.
-    db.exec(`
-      UPDATE prs SET reviewed_at = (
-        SELECT MAX(e.ts) FROM pr_events e
-        WHERE e.canonical = prs.canonical AND e.type = 'reviewed'
-          AND json_extract(e.payload, '$.verdict') IS NOT NULL
-      )
-      WHERE reviewed_sha IS NOT NULL AND reviewed_at IS NULL
-        AND EXISTS (
-          SELECT 1 FROM pr_events e
-          WHERE e.canonical = prs.canonical AND e.type = 'reviewed'
-            AND json_extract(e.payload, '$.verdict') IS NOT NULL
-        )
-    `);
-    // Backfill the reviewed sha's authored date when it is still the head.
-    db.exec(`
-      UPDATE prs SET reviewed_sha_authored_at = last_commit_at
-      WHERE reviewed_sha IS NOT NULL AND reviewed_sha_authored_at IS NULL
-        AND reviewed_sha = last_commit_sha AND last_commit_at IS NOT NULL
-    `);
-}
-
 export const migrations: Migration[] = [
     {
-        // The full schema as of the first versioned release. Databases from
-        // earlier releases have no version, so this entry also brings them up.
+        // The full schema as of the first versioned release. Databases that
+        // already have these tables keep their data and just get a version.
         up(db) {
             db.exec(BASE_SCHEMA);
-            addMissingColumns(db);
-            runLegacyResets(db);
         },
     },
 ];
