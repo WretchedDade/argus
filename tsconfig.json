@@ -16,5 +16,11 @@
         "noFallthroughCasesInSwitch": true,
         "types": ["node"]
     },
-    "include": ["src", "server", "vite.config.ts"]
+    "include": [
+        "src",
+        "server",
+        "scripts",
+        "packages/ado-client/src",
+        "vite.config.ts"
+    ]
 }
