@@ -45,7 +45,7 @@ export function ArchiveSection({
             </div>
             <div className="border-line border-t p-2.5">
                 <PrimaryButton
-                    className="w-full py-1.5"
+                    className="w-full py-1.5 text-xs"
                     onClick={() => archive.mutate()}
                     disabled={archive.isPending}
                 >
