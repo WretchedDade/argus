@@ -45,6 +45,21 @@ export function NotificationsBell() {
             }
         });
 
+    const replaceWithBundled = () =>
+        run(async () => {
+            try {
+                const { backupPath } = await api.useBundledSkill();
+                pushToast(`Skill replaced. Your old copy is in ${backupPath}`);
+                void qc.invalidateQueries({ queryKey: ["notices"] });
+                setOpen(false);
+            } catch (err) {
+                pushToast(
+                    `Couldn't replace the skill: ${(err as Error).message}`,
+                    "error",
+                );
+            }
+        });
+
     const dismiss = async (id: string) => {
         try {
             await api.dismissNotice(id);
@@ -159,6 +174,18 @@ export function NotificationsBell() {
                                                         {pending
                                                             ? "Sending…"
                                                             : n.actionLabel}
+                                                    </button>
+                                                )}
+                                                {n.secondaryActionLabel && (
+                                                    <button
+                                                        type="button"
+                                                        onClick={() =>
+                                                            void replaceWithBundled()
+                                                        }
+                                                        disabled={pending}
+                                                        className="border-line text-muted hover:text-fg rounded-md border px-2.5 py-1 font-medium disabled:opacity-60"
+                                                    >
+                                                        {n.secondaryActionLabel}
                                                     </button>
                                                 )}
                                                 {n.href && (

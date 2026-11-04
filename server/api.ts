@@ -125,6 +125,7 @@ export interface ApiContext {
     saveConfig: (overrides: ConfigOverrides) => ArgusConfig;
     markSetupComplete: () => void;
     installBaselineSkill: () => { installed: boolean; reason?: string };
+    useBundledSkill?: () => { backupPath: string };
     // Absent in standalone mode, where the location is not user-selectable.
     storage?: () => StorageInfo;
     setDbLocation?: (location: DbLocation) => {
@@ -704,6 +705,30 @@ export async function handleApi(
         // The storage notice clears only after the user's choice is saved.
         if (notice.kind !== "storage") ctx.store.dismissNotice(notice.id);
         sendJson(res, 200, { ok: true });
+        return true;
+    }
+
+    if (route === "/api/skill/replace" && req.method === "POST") {
+        const notice = (ctx.getNotices?.() ?? []).find(
+            (n) => n.kind === "skill-update",
+        );
+        if (!ctx.useBundledSkill) {
+            sendJson(res, 501, {
+                error: "Replacing the skill needs the Copilot app.",
+            });
+            return true;
+        }
+        if (!notice) {
+            sendJson(res, 404, { error: "No skill update is pending." });
+            return true;
+        }
+        try {
+            const { backupPath } = ctx.useBundledSkill();
+            ctx.store.dismissNotice(notice.id);
+            sendJson(res, 200, { ok: true, backupPath });
+        } catch (err) {
+            sendJson(res, 500, { error: (err as Error).message });
+        }
         return true;
     }
 

@@ -14,6 +14,7 @@ import {
     acknowledgeSkill,
     hashDir,
     installSkill,
+    replaceSkill,
     SKILL_SIDECAR,
     syncSkill,
 } from "./skill-sync.ts";
@@ -168,5 +169,18 @@ assert.equal(syncSkill(src, dest).state, "pending");
 assert.equal(readFileSync(path.join(dest, "SKILL.md"), "utf-8"), "my edit\n");
 rmSync(path.join(dest, SKILL_SIDECAR));
 assert.deepEqual(syncSkill(src, dest), { state: "none" }); // not ours
+
+// Using the new version replaces the edited copy and keeps a backup.
+installSkill(src, dest);
+writeFileSync(path.join(dest, "SKILL.md"), "my edit\n");
+writeFileSync(path.join(src, "SKILL.md"), "v5\n");
+assert.equal(syncSkill(src, dest).state, "pending");
+const backup = path.join(dir, "backups", "pr-review");
+replaceSkill(src, dest, backup);
+assert.equal(readFileSync(path.join(dest, "SKILL.md"), "utf-8"), "v5\n");
+assert.equal(readFileSync(path.join(backup, "SKILL.md"), "utf-8"), "my edit\n");
+assert.deepEqual(syncSkill(src, dest), { state: "none" });
+writeFileSync(path.join(src, "SKILL.md"), "v6\n");
+assert.deepEqual(syncSkill(src, dest), { state: "updated" }); // baseline again
 
 rmSync(dir, { recursive: true, force: true });

@@ -85,6 +85,18 @@ export function installSkill(src: string, dest: string): void {
     writeSidecar(src, dest);
 }
 
+// Replace the installed skill with the bundled one. Copies the old skill to
+// backupDir first, so the user can recover their edits.
+export function replaceSkill(
+    src: string,
+    dest: string,
+    backupDir: string,
+): void {
+    if (existsSync(dest)) cpSync(dest, backupDir, { recursive: true });
+    rmSync(dest, { recursive: true, force: true });
+    installSkill(src, dest);
+}
+
 // Run when Argus starts. Updates an unmodified installed skill in place. Leaves
 // an edited skill alone and reports it as pending. Ignores a skill without a
 // sidecar, because Argus did not install it.

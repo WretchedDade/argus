@@ -2,7 +2,12 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { existsSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
-import { acknowledgeSkill, installSkill, syncSkill } from "./skill-sync.ts";
+import {
+    acknowledgeSkill,
+    installSkill,
+    replaceSkill,
+    syncSkill,
+} from "./skill-sync.ts";
 import type { UpdateCheckResult } from "./api.ts";
 import {
     fetchLatestRelease,
@@ -157,6 +162,19 @@ const INSTALLED_SKILL = path.join(
     "skills",
     "pr-review",
 );
+
+// Replace the installed skill with the bundled one. The backup goes outside the
+// skills folder, so Copilot does not load it as a second pr-review skill.
+function useBundledSkill(): { backupPath: string } {
+    const backupPath = path.join(
+        path.dirname(path.dirname(INSTALLED_SKILL)),
+        "skill-backups",
+        `pr-review-${new Date().toISOString().replaceAll(":", "-")}`,
+    );
+    replaceSkill(BUNDLED_SKILL, INSTALLED_SKILL, backupPath);
+    pendingSkillHash = null;
+    return { backupPath };
+}
 
 function installBaselineSkill(): { installed: boolean; reason?: string } {
     const src = BUNDLED_SKILL;
@@ -344,6 +362,7 @@ const serverCtx = (): ServerContext => ({
     saveConfig,
     markSetupComplete: () => store.markSetupComplete(),
     installBaselineSkill,
+    useBundledSkill,
     storage: getStorage,
     setDbLocation,
     getNotices,
