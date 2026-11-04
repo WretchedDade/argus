@@ -10,7 +10,8 @@ reviewer to confirm or choose another. Ask once for the whole review, never per
 comment. Give the reason with the recommendation. Never apply one without asking,
 unless the reviewer or the kickoff prompt already named one.
 
-Use these signals, in order:
+Use these signals. Stop at the first one that matches. An earlier signal wins
+over a later one, even when both apply:
 
 1. The author's display name has a company in parentheses, for example
    `Jo Lee (Contoso Services)`. In many Azure DevOps organizations this suggests
@@ -18,7 +19,9 @@ Use these signals, in order:
    Recommend **Explain**.
 2. The author is on the reviewer's team, or has at least 3 commits by that author
    on the default branch in the last 90 days. Check with local `git log`. Do not
-   query Azure DevOps for this. Recommend **Compress**.
+   query Azure DevOps for this. Recommend **Compress**. This signal does not
+   apply when signal 1 matched. A contractor with many commits still gets
+   **Explain**.
 3. Otherwise recommend **Neutral**. Do not guess from the author's name or
    tenure.
 
