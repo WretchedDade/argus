@@ -152,6 +152,16 @@ button:not(:disabled) {
     background: color-mix(in srgb, var(--peacock-gold) 14%, transparent);
 }
 
+/* Round icon badges: a faint brand tint behind a brand-colored glyph. */
+.icon-badge-teal {
+    color: var(--peacock-teal);
+    background: color-mix(in srgb, var(--peacock-teal) 18%, transparent);
+}
+.icon-badge-gold {
+    color: color-mix(in srgb, var(--peacock-gold) 78%, var(--color-fg));
+    background: color-mix(in srgb, var(--peacock-gold) 18%, transparent);
+}
+
 /* Slim, themed scrollbar for nested scroll areas (drawers, panels) so an inner
    scrollbar reads as part of the surface instead of the OS default chrome. */
 .pretty-scroll {
