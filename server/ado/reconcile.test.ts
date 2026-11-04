@@ -212,6 +212,7 @@ assert.equal(
         db.prepare("DELETE FROM settings WHERE key = ?").run(
             "changed_files_blob_count_reset",
         );
+        db.exec("PRAGMA user_version = 0");
         db.close();
 
         const migrated = new ArgusStore(dbFile);

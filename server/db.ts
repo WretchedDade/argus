@@ -28,6 +28,7 @@ import type {
 } from "./types.ts";
 import type { Plan, Snapshot } from "./ado/reconcile.ts";
 import { salvageConfigOverrides, type ConfigOverrides } from "./config.ts";
+import { runMigrations } from "./store/migrations.ts";
 import { isVendorName } from "./ado/normalize.ts";
 import { log } from "./log.ts";
 import type { ReleaseInfo } from "./update-check.ts";
@@ -116,87 +117,6 @@ function rowToRun(r: PollRunRow): PollRun {
         error: r.error,
     };
 }
-
-// prs holds the current snapshot; pr_events is the append-only timeline every
-// metric is derived from. User-managed columns live on prs but are only ever
-// written by the dedicated action methods, never by upsertPr.
-const SCHEMA = `
-CREATE TABLE IF NOT EXISTS prs (
-  canonical         TEXT PRIMARY KEY,
-  org               TEXT NOT NULL DEFAULT '',
-  project           TEXT NOT NULL DEFAULT '',
-  repo              TEXT NOT NULL DEFAULT '',
-  number            INTEGER NOT NULL DEFAULT 0,
-  title             TEXT NOT NULL DEFAULT '',
-  author            TEXT,
-  is_vendor         INTEGER NOT NULL DEFAULT 0,
-  lane              TEXT NOT NULL DEFAULT 'review',
-  state             TEXT NOT NULL DEFAULT 'pending',
-  is_draft          INTEGER NOT NULL DEFAULT 0,
-  dismissed         INTEGER NOT NULL DEFAULT 0,
-  dismissed_reason  TEXT,
-  dismissed_at      TEXT,
-  snoozed_until     TEXT,
-  last_commit_sha   TEXT,
-  last_commit_at    TEXT,
-  pr_created_at     TEXT,
-  added_at          TEXT NOT NULL,
-  updated_at        TEXT NOT NULL,
-  review_session_id TEXT,
-  reviewers_json    TEXT
-);
-
-CREATE TABLE IF NOT EXISTS pr_events (
-  id        INTEGER PRIMARY KEY AUTOINCREMENT,
-  canonical TEXT NOT NULL,
-  ts        TEXT NOT NULL,
-  type      TEXT NOT NULL,
-  payload   TEXT
-);
-CREATE INDEX IF NOT EXISTS idx_events_canonical ON pr_events(canonical);
-CREATE INDEX IF NOT EXISTS idx_events_ts        ON pr_events(ts);
-
--- Operational logs, pruned by age (see pruneLogs). poll_runs is one row per
--- reconcile cycle; activity_log is the granular trace within/around a run.
-CREATE TABLE IF NOT EXISTS poll_runs (
-  id          INTEGER PRIMARY KEY AUTOINCREMENT,
-  started_at  TEXT NOT NULL,
-  finished_at TEXT,
-  ok          INTEGER NOT NULL DEFAULT 0,
-  mine        INTEGER,
-  added       INTEGER,
-  updated     INTEGER,
-  events      INTEGER,
-  closed      INTEGER,
-  error       TEXT
-);
-CREATE INDEX IF NOT EXISTS idx_pollruns_started ON poll_runs(started_at);
-
-CREATE TABLE IF NOT EXISTS activity_log (
-  id     INTEGER PRIMARY KEY AUTOINCREMENT,
-  ts     TEXT NOT NULL,
-  level  TEXT NOT NULL,
-  msg    TEXT NOT NULL,
-  data   TEXT,
-  run_id INTEGER
-);
-CREATE INDEX IF NOT EXISTS idx_activity_ts ON activity_log(ts);
-
-CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
-
--- Per-event "read" marks for the notifications bell. An event is unread when it
--- is a surfaced change, newer than the changes_seen_at watermark, and absent here.
-CREATE TABLE IF NOT EXISTS changes_read (event_id INTEGER PRIMARY KEY, read_at TEXT NOT NULL);
-
--- One-time tokens for automatic reviews. Stored in the shared DB so every host
--- that serves the ingest port sees the tokens issued by any other host.
-CREATE TABLE IF NOT EXISTS automatic_review_tokens (
-  canonical TEXT NOT NULL,
-  token TEXT NOT NULL,
-  issued_at INTEGER NOT NULL,
-  PRIMARY KEY (canonical, token)
-);
-`;
 
 const b = (v: boolean): number => (v ? 1 : 0);
 const AUTOMATIC_TOKEN_TTL_MS = 6 * 60 * 60 * 1000;
@@ -427,78 +347,10 @@ export class ArgusStore {
         this.#db = new DatabaseSync(file);
         this.#db.exec("PRAGMA journal_mode = WAL;");
         this.#db.exec("PRAGMA busy_timeout = 5000;"); // wait out transient locks (e.g. a lingering process after reload) instead of throwing SQLITE_BUSY
-        this.#db.exec(SCHEMA);
-        this.#ensureColumn("prs", "reviewers_json", "TEXT"); // added after first release
-        this.#ensureColumn("pr_events", "run_id", "INTEGER"); // links an event to its poll run
-        this.#ensureColumn("poll_runs", "tracked", "INTEGER"); // queue size at end of run
-        this.#ensureColumn("prs", "role", "TEXT"); // author | reviewer | team
-        this.#ensureColumn("prs", "teams_json", "TEXT"); // matched team display names
-        this.#ensureColumn("prs", "required_approver_groups_json", "TEXT");
-        this.#ensureColumn("prs", "review_state", "TEXT"); // needs | covered | approved | ...
-        this.#ensureColumn("prs", "description", "TEXT"); // PR description body (for card preview)
-        this.#ensureColumn("prs", "out_of_scope", "INTEGER NOT NULL DEFAULT 0"); // user marked "not my review"
-        this.#ensureColumn("prs", "snooze_mode", "TEXT"); // null | "time" | "fte" (wake when a teammate/FTE approves)
-        this.#ensureColumn("prs", "reviewed_sha", "TEXT"); // commit sha at the time of my recorded review (re-push detection)
-        this.#ensureColumn("prs", "reviewed_at", "TEXT"); // when I recorded my verdict (latency end)
-        this.#ensureColumn("prs", "reviewed_sha_authored_at", "TEXT"); // authored date of reviewed_sha (latency start); backfilled by the poller
-        this.#ensureColumn("prs", "my_comments", "INTEGER"); // # of comments I authored on this PR; counted once after I record a verdict
-        this.#ensureColumn("prs", "other_comments", "INTEGER"); // # of non-system comments authored by others
-        this.#ensureColumn("prs", "approvals_json", "TEXT"); // individuals who approved (name + vote), for card display
-        this.#ensureColumn("prs", "author_meta_json", "TEXT"); // completability + comment counts for authored PRs
-        this.#ensureColumn("prs", "source_branch", "TEXT"); // PR source branch (for the diff/file-count call)
-        this.#ensureColumn("prs", "target_branch", "TEXT"); // PR target branch
-        this.#ensureColumn("prs", "changed_files", "INTEGER"); // # of files changed in the PR (from ADO branch diff)
-        this.#ensureColumn("prs", "changed_files_sha", "TEXT"); // the head sha the file count was computed at (staleness check)
-        // One-time: the first file-count pass used a bad query param and stored 0s;
-        // clear them so they recompute correctly.
-        if (!this.#getSetting("changed_files_reset")) {
-            this.#db.exec(
-                "UPDATE prs SET changed_files = NULL, changed_files_sha = NULL",
-            );
-            this.#setSetting("changed_files_reset", now());
-        }
-        // One-time: pre-blob-only counts included tree entries and were inflated.
-        if (!this.#getSetting("changed_files_blob_count_reset")) {
-            this.#db.exec(
-                "UPDATE prs SET changed_files = NULL, changed_files_sha = NULL",
-            );
-            this.#setSetting("changed_files_blob_count_reset", now());
-        }
-        // Backfill reviewed_at (verdict time) for reviews recorded before that column
-        // existed, from the latest recorded 'reviewed' verdict event.
-        this.#db.exec(`
-      UPDATE prs SET reviewed_at = (
-        SELECT MAX(e.ts) FROM pr_events e
-        WHERE e.canonical = prs.canonical AND e.type = 'reviewed'
-          AND json_extract(e.payload, '$.verdict') IS NOT NULL
-      )
-      WHERE reviewed_sha IS NOT NULL AND reviewed_at IS NULL
-        AND EXISTS (
-          SELECT 1 FROM pr_events e
-          WHERE e.canonical = prs.canonical AND e.type = 'reviewed'
-            AND json_extract(e.payload, '$.verdict') IS NOT NULL
-        )
-    `);
-        // Backfill the reviewed sha's authored date from last_commit_at when the
-        // reviewed sha is still the head we last saw (the common case).
-        this.#db.exec(`
-      UPDATE prs SET reviewed_sha_authored_at = last_commit_at
-      WHERE reviewed_sha IS NOT NULL AND reviewed_sha_authored_at IS NULL
-        AND reviewed_sha = last_commit_sha AND last_commit_at IS NOT NULL
-    `);
+        runMigrations(this.#db);
         // Baseline "changes seen" to now on first run so you start caught up rather
         // than facing the entire migrated history as unseen.
         if (!this.getChangesSeenAt()) this.setChangesSeenAt();
-    }
-
-    // Add a column to an existing DB if a prior schema version lacked it.
-    #ensureColumn(table: string, column: string, type: string): void {
-        const cols = this.#db
-            .prepare(`PRAGMA table_info(${table})`)
-            .all() as unknown as { name: string }[];
-        if (!cols.some((c) => c.name === column)) {
-            this.#db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${type}`);
-        }
     }
 
     // Cache prepared statements by SQL text so hot paths don't recompile.
