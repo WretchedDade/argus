@@ -499,16 +499,17 @@ export class AdoAuth {
                 error: "Windows Web Account Manager is required for Azure DevOps authentication.",
             };
         }
+        const account = this.signedOut ? null : this.currentAccount;
         return {
             configured: true,
             supported: true,
-            state: this.currentAccount
+            state: account
                 ? this.lastError
                     ? "error"
                     : "ready"
                 : "signed-out",
-            interactionRequired: !this.currentAccount || this.needsInteraction,
-            account: this.currentAccount,
+            interactionRequired: !account || this.needsInteraction,
+            account,
             error: this.lastError,
         };
     }

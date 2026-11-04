@@ -126,6 +126,20 @@ test("sign-in keeps the silent path when it is the first sync after another host
     assert.notEqual(status.account.homeAccountId, account.homeAccountId);
 });
 
+test("reports signed-out when the marker and the account file both exist", async (t) => {
+    const { auth, dir } = testAuth();
+    t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+    await auth.signIn(true);
+    fs.writeFileSync(path.join(dir, "account.json.signed-out"), "");
+    const restarted = hostAt(dir, {
+        getToken: async () => ({ token: userToken }),
+    });
+    const status = await restarted.status();
+    assert.equal(status.state, "signed-out");
+    assert.equal(status.account, null);
+    assert.equal(status.interactionRequired, true);
+});
+
 test("a running host allows tokens again after the marker is removed", async (t) => {
     const { auth, dir } = testAuth();
     t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
