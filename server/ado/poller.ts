@@ -76,10 +76,22 @@ export function reconcileOnce(
     return inFlight;
 }
 
+// Single-PR refreshes and tracks that run outside a poll.
+const pendingWrites = new Set<Promise<unknown>>();
+
+function trackWrite<T>(p: Promise<T>): Promise<T> {
+    pendingWrites.add(p);
+    const done = () => pendingWrites.delete(p);
+    p.then(done, done);
+    return p;
+}
+
 // Run fn once no poll is in flight. fn runs synchronously after the check, so a
 // new poll cannot start between the check and fn.
 export async function runWhenPollerIdle(fn: () => void): Promise<void> {
-    while (inFlight) await inFlight.catch(() => undefined);
+    while (inFlight || pendingWrites.size) {
+        await Promise.allSettled([inFlight, ...pendingWrites]);
+    }
     fn();
 }
 
@@ -374,7 +386,14 @@ async function resolveIdentity(ctx: PollerContext): Promise<string> {
 // Targeted refresh of a single PR (the card Refresh action): re-fetch it from
 // ADO, reclassify ownership, and update its stored metadata/state. Marks it
 // closed if it has since merged or been abandoned.
-export async function refreshPr(
+export function refreshPr(
+    ctx: PollerContext,
+    canonical: string,
+): Promise<void> {
+    return trackWrite(refreshPrInner(ctx, canonical));
+}
+
+async function refreshPrInner(
     ctx: PollerContext,
     canonical: string,
 ): Promise<void> {
@@ -447,7 +466,14 @@ export async function refreshPr(
 // missed (e.g. an older PR your team was added to after the recency window).
 // Fetches, classifies, and adds it only if you're actually assigned (author,
 // direct reviewer, or a matched team). Returns why it couldn't add otherwise.
-export async function trackByNumber(
+export function trackByNumber(
+    ctx: PollerContext,
+    id: number,
+): Promise<{ ok: boolean; canonical?: string; reason?: string }> {
+    return trackWrite(trackByNumberInner(ctx, id));
+}
+
+async function trackByNumberInner(
     ctx: PollerContext,
     id: number,
 ): Promise<{ ok: boolean; canonical?: string; reason?: string }> {
