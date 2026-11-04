@@ -115,6 +115,30 @@ test(
 );
 
 test(
+    "a reopen fills review timestamps once the cached head catches up",
+    withDir((dir) => {
+        const file = path.join(dir, "repair.db");
+        new ArgusStore(file).close();
+        const db = new DatabaseSync(file);
+        db.exec(`
+            INSERT INTO prs (canonical, added_at, updated_at, reviewed_sha, last_commit_sha, last_commit_at)
+            VALUES ('pr-1', 'a', 'a', 'sha-2', 'sha-1', '2025-01-01T00:00:00Z');
+        `);
+        db.exec("UPDATE prs SET last_commit_sha = 'sha-2'");
+        db.close();
+
+        new ArgusStore(file).close();
+
+        const check = new DatabaseSync(file);
+        const row = check
+            .prepare("SELECT reviewed_sha_authored_at AS a FROM prs")
+            .get() as { a: string | null };
+        assert.equal(row.a, "2025-01-01T00:00:00Z");
+        check.close();
+    }),
+);
+
+test(
     "three processes opening the same new file at once all succeed",
     withDir(async (dir) => {
         const file = path.join(dir, "race.db");

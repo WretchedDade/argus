@@ -129,7 +129,7 @@ function addMissingColumns(db: DatabaseSync): void {
     }
 }
 
-function runLegacyFixes(db: DatabaseSync): void {
+function runLegacyResets(db: DatabaseSync): void {
     const hasFlag = db.prepare("SELECT 1 FROM settings WHERE key = ?");
     const setFlag = db.prepare(
         "INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)",
@@ -141,6 +141,12 @@ function runLegacyFixes(db: DatabaseSync): void {
         );
         setFlag.run(flag, new Date().toISOString());
     }
+}
+
+// Idempotent backfills that the store runs at every start, not once. A review
+// can be recorded before the poller caches its head sha, so the timestamps may
+// only become derivable on a later start.
+export function repairReviewTimestamps(db: DatabaseSync): void {
     // Backfill reviewed_at from the latest recorded verdict event.
     db.exec(`
       UPDATE prs SET reviewed_at = (
@@ -170,7 +176,7 @@ export const migrations: Migration[] = [
         up(db) {
             db.exec(BASE_SCHEMA);
             addMissingColumns(db);
-            runLegacyFixes(db);
+            runLegacyResets(db);
         },
     },
 ];

@@ -28,7 +28,7 @@ import type {
 } from "./types.ts";
 import type { Plan, Snapshot } from "./ado/reconcile.ts";
 import { salvageConfigOverrides, type ConfigOverrides } from "./config.ts";
-import { runMigrations } from "./store/migrations.ts";
+import { repairReviewTimestamps, runMigrations } from "./store/migrations.ts";
 import { isVendorName } from "./ado/normalize.ts";
 import { log } from "./log.ts";
 import type { ReleaseInfo } from "./update-check.ts";
@@ -348,6 +348,7 @@ export class ArgusStore {
         this.#db.exec("PRAGMA busy_timeout = 5000;"); // wait out transient locks (e.g. a lingering process after reload) instead of throwing SQLITE_BUSY; set before WAL so concurrent first opens wait too
         this.#enableWal();
         runMigrations(this.#db);
+        repairReviewTimestamps(this.#db);
         // Baseline "changes seen" to now on first run so you start caught up rather
         // than facing the entire migrated history as unseen.
         if (!this.getChangesSeenAt()) this.setChangesSeenAt();
