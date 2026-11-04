@@ -22,6 +22,7 @@ export const RELEASE_FILES: Readonly<Record<string, string | null>> = {
     "INSTALL.md": "docs/INSTALL.md",
     "install.ps1": "scripts/install.ps1",
     LICENSE: "LICENSE",
+    "THIRD-PARTY-NOTICES": null,
 };
 
 const packageSchema = z.object({

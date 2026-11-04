@@ -77,6 +77,7 @@ try {
         "INSTALL.md",
         "install.ps1",
         "LICENSE",
+        "THIRD-PARTY-NOTICES",
     ]) {
         const target = path.join(stage, file);
         mkdirSync(path.dirname(target), { recursive: true });

@@ -20,12 +20,14 @@ argus-vX.Y.Z/
   INSTALL.md
   install.ps1                 -> copies extension/ to the install folder
   LICENSE
+  THIRD-PARTY-NOTICES        licenses of the packages in extension/node_modules
   release-manifest.json      source/build identity, dependency inventory, file hashes
   extension/                  -> install to %USERPROFILE%\.copilot\extensions\argus
     extension.mjs
     dist/
-    node_modules/
+    node_modules/              only the runtime packages (Azure sign-in) and their dependencies
     package.json
+    package-lock.json          pins the installed versions
     argus.config.example.json
     ado-auth-config.example.json   empty registration template, not runtime config
     skills/pr-review/         installed by the first-run setup, if you accept
