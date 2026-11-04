@@ -2649,6 +2649,34 @@ export class ArgusStore {
         this.#prep("DELETE FROM poll_runs WHERE started_at < ?").run(cutoff);
     }
 
+    // Delete all PR data, events, logs, and tokens. Keeps the user's config and
+    // setup state. The poller rebuilds the board from ADO on the next run.
+    deleteAllData(): void {
+        this.#db.exec("BEGIN IMMEDIATE");
+        try {
+            for (const table of [
+                "pr_events",
+                "prs",
+                "poll_runs",
+                "activity_log",
+                "changes_read",
+                "automatic_review_tokens",
+            ])
+                this.#db.exec(`DELETE FROM ${table}`);
+            this.#db.exec(
+                "DELETE FROM settings WHERE key IN ('changes_seen_at', 'seen_teams')",
+            );
+            this.#db.exec("COMMIT");
+        } catch (err) {
+            this.#db.exec("ROLLBACK");
+            throw err;
+        }
+        // Free the pages so deleted text does not stay in the file.
+        // VACUUM runs in the WAL, so checkpoint after it to shrink the main file.
+        this.#db.exec("VACUUM");
+        this.#db.exec("PRAGMA wal_checkpoint(TRUNCATE)");
+    }
+
     // User config overrides (set from the Settings screen), merged onto defaults.
     getConfigOverrides(): ConfigOverrides {
         const row = this.#prep(
