@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import {
     cpSync,
     existsSync,
+    mkdtempSync,
     readdirSync,
     readFileSync,
     renameSync,
@@ -87,17 +88,23 @@ export function installSkill(src: string, dest: string): void {
 }
 
 // Install the bundled skill over dest without a window where dest is missing.
-// The new copy is built beside dest first. If any step fails, the old copy
-// returns.
+// The new copy is built in a temporary folder that only this call owns. If any
+// step fails, the old copy returns before any cleanup runs.
 function swapInSkill(src: string, dest: string): void {
-    const staging = `${dest}.new`;
-    const previous = `${dest}.old`;
-    rmSync(staging, { recursive: true, force: true });
-    rmSync(previous, { recursive: true, force: true });
+    const work = mkdtempSync(`${dest}-swap-`);
+    const staging = path.join(work, "new");
+    const previous = path.join(work, "old");
+    const cleanup = (): void => {
+        try {
+            rmSync(work, { recursive: true, force: true });
+        } catch {
+            // A locked file must not hide the real error.
+        }
+    };
     try {
         installSkill(src, staging);
     } catch (err) {
-        rmSync(staging, { recursive: true, force: true });
+        cleanup();
         throw err;
     }
     const hadOld = existsSync(dest);
@@ -105,12 +112,12 @@ function swapInSkill(src: string, dest: string): void {
         if (hadOld) renameSync(dest, previous);
         renameSync(staging, dest);
     } catch (err) {
-        rmSync(staging, { recursive: true, force: true });
         if (hadOld && !existsSync(dest) && existsSync(previous))
             renameSync(previous, dest);
+        cleanup();
         throw err;
     }
-    rmSync(previous, { recursive: true, force: true });
+    cleanup();
 }
 
 // Replace the installed skill with the bundled one. Copies the old skill to

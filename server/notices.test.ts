@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import {
-    existsSync,
     mkdirSync,
     mkdtempSync,
+    readdirSync,
     readFileSync,
     rmSync,
     writeFileSync,
@@ -190,7 +190,19 @@ assert.throws(() =>
     replaceSkill(path.join(dir, "missing-src"), dest, path.join(dir, "b2")),
 );
 assert.equal(readFileSync(path.join(dest, "SKILL.md"), "utf-8"), "my edit\n");
-assert.equal(existsSync(`${dest}.new`), false);
-assert.equal(existsSync(`${dest}.old`), false);
+assert.deepEqual(
+    readdirSync(path.dirname(dest)).filter((n) => n.includes("-swap-")),
+    [],
+);
+
+// Sibling folders that the user owns survive a replacement.
+const userBackup = `${dest}.old`;
+mkdirSync(userBackup);
+writeFileSync(path.join(userBackup, "SKILL.md"), "user backup\n");
+replaceSkill(src, dest, path.join(dir, "b3"));
+assert.equal(
+    readFileSync(path.join(userBackup, "SKILL.md"), "utf-8"),
+    "user backup\n",
+);
 
 rmSync(dir, { recursive: true, force: true });
