@@ -13,6 +13,7 @@ import {
 } from "../lib/api";
 import {
     AccountPanel,
+    RegistrationImport,
     RegistrationShare,
 } from "../components/AuthRegistration";
 import { SegToggle } from "../components/SegToggle";
@@ -241,6 +242,7 @@ function Settings() {
                                 )}
                             </form.Field>
                             <AccountPanel />
+                            <RegistrationImport />
                             <RegistrationShare />
                             <form.Field name="me">
                                 {(field) => (

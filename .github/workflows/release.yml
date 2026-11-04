@@ -101,6 +101,12 @@ jobs:
               run: npm test
             - name: Stage release
               run: node scripts/package-release.ts
+            - name: Verify staged runtime without signing in
+              shell: pwsh
+              run: |
+                  $version = (Get-Content package.json -Raw | ConvertFrom-Json).version
+                  node scripts/verify-release.ts "release/argus-$version"
+                  if ($LASTEXITCODE -ne 0) { throw "Staged runtime verification failed" }
             - name: Create ZIP
               shell: pwsh
               run: |
@@ -113,6 +119,13 @@ jobs:
                   $zip = "release/argus-$env:TAG-windows.zip"
                   $hash = (Get-FileHash $zip -Algorithm SHA256).Hash.ToLower()
                   "$hash  argus-$env:TAG-windows.zip" | Set-Content -Encoding ascii "$zip.sha256"
+            - name: Verify clean ZIP acquisition
+              shell: pwsh
+              run: |
+                  $dest = Join-Path $env:RUNNER_TEMP "argus-verify-$env:GITHUB_RUN_ID-$env:GITHUB_RUN_ATTEMPT"
+                  Expand-Archive "release/argus-$env:TAG-windows.zip" $dest
+                  node scripts/verify-release.ts "$dest/argus-$env:TAG"
+                  if ($LASTEXITCODE -ne 0) { throw "Acquired ZIP verification failed" }
             - name: Publish GitHub Release
               env:
                   GH_TOKEN: ${{ github.token }}

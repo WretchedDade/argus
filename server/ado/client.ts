@@ -6,6 +6,7 @@ import { promisify } from "node:util";
 import type { AuthStatus } from "@devstart/ado-client";
 import type { AdoRawPr } from "./types.ts";
 import { resolveAzCommand } from "./az-command.ts";
+import { validateRegistration } from "../../src/lib/auth-registration.ts";
 
 const pExecFile = promisify(execFile);
 const MAX_BUFFER = 64 * 1024 * 1024;
@@ -40,7 +41,6 @@ export const useBroker = () => provider === "broker";
 // The Entra app registration (non-secret IDs) the broker needs. Env vars win over the
 // shared config file, matching the package. Saving resets the broker so it reloads.
 export type AdoRegistration = { clientId: string; tenantId: string };
-const GUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const registrationPath = () =>
     process.env.DEVSTART_ADO_CONFIG_PATH ??
     path.join(
@@ -67,10 +67,11 @@ export function getRegistration(): AdoRegistration & { fromEnv: boolean } {
 }
 
 export function saveRegistration(reg: AdoRegistration): void {
-    const clientId = reg.clientId?.trim();
-    const tenantId = reg.tenantId?.trim();
-    if (!GUID.test(clientId ?? "") || !GUID.test(tenantId ?? ""))
-        throw new Error("Client ID and tenant ID must both be GUIDs.");
+    const errors = validateRegistration(reg);
+    if (errors.clientId || errors.tenantId)
+        throw new Error(Object.values(errors).join(" "));
+    const clientId = reg.clientId.trim();
+    const tenantId = reg.tenantId.trim();
     const file = registrationPath();
     fs.mkdirSync(path.dirname(file), { recursive: true });
     fs.writeFileSync(file, JSON.stringify({ clientId, tenantId }, null, 2));

@@ -20,14 +20,45 @@ argus-vX.Y.Z/
   INSTALL.md
   install.ps1                 -> copies extension/ to the install folder
   LICENSE
+  release-manifest.json      source/build identity, dependency inventory, file hashes
   extension/                  -> install to %USERPROFILE%\.copilot\extensions\argus
     extension.mjs
     dist/
     node_modules/
     package.json
     argus.config.example.json
+    ado-auth-config.example.json   empty registration template, not runtime config
     skills/pr-review/         installed by the first-run setup, if you accept
 ```
+
+The release also includes a `.zip.sha256` sidecar. Before extracting, compare its
+hash with `(Get-FileHash .\argus-vX.Y.Z-windows.zip -Algorithm SHA256).Hash`.
+The manifest records the source commit, dirty-source flag, lockfile SHA-256,
+build Node/platform/architecture, installed dependency versions/registry
+integrities/license metadata and payload file hashes. Dependency license files
+remain in `node_modules`. These checks detect accidental changes; they are not a
+signature, security review, or reproducible-build attestation.
+
+Maintainers can test acquisition without installing anything:
+
+```powershell
+node scripts/package-release.ts --output-root "$env:TEMP\argus-acquisition"
+# Or extract a downloaded ZIP outside the source checkout.
+node scripts/verify-release.ts "$env:TEMP\argus-acquisition\argus-X.Y.Z"
+```
+
+Staging replaces only `argus-X.Y.Z` under that output root, not other versions or
+archives. Verification checks the file inventory, entry-point syntax, runtime
+imports and Windows x64 native MSAL loading without starting Argus or signing in.
+When `GITHUB_SHA` is set, verification also requires a clean source tree and a
+manifest source commit that matches that SHA. Both release CI verification
+steps enforce this check. Local runs without `GITHUB_SHA` can verify dirty
+development builds; the manifest still records their dirty-source flag.
+It does **not** prove interactive WAM login, window association, app canvas
+discovery or host-injected SDK availability. Never copy a real registration file
+into an archive. The empty example is informational; the current canvas continues
+to save IDs to the existing shared auth-config location described in the README.
+No plugin persistent-data migration has been enabled.
 
 ## Install the extension
 
@@ -62,7 +93,17 @@ Enter your Azure DevOps org URL, org slug, and project, and choose a sign-in met
 
 If you choose OneDrive, reload extensions to start using it. The README section "Where the database lives" has more detail.
 
-If you choose Windows account, the next screen asks for the Entra app client and tenant IDs. To prefill these values, copy `argus.config.example.json` to `argus.config.json` in the extension folder and edit it. See the README for all fields.
+If you choose Windows account, the sign-in screen provides separate **Application
+(client) ID** and **Directory (tenant) ID** fields. Enter both IDs from your Entra
+app registration, then select **Save setup**. You can edit them there or under
+**Settings > Windows account setup**. Saving setup saves only the IDs, not your
+sign-in method. See the README for the saved auth-config location and explicit
+environment overrides.
+
+To prefill organization defaults, copy `argus.config.example.json` to
+`argus.config.json` in the extension folder and edit it. That example does **not**
+prefill the client or tenant ID fields. `ado-auth-config.example.json` contains
+only the empty registration structure; configure actual IDs through the canvas.
 
 ## Verify the installation
 
