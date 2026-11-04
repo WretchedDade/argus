@@ -20,10 +20,15 @@ const prompt = automaticReviewPrompt(
     "tok-123",
 );
 assert.match(prompt, /"token":"tok-123"/);
+assert.match(
+    prompt,
+    /kickoff prompt must include[^]*"release":true[^]*\(the skill reads/,
+);
 assert.match(prompt, /Review mode: automatic/);
 assert.match(prompt, /coordinate_with_creator: false/);
 assert.match(prompt, /kickoff\.mode: "autopilot"/);
-assert.match(prompt, /in-depth full review/);
+assert.doesNotMatch(prompt, /waiting` verdict|provisional/);
+assert.doesNotMatch(prompt, /Lane:/);
 assert.match(prompt, /must not run local tests, builds, linters, typechecks/);
 assert.match(
     prompt,
@@ -53,6 +58,21 @@ const interactivePrompt = reviewPrompt(
 assert.doesNotMatch(
     interactivePrompt,
     /Review mode: automatic|kickoff\.mode: "autopilot"/,
+);
+assert.match(interactivePrompt, /Review mode: quick/);
+assert.doesNotMatch(interactivePrompt, /Lane:/);
+assert.match(
+    reviewPrompt(
+        {
+            repo: "E",
+            number: 1,
+            title: "Test full mode",
+            canonical: "https://x/1",
+            lane: "review",
+        } as Pr,
+        "pr-review",
+    ),
+    /Review mode: full/,
 );
 
 const customPr = {

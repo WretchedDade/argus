@@ -2,8 +2,10 @@ import { createHash } from "node:crypto";
 import {
     cpSync,
     existsSync,
+    mkdtempSync,
     readdirSync,
     readFileSync,
+    renameSync,
     rmSync,
     writeFileSync,
 } from "node:fs";
@@ -85,6 +87,50 @@ export function installSkill(src: string, dest: string): void {
     writeSidecar(src, dest);
 }
 
+// Install the bundled skill over dest without a window where dest is missing.
+// The new copy is built in a temporary folder that only this call owns. If any
+// step fails, the old copy returns before any cleanup runs.
+function swapInSkill(src: string, dest: string): void {
+    const work = mkdtempSync(`${dest}-swap-`);
+    const staging = path.join(work, "new");
+    const previous = path.join(work, "old");
+    const cleanup = (): void => {
+        try {
+            rmSync(work, { recursive: true, force: true });
+        } catch {
+            // A locked file must not hide the real error.
+        }
+    };
+    try {
+        installSkill(src, staging);
+    } catch (err) {
+        cleanup();
+        throw err;
+    }
+    const hadOld = existsSync(dest);
+    try {
+        if (hadOld) renameSync(dest, previous);
+        renameSync(staging, dest);
+    } catch (err) {
+        if (hadOld && !existsSync(dest) && existsSync(previous))
+            renameSync(previous, dest);
+        cleanup();
+        throw err;
+    }
+    cleanup();
+}
+
+// Replace the installed skill with the bundled one. Copies the old skill to
+// backupDir first, so the user can recover their edits.
+export function replaceSkill(
+    src: string,
+    dest: string,
+    backupDir: string,
+): void {
+    if (existsSync(dest)) cpSync(dest, backupDir, { recursive: true });
+    swapInSkill(src, dest);
+}
+
 // Run when Argus starts. Updates an unmodified installed skill in place. Leaves
 // an edited skill alone and reports it as pending. Ignores a skill without a
 // sidecar, because Argus did not install it.
@@ -104,7 +150,6 @@ export function syncSkill(src: string, dest: string): SkillSyncResult {
     )
         return { state: "pending", bundledHash };
 
-    rmSync(dest, { recursive: true, force: true });
-    installSkill(src, dest);
+    swapInSkill(src, dest);
     return { state: "updated" };
 }
