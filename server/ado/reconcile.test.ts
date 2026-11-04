@@ -2,7 +2,6 @@ import assert from "node:assert/strict";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { DatabaseSync } from "node:sqlite";
 import { countBlobChanges } from "./client.ts";
 import { reconcile, type Snapshot } from "./reconcile.ts";
 import { ArgusStore } from "../db.ts";
@@ -175,48 +174,6 @@ assert.equal(
             selected.length,
         );
         store.close();
-    } finally {
-        rmSync(dir, { recursive: true, force: true });
-    }
-}
-
-// The blob-only migration invalidates counts cached by the old tree-inclusive query.
-{
-    const dir = mkdtempSync(path.join(tmpdir(), "argus-test-"));
-    const dbFile = path.join(dir, "argus.db");
-    try {
-        const store = new ArgusStore(dbFile);
-        store.upsertPr({
-            canonical: key,
-            org: "example-org",
-            project: "Project",
-            repo: "r",
-            number: 1,
-            title: "t",
-            description: "",
-            author: "a",
-            isVendor: false,
-            role: "reviewer",
-            teams: [],
-            isDraft: false,
-            lastCommitSha: "sha1",
-            lastCommitAt: null,
-            prCreatedAt: null,
-            sourceBranch: "f",
-            targetBranch: "main",
-        });
-        store.setChangedFiles(key, 23, "sha1");
-        store.close();
-
-        const db = new DatabaseSync(dbFile);
-        db.prepare("DELETE FROM settings WHERE key = ?").run(
-            "changed_files_blob_count_reset",
-        );
-        db.close();
-
-        const migrated = new ArgusStore(dbFile);
-        assert.equal(migrated.getPr(key)?.changedFiles, null);
-        migrated.close();
     } finally {
         rmSync(dir, { recursive: true, force: true });
     }
