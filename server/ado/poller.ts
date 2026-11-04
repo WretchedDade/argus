@@ -463,6 +463,7 @@ async function refreshPrInner(
         throw new AdoError(
             `Unable to count changed files for ${norm.repo} #${norm.number}`,
         );
+    ctx.store.reviveStaleOnChange(canonical, norm.sha, norm.isDraft);
     ctx.store.upsertPr({
         canonical: norm.canonical,
         org: norm.org,

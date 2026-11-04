@@ -157,6 +157,37 @@ try {
     assert.equal(s.restorePr(fresh.canonical), true);
     assert.equal(s.getPr(fresh.canonical)?.dismissed, false);
     assert.equal(s.archiveStale(undefined, t0), 0);
+
+    // A restore also resets the recency the Board reads.
+    assert.ok(
+        Date.parse(s.getPr(fresh.canonical)?.updatedAt ?? "") > t0 - DAY,
+        "restore resets updated_at",
+    );
+
+    // An old verdict does not hide a newer, unfinished review session.
+    const reReview = upsert(6);
+    s.upsertPr(reReview);
+    s.recordReview(reReview.canonical, { verdict: "approved" });
+    setUpdated(file, reReview.canonical, t0 - 40 * DAY);
+    assert.ok(
+        s.staleCandidates(t0).some((c) => c.canonical === reReview.canonical),
+        "finished review is stale",
+    );
+    s.setReviewSession(reReview.canonical, "session-3");
+    assert.ok(
+        !s.staleCandidates(t0).some((c) => c.canonical === reReview.canonical),
+        "re-review in progress is skipped",
+    );
+
+    // A refresh that sees a new commit revives a stale archive.
+    const refreshed = upsert(7);
+    s.upsertPr(refreshed);
+    setUpdated(file, refreshed.canonical, t0 - 40 * DAY);
+    s.archiveStale([refreshed.canonical], t0);
+    s.reviveStaleOnChange(refreshed.canonical, "sha-1", false);
+    assert.equal(s.getPr(refreshed.canonical)?.dismissed, true, "no change");
+    s.reviveStaleOnChange(refreshed.canonical, "sha-2", false);
+    assert.equal(s.getPr(refreshed.canonical)?.dismissed, false);
     s.close();
 
     // Repo scope policy.
@@ -185,6 +216,15 @@ try {
     assert.deepEqual(inResult, { archived: 0, revived: 1, kept: 0 });
     assert.equal(p.getPr(team.canonical)?.dismissed, false);
     assert.ok(events(p, team.canonical).includes("revived"));
+
+    // Per-PR overrides survive a repo default change, even for named roles.
+    p.setOutOfScope(mine.canonical, true);
+    assert.equal(p.getPr(mine.canonical)?.dismissedReason, "out_of_scope");
+    p.setRepoScope("noise", "out");
+    assert.equal(p.getPr(mine.canonical)?.dismissed, true, "explicit out kept");
+    p.setRepoScope("noise", "in");
+    assert.equal(p.getPr(mine.canonical)?.dismissed, true, "still out");
+    assert.equal(p.restorePr(mine.canonical), true);
 
     // A per-PR "out" archives, and manual restore sets an "in" override.
     p.setOutOfScope(team.canonical, true);

@@ -2366,8 +2366,7 @@ export class ArgusStore {
         this.applyScopePolicy();
     }
 
-    // The default scope of a repo. null removes the default. A per-PR override
-    // that matches the new default is redundant, so it is cleared.
+    // The default scope of a repo. null removes the default. Per-PR overrides are kept.
     setRepoScope(
         repo: string,
         scope: RepoScope | null,
@@ -2375,9 +2374,6 @@ export class ArgusStore {
         if (scope) {
             this.#prep(
                 "INSERT INTO repo_scopes (repo, scope) VALUES (?, ?) ON CONFLICT(repo) DO UPDATE SET scope = excluded.scope",
-            ).run(repo, scope);
-            this.#prep(
-                "UPDATE prs SET scope_override = NULL WHERE repo = ? AND scope_override = ?",
             ).run(repo, scope);
         } else {
             this.#prep("DELETE FROM repo_scopes WHERE repo = ?").run(repo);
@@ -2530,7 +2526,26 @@ export class ArgusStore {
             this.appendEvent(canonical, "in_scope");
         }
         this.#revive(canonical, "manual");
+        // The Board reads updated_at as recency, so a restore resets it.
+        this.#prep("UPDATE prs SET updated_at = ? WHERE canonical = ?").run(
+            now(),
+            canonical,
+        );
         return true;
+    }
+
+    // A refresh stores the new snapshot, so the next poll cannot see the change.
+    // Revive a stale archive here when the head commit or draft state moved.
+    reviveStaleOnChange(
+        canonical: string,
+        sha: string | null,
+        isDraft: boolean,
+    ): void {
+        const row = this.#prep(
+            "SELECT last_commit_sha AS sha, is_draft AS draft FROM prs WHERE canonical = ? AND dismissed = 1 AND dismissed_reason = 'stale'",
+        ).get(canonical) as { sha: string | null; draft: number } | undefined;
+        if (row && (row.sha !== sha || !!row.draft !== isDraft))
+            this.#revive(canonical, "updated");
     }
 
     listArchived(): Pr[] {
@@ -2538,7 +2553,7 @@ export class ArgusStore {
     }
 
     // Open PRs with no tracked change for `days` or more. Skips snoozed PRs, PRs
-    // with a review session that has no verdict yet, and PRs restored within the
+    // with a review session newer than the last verdict, and PRs restored within the
     // window (a restore resets the clock).
     staleCandidates(
         nowMs = Date.now(),
@@ -2552,7 +2567,13 @@ export class ArgusStore {
       FROM prs p
       WHERE p.state != 'closed' AND p.dismissed = 0
         AND p.snoozed_until IS NULL AND p.snooze_mode IS NULL
-        AND (p.review_session_id IS NULL OR p.reviewed_at IS NOT NULL)
+        AND (p.review_session_id IS NULL OR (
+          p.reviewed_at IS NOT NULL AND NOT EXISTS (
+            SELECT 1 FROM pr_events r
+            WHERE r.canonical = p.canonical AND r.type = 'reviewed'
+              AND r.payload LIKE '%sessionId%' AND r.ts >= p.reviewed_at
+          )
+        ))
         AND NOT EXISTS (
           SELECT 1 FROM pr_events e
           WHERE e.canonical = p.canonical AND e.type = 'revived' AND e.ts > ?
