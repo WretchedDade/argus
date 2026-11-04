@@ -270,6 +270,7 @@ export class AdoAuth {
     private lastError: string | null = null;
     private needsInteraction = false;
     private signedOut = false;
+    private markerSeen = false; // whether the sign-out marker existed at the last check
     private storeStamp = -1; // mtime of the shared account file when last read or written
     private epoch = 0; // bumps on sign-in/out so in-flight token requests can be discarded
     private currentAccount: AuthAccount | null = null;
@@ -307,6 +308,26 @@ export class AdoAuth {
         const stored = this.readStoredAuth();
         this.currentAccount = stored?.account ?? null;
         this.brokerRecord = stored?.brokerRecord ?? null;
+        this.signedOut = this.markerSeen = this.signedOutMarkerExists();
+    }
+
+    private get signedOutMarkerPath(): string {
+        return `${this.accountStorePath}.signed-out`;
+    }
+
+    private signedOutMarkerExists(): boolean {
+        return fs.existsSync(this.signedOutMarkerPath);
+    }
+
+    private writeSignedOutMarker(): void {
+        fs.mkdirSync(path.dirname(this.accountStorePath), { recursive: true });
+        fs.writeFileSync(this.signedOutMarkerPath, "", "utf8");
+        this.markerSeen = true;
+    }
+
+    private clearSignedOutMarker(): void {
+        fs.rmSync(this.signedOutMarkerPath, { force: true });
+        this.markerSeen = false;
     }
 
     private get configured(): boolean {
@@ -380,6 +401,27 @@ export class AdoAuth {
 
     // Other Argus hosts share the account file. Pick up their sign-in, switch or sign-out.
     private syncFromDisk(): void {
+        // React to a new sign-out marker even when the account file did not change.
+        const marker = this.signedOutMarkerExists();
+        if (marker && !this.markerSeen) {
+            this.currentAccount = null;
+            this.brokerRecord = null;
+            this.signedOut = true;
+            this.lastError = null;
+            this.needsInteraction = false;
+            this.epoch++;
+        } else if (!marker && this.markerSeen) {
+            // Another host finished sign-in: reload its account and allow tokens again.
+            const stored = this.readStoredAuth();
+            this.currentAccount = stored?.account ?? null;
+            this.brokerRecord = stored?.brokerRecord ?? null;
+            this.storeStamp = this.statStore();
+            this.signedOut = false;
+            this.lastError = null;
+            this.needsInteraction = false;
+            this.epoch++;
+        }
+        this.markerSeen = marker;
         const stamp = this.statStore();
         if (stamp === this.storeStamp) return;
         this.storeStamp = stamp;
@@ -392,7 +434,7 @@ export class AdoAuth {
         if (!changed) return;
         this.currentAccount = stored?.account ?? null;
         this.brokerRecord = stored?.brokerRecord ?? null;
-        this.signedOut = !stored;
+        this.signedOut = !stored || this.signedOutMarkerExists();
         this.lastError = null;
         this.needsInteraction = false;
         this.epoch++;
@@ -457,16 +499,17 @@ export class AdoAuth {
                 error: "Windows Web Account Manager is required for Azure DevOps authentication.",
             };
         }
+        const account = this.signedOut ? null : this.currentAccount;
         return {
             configured: true,
             supported: true,
-            state: this.currentAccount
+            state: account
                 ? this.lastError
                     ? "error"
                     : "ready"
                 : "signed-out",
-            interactionRequired: !this.currentAccount || this.needsInteraction,
-            account: this.currentAccount,
+            interactionRequired: !account || this.needsInteraction,
+            account,
             error: this.lastError,
         };
     }
@@ -521,6 +564,7 @@ export class AdoAuth {
     // Forget the stored account. The Windows account itself is not touched.
     // Stay signed out until signIn(), even if developer credentials still work.
     async signOut(): Promise<AuthStatus> {
+        this.writeSignedOutMarker();
         fs.rmSync(this.accountStorePath, { force: true });
         this.storeStamp = -1;
         this.currentAccount = null;
@@ -543,12 +587,14 @@ export class AdoAuth {
                 "Windows Web Account Manager is not available.",
             );
         }
+        this.syncFromDisk();
         const wasSignedOut = this.signedOut;
         // A 401 already proved the cached token is bad, so skip the silent shortcut.
         if (!selectAccount && !this.needsInteraction) {
             this.signedOut = false;
             try {
                 await this.getAccessToken();
+                this.clearSignedOutMarker();
                 return this.status();
             } catch (error) {
                 this.signedOut = wasSignedOut;
@@ -577,6 +623,7 @@ export class AdoAuth {
             account: this.currentAccount,
             brokerRecord: record,
         });
+        this.clearSignedOutMarker();
         this.lastError = null;
         this.needsInteraction = false;
         this.signedOut = false;
