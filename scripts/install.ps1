@@ -8,17 +8,32 @@ param(
 $ErrorActionPreference = "Stop"
 $source = Join-Path $PSScriptRoot "extension"
 
-foreach ($required in "extension.mjs", "package.json", "dist") {
-    if (-not (Test-Path (Join-Path $source $required))) {
+foreach ($required in "extension.mjs", "package.json", "dist", "node_modules") {
+    if (-not (Test-Path -LiteralPath (Join-Path $source $required))) {
         throw "Missing '$required' in $source. Run this script from the extracted release folder."
     }
 }
 
 # Copy over the install and do not delete it first. This keeps argus.config.json.
-# Only node_modules is replaced, so packages that the release dropped do not remain.
+# Move the old node_modules aside so packages that the release dropped do not remain.
+# The move fails before any change when the running extension locks a file in it.
 $modules = Join-Path $Destination "node_modules"
-if (Test-Path $modules) { Remove-Item -Recurse -Force $modules }
-New-Item -ItemType Directory -Force -Path $Destination | Out-Null
-Copy-Item -Recurse -Force (Join-Path $source "*") $Destination
+$backup = "$modules.old"
+if (Test-Path -LiteralPath $backup) { Remove-Item -LiteralPath $backup -Recurse -Force }
+$hadModules = Test-Path -LiteralPath $modules
+if ($hadModules) { Move-Item -LiteralPath $modules -Destination $backup }
+
+try {
+    New-Item -ItemType Directory -Force -Path $Destination | Out-Null
+    Get-ChildItem -LiteralPath $source | Copy-Item -Recurse -Force -Destination $Destination
+}
+catch {
+    if ($hadModules) {
+        if (Test-Path -LiteralPath $modules) { Remove-Item -LiteralPath $modules -Recurse -Force }
+        Move-Item -LiteralPath $backup -Destination $modules
+    }
+    throw
+}
+if ($hadModules) { Remove-Item -LiteralPath $backup -Recurse -Force -ErrorAction SilentlyContinue }
 
 Write-Host "Installed Argus to $Destination. Reload extensions in the Copilot app."
