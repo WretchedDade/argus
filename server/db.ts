@@ -2571,7 +2571,9 @@ export class ArgusStore {
           p.reviewed_at IS NOT NULL AND NOT EXISTS (
             SELECT 1 FROM pr_events r
             WHERE r.canonical = p.canonical AND r.type = 'reviewed'
-              AND r.payload LIKE '%sessionId%' AND r.ts >= p.reviewed_at
+              AND json_extract(r.payload, '$.sessionId') IS NOT NULL
+              AND json_extract(r.payload, '$.verdict') IS NULL
+              AND r.ts >= p.reviewed_at
           )
         ))
         AND NOT EXISTS (

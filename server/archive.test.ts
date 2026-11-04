@@ -178,6 +178,14 @@ try {
         !s.staleCandidates(t0).some((c) => c.canonical === reReview.canonical),
         "re-review in progress is skipped",
     );
+    s.recordReview(reReview.canonical, {
+        verdict: "approved",
+        sessionId: "session-3",
+    });
+    assert.ok(
+        s.staleCandidates(t0).some((c) => c.canonical === reReview.canonical),
+        "completed review with a linked session is stale",
+    );
 
     // A refresh that sees a new commit revives a stale archive.
     const refreshed = upsert(7);
