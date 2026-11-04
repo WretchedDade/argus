@@ -90,6 +90,22 @@ function Settings() {
     const version = useQuery(versionQuery).data;
     const [checking, setChecking] = useState(false);
     const [tab, setTab] = useState<GroupId>("general");
+    const [confirmDelete, setConfirmDelete] = useState(false);
+    const [deleting, setDeleting] = useState(false);
+
+    const deleteAll = async () => {
+        setDeleting(true);
+        try {
+            await api.deleteAllData();
+            await qc.invalidateQueries();
+            pushToast("All Argus data deleted");
+        } catch {
+            pushToast("Couldn't delete the data", "error");
+        } finally {
+            setDeleting(false);
+            setConfirmDelete(false);
+        }
+    };
 
     const checkNow = async () => {
         setChecking(true);
@@ -711,6 +727,53 @@ function Settings() {
                                     </Row>
                                 )}
                             </form.Field>
+                        </section>
+
+                        <section className="flex flex-col gap-3">
+                            <h2 className="text-muted text-xs font-medium uppercase tracking-wide">
+                                Your data
+                            </h2>
+                            <div className="text-muted text-xs">
+                                Argus keeps PR titles, people names, votes, and
+                                your review history on this computer. Delete all
+                                of it here. Your settings stay. Argus reads your
+                                open PRs from Azure DevOps again on the next
+                                poll, but the history is gone for good.
+                            </div>
+                            <div className="flex items-center gap-2">
+                                {confirmDelete ? (
+                                    <>
+                                        <button
+                                            type="button"
+                                            disabled={deleting}
+                                            onClick={() => void deleteAll()}
+                                            className="rounded-md bg-red-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-red-700 disabled:opacity-60"
+                                        >
+                                            {deleting
+                                                ? "Deleting…"
+                                                : "Yes, delete everything"}
+                                        </button>
+                                        <button
+                                            type="button"
+                                            disabled={deleting}
+                                            onClick={() =>
+                                                setConfirmDelete(false)
+                                            }
+                                            className="border-line text-muted hover:text-fg rounded-md border px-3 py-1.5 text-sm"
+                                        >
+                                            Cancel
+                                        </button>
+                                    </>
+                                ) : (
+                                    <button
+                                        type="button"
+                                        onClick={() => setConfirmDelete(true)}
+                                        className="rounded-md border border-red-500/60 bg-red-500/10 px-3 py-1.5 text-sm font-medium text-red-600 hover:bg-red-500/20"
+                                    >
+                                        Delete all data
+                                    </button>
+                                )}
+                            </div>
                         </section>
                     </Group>
                 </div>

@@ -115,6 +115,7 @@ try {
     seeded.close();
     const raw = new DatabaseSync(legacyFile);
     raw.exec("DROP TABLE automatic_review_tokens");
+    raw.exec("PRAGMA user_version = 0");
     raw.close();
     const upgraded = new ArgusStore(legacyFile);
     assert.equal(upgraded.getPr(canonical)?.number, 42);

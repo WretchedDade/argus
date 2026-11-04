@@ -18,6 +18,7 @@ const context: ApiContext = {
     store,
     bootAt: new Date().toISOString(),
     reconcile: async () => null,
+    deleteAllData: async () => {},
     refreshPr: async () => {},
     trackPr: async () => ({ ok: false }),
     recordReview: (_canonical, opts) => recorded.push(opts.verdict),
