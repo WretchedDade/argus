@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { ArgusStore } from "../db.ts";
 import type { ArgusConfig } from "../config.ts";
 import type { ArchivableSession, PrRole } from "../types.ts";
@@ -51,6 +52,12 @@ let lastRunAt: string | null = null;
 let lastSummary: ReconcileSummary | null = null;
 let lastError: string | null = null;
 let timer: NodeJS.Timeout | null = null;
+let leaseTimer: NodeJS.Timeout | null = null;
+let leaseStore: ArgusStore | null = null;
+
+const hostId = randomUUID(); // names this process in the poll lease
+const LEASE_TTL_MS = 120_000;
+const LEASE_HEARTBEAT_MS = 30_000;
 
 export function getPollerStatus(): PollerStatus {
     return {
@@ -65,15 +72,29 @@ export function getPollerStatus(): PollerStatus {
 }
 
 // Single-flight: a manual refresh and the timer never run concurrently; callers
-// share the in-progress run.
+// share the in-progress run. Across hosts, only the poll lease holder runs; any
+// other host skips the run and returns null.
 export function reconcileOnce(
     ctx: PollerContext,
 ): Promise<ReconcileSummary | null> {
     if (inFlight) return inFlight;
+    if (!ctx.store.acquirePollLease(hostId, LEASE_TTL_MS)) {
+        return Promise.resolve(null);
+    }
     inFlight = runReconcile(ctx).finally(() => {
         inFlight = null;
     });
     return inFlight;
+}
+
+// The lease holder keeps renewing for as long as its poller runs, so the same
+// host polls until it closes. Other hosts wait and take over after it expires.
+function beatLease(ctx: PollerContext): void {
+    try {
+        ctx.store.acquirePollLease(hostId, LEASE_TTL_MS);
+    } catch {
+        // The next beat retries.
+    }
 }
 
 // Single-PR refreshes and tracks that run outside a poll.
@@ -539,12 +560,24 @@ async function trackByNumberInner(
 // --- scheduling: clock-aligned to :00/:30, work hours only ---
 
 export function startPoller(ctx: PollerContext): void {
+    beatLease(ctx);
+    leaseTimer = setInterval(() => beatLease(ctx), LEASE_HEARTBEAT_MS);
+    leaseTimer.unref();
+    leaseStore = ctx.store;
     scheduleNext(ctx);
 }
 
 export function stopPoller(): void {
     if (timer) clearTimeout(timer);
     timer = null;
+    if (leaseTimer) clearInterval(leaseTimer);
+    leaseTimer = null;
+    try {
+        leaseStore?.releasePollLease(hostId);
+    } catch {
+        // The lease expires by itself.
+    }
+    leaseStore = null;
 }
 
 function scheduleNext(ctx: PollerContext): void {

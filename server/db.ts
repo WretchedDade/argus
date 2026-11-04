@@ -2189,7 +2189,8 @@ export class ArgusStore {
         let added = 0;
         let updated = 0;
         let events = 0;
-        this.#db.exec("BEGIN");
+        // IMMEDIATE avoids SQLITE_BUSY_SNAPSHOT when another host writes first.
+        this.#db.exec("BEGIN IMMEDIATE");
         try {
             for (const item of plan.items) {
                 for (const ev of item.events) {
@@ -2638,6 +2639,38 @@ export class ArgusStore {
             id,
         ) as PollRunRow | undefined;
         return row ? rowToRun(row) : null;
+    }
+
+    // Take or renew the poll lease. True when `owner` may poll. Another owner's
+    // lease blocks us until it expires.
+    acquirePollLease(
+        owner: string,
+        ttlMs: number,
+        nowMs: number = Date.now(),
+    ): boolean {
+        this.#db.exec("BEGIN IMMEDIATE");
+        try {
+            const row = this.#prep(
+                "SELECT owner, expires_at FROM poll_lease WHERE id = 1",
+            ).get() as { owner: string; expires_at: number } | undefined;
+            const free = !row || row.owner === owner || row.expires_at <= nowMs;
+            if (free) {
+                this.#prep(
+                    "INSERT OR REPLACE INTO poll_lease (id, owner, expires_at) VALUES (1, ?, ?)",
+                ).run(owner, nowMs + ttlMs);
+            }
+            this.#db.exec("COMMIT");
+            return free;
+        } catch (err) {
+            this.#db.exec("ROLLBACK");
+            throw err;
+        }
+    }
+
+    releasePollLease(owner: string): void {
+        this.#prep("DELETE FROM poll_lease WHERE id = 1 AND owner = ?").run(
+            owner,
+        );
     }
 
     // Drop operational logs older than the retention window. Cheap; run per cycle.

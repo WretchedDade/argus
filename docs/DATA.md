@@ -104,6 +104,10 @@ Key and value pairs.
 
 The event ids that you marked as read in the Changes bell, and the time.
 
+### `poll_lease`
+
+One row. It names the Argus host that may poll ADO (an owner id and an expiry time in milliseconds). Hosts that share the database file renew it every 30 seconds and release it when they close. Another host takes over after it expires (2 minutes).
+
 ### `automatic_review_tokens`
 
 One-time tokens for automatic reviews. Each token has a PR key and an issue time. Tokens expire after 6 hours.

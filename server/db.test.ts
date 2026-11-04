@@ -103,6 +103,22 @@ try {
     assert.equal(store.checkVerdictAllowed(canonical, "approved", t4), false);
     peer.close();
 
+    // Only one host holds the poll lease; another takes over after expiry.
+    const host2 = new ArgusStore(path.join(dir, "argus.db"));
+    const t0 = Date.now();
+    assert.equal(store.acquirePollLease("a", 1000, t0), true);
+    assert.equal(host2.acquirePollLease("b", 1000, t0 + 500), false);
+    assert.equal(store.acquirePollLease("a", 1000, t0 + 500), true); // renew
+    assert.equal(host2.acquirePollLease("b", 1000, t0 + 1200), false);
+    assert.equal(host2.acquirePollLease("b", 1000, t0 + 1600), true); // expired
+    assert.equal(store.acquirePollLease("a", 1000, t0 + 1700), false);
+    store.releasePollLease("a"); // not the owner: no effect
+    assert.equal(store.acquirePollLease("a", 1000, t0 + 1700), false);
+    host2.releasePollLease("b");
+    assert.equal(store.acquirePollLease("a", 1000, t0 + 1700), true);
+    store.releasePollLease("a");
+    host2.close();
+
     // A database from before the token table keeps its history after an upgrade.
     const legacyFile = path.join(dir, "legacy.db");
     const seeded = new ArgusStore(legacyFile);
