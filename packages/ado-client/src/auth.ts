@@ -307,6 +307,24 @@ export class AdoAuth {
         const stored = this.readStoredAuth();
         this.currentAccount = stored?.account ?? null;
         this.brokerRecord = stored?.brokerRecord ?? null;
+        this.signedOut = this.signedOutMarkerExists();
+    }
+
+    private get signedOutMarkerPath(): string {
+        return `${this.accountStorePath}.signed-out`;
+    }
+
+    private signedOutMarkerExists(): boolean {
+        return fs.existsSync(this.signedOutMarkerPath);
+    }
+
+    private writeSignedOutMarker(): void {
+        fs.mkdirSync(path.dirname(this.accountStorePath), { recursive: true });
+        fs.writeFileSync(this.signedOutMarkerPath, "", "utf8");
+    }
+
+    private clearSignedOutMarker(): void {
+        fs.rmSync(this.signedOutMarkerPath, { force: true });
     }
 
     private get configured(): boolean {
@@ -392,7 +410,7 @@ export class AdoAuth {
         if (!changed) return;
         this.currentAccount = stored?.account ?? null;
         this.brokerRecord = stored?.brokerRecord ?? null;
-        this.signedOut = !stored;
+        this.signedOut = !stored || this.signedOutMarkerExists();
         this.lastError = null;
         this.needsInteraction = false;
         this.epoch++;
@@ -521,6 +539,7 @@ export class AdoAuth {
     // Forget the stored account. The Windows account itself is not touched.
     // Stay signed out until signIn(), even if developer credentials still work.
     async signOut(): Promise<AuthStatus> {
+        this.writeSignedOutMarker();
         fs.rmSync(this.accountStorePath, { force: true });
         this.storeStamp = -1;
         this.currentAccount = null;
@@ -549,6 +568,7 @@ export class AdoAuth {
             this.signedOut = false;
             try {
                 await this.getAccessToken();
+                this.clearSignedOutMarker();
                 return this.status();
             } catch (error) {
                 this.signedOut = wasSignedOut;
@@ -577,6 +597,7 @@ export class AdoAuth {
             account: this.currentAccount,
             brokerRecord: record,
         });
+        this.clearSignedOutMarker();
         this.lastError = null;
         this.needsInteraction = false;
         this.signedOut = false;

@@ -71,6 +71,27 @@ test("stays signed out after sign-out even if developer credentials work", async
     fs.rmSync(dir, { recursive: true, force: true });
 });
 
+test("stays signed out in a new client after sign-out", async (t) => {
+    const { auth, dir } = testAuth();
+    t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+    await auth.signOut();
+    const silent: SilentCredential = {
+        getToken: async () => ({ token: "access-token" }),
+    };
+    const next = new AdoAuth({
+        clientId: "client",
+        tenantId: "tenant",
+        platform: "win32",
+        accountStorePath: path.join(dir, "account.json"),
+        parentWindowHandle: encodeWindowHandle(17_832_816n),
+        silentCredential: silent,
+        credentialFactory: () => mockCredential(),
+    });
+    await assert.rejects(next.getAccessToken(), AuthInteractionRequiredError);
+    await next.signIn(true);
+    assert.equal(await next.getAccessToken(), "access-token");
+});
+
 test("uses the selected broker account instead of developer credentials", async () => {
     const { auth, dir } = testAuth(
         mockCredential({ getToken: async () => ({ token: "broker-token" }) }),
