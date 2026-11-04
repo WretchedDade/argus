@@ -577,6 +577,7 @@ export function stopPoller(): void {
     leaseStore = null;
     const release = () => {
         if (beat) clearInterval(beat);
+        if (leaseTimer) return; // a restarted poller owns the lease now
         try {
             store?.releasePollLease(hostId);
         } catch {
