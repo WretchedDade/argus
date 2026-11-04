@@ -62,7 +62,7 @@ flowchart LR
 - reconciles the result with the store (`reconcile.ts`), which writes `prs` rows and appends `pr_events`;
 - records the run in `poll_runs`.
 
-Each tick catches its own errors, so one failed run does not stop the schedule. The poller does not change user choices such as lane, scope, or dismissal. It can clear a snooze: the store clears an expired snooze, and an FTE approval wakes an "until FTE approves" snooze.
+Each tick catches its own errors, so one failed run does not stop the schedule. Several hosts can share one database, but only the host that holds the `poll_lease` row polls. It renews the lease while its poller runs, and another host takes over after the lease expires. A host without the lease skips its runs, and a manual refresh on it returns no summary. The poller does not change user choices such as lane, scope, or dismissal. It can clear a snooze: the store clears an expired snooze, and an FTE approval wakes an "until FTE approves" snooze.
 
 ## Store
 
@@ -73,7 +73,7 @@ Each tick catches its own errors, so one failed run does not stop the schedule. 
 
 Some metrics also read `prs` snapshot columns. For example, review latency uses `prs.reviewed_at` and `prs.reviewed_sha_authored_at`, and the backlog and authored-PR summaries use snapshot rows.
 
-Other tables: `poll_runs`, `activity_log`, `settings` (key/value, holds the saved config overrides), and `changes_read`.
+Other tables: `poll_runs`, `activity_log`, `settings` (key/value, holds the saved config overrides), `changes_read`, and `poll_lease`.
 
 User-managed columns live on `prs`. Only the dedicated action methods write them. `upsertPr` never does.
 

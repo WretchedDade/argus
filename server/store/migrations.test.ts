@@ -67,6 +67,32 @@ test(
 );
 
 test(
+    "a version 1 database gains the poll lease table and keeps its rows",
+    withDir((dir) => {
+        const file = path.join(dir, "v1.db");
+        new ArgusStore(file).close();
+        const old = new DatabaseSync(file);
+        old.exec(`
+            DROP TABLE poll_lease;
+            INSERT INTO prs (canonical, title, added_at, updated_at)
+            VALUES ('pr-1', 'Old PR', '2025-01-01', '2025-01-01');
+            PRAGMA user_version = 1;
+        `);
+        old.close();
+
+        const store = new ArgusStore(file);
+        assert.equal(store.getPr("pr-1")?.title, "Old PR");
+        assert.equal(store.acquirePollLease("a", 1000), true);
+        assert.equal(store.acquirePollLease("b", 1000), false);
+        store.close();
+
+        const db = new DatabaseSync(file);
+        assert.equal(version(db), migrations.length);
+        db.close();
+    }),
+);
+
+test(
     "reopening a current database runs no migration",
     withDir((dir) => {
         const db = new DatabaseSync(path.join(dir, "current.db"));

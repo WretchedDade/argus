@@ -115,6 +115,17 @@ export const migrations: Migration[] = [
             db.exec(BASE_SCHEMA);
         },
     },
+    {
+        // One row: the host that may poll now. Hosts share the database file.
+        up(db) {
+            db.exec(`
+CREATE TABLE IF NOT EXISTS poll_lease (
+  id         INTEGER PRIMARY KEY CHECK (id = 1),
+  owner      TEXT NOT NULL,
+  expires_at INTEGER NOT NULL
+);`);
+        },
+    },
 ];
 
 export function runMigrations(

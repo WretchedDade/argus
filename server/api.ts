@@ -113,7 +113,7 @@ export function automaticReviewPrompt(
 export interface ApiContext {
     store: ArgusStore;
     bootAt: string;
-    reconcile: () => Promise<ReconcileSummary | null>;
+    reconcile: () => Promise<ReconcileSummary | null | "skipped">;
     // Deletes all stored PR data once no poll is in flight.
     deleteAllData: () => Promise<void>;
     refreshPr: (canonical: string) => Promise<void>;
@@ -526,7 +526,9 @@ export async function handleApi(
     }
 
     if (route === "/api/refresh" && req.method === "POST") {
-        sendJson(res, 200, { summary: await ctx.reconcile() });
+        const result = await ctx.reconcile();
+        const skipped = result === "skipped";
+        sendJson(res, 200, { summary: skipped ? null : result, skipped });
         return true;
     }
 

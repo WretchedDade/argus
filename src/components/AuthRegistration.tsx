@@ -68,8 +68,8 @@ export function RegistrationImport() {
             setDraft(null);
             pushToast("Setup saved");
             try {
-                const { summary } = await api.refresh();
-                if (summary === null) setRefreshError(true);
+                const { summary, skipped } = await api.refresh();
+                if (summary === null && !skipped) setRefreshError(true);
             } catch {
                 setRefreshError(true);
             }
