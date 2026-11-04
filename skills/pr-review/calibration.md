@@ -16,12 +16,12 @@ over a later one, even when both apply:
 1. The author's display name has a company in parentheses, for example
    `Jo Lee (Contoso Services)`. In many Azure DevOps organizations this suggests
    an external contractor, but it is only a hint. Say "looks like", not "is".
-   Recommend **Explain**.
+   Recommend **Explanatory**.
 2. The author is on the reviewer's team, or has at least 3 commits by that author
    on the default branch in the last 90 days. Check with local `git log`. Do not
-   query Azure DevOps for this. Recommend **Compress**. This signal does not
+   query Azure DevOps for this. Recommend **Concise**. This signal does not
    apply when signal 1 matched. A contractor with many commits still gets
-   **Explain**.
+   **Explanatory**.
 3. Otherwise recommend **Neutral**. Do not guess from the author's name or
    tenure.
 
@@ -34,7 +34,7 @@ a single comment.
 State the issue, the impact, and a suggested fix. Add the reason only when it is
 not obvious from the code.
 
-## Explain (author may lack team context)
+## Explanatory (author may lack team context)
 
 Make implicit team knowledge explicit. A teammate would know it without help.
 
@@ -45,7 +45,7 @@ Make implicit team knowledge explicit. A teammate would know it without help.
 - Give a concrete fix, or point to a similar change in the repo.
 - Keep a respectful, collaborative tone. Explaining is not lecturing.
 
-## Compress (author knows the codebase)
+## Concise (author knows the codebase)
 
 Point at the problem. Do not teach it back to the author.
 
@@ -64,9 +64,9 @@ Point at the problem. Do not teach it back to the author.
 Finding: a new endpoint reads `request.UserId` and never checks that the caller
 owns the record.
 
-- **Compress:** `GetRecord` skips the ownership check, so any caller can read any
+- **Concise:** `GetRecord` skips the ownership check, so any caller can read any
   record. Use `AuthorizeOwner(record, caller)` like `UpdateRecord`.
-- **Explain:** This endpoint returns a record without checking that the caller
+- **Explanatory:** This endpoint returns a record without checking that the caller
   owns it. In this repo every read path calls `AuthorizeOwner` before it returns
   data, so one user cannot read another user's records (see `UpdateRecord`). Please
   add the same call here.

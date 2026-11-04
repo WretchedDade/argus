@@ -159,11 +159,14 @@ is and where to look before reading anything else. Use the shape of the example,
 and leave out any line that has nothing to say. Write the paragraph from the
 description and the work items in your own words, and say so if the description
 is missing. Take **Yours** and **Others** from step 5. Write "unknown" when you
-cannot tell, and skip both lines when the repo has no ownership rules.
+cannot tell, and skip both lines when the repo has no ownership rules. Make the
+PR number a Markdown link to the PR's web page
+(`https://dev.azure.com/<org>/<project>/_git/<repo>/pullrequest/<id>`), so the
+reviewer can open it in one click. Do not use the API URL.
 
 Example (the details are made up):
 
-> **Quick review** · #4821 Add retry to the sync job
+> **Quick review** · [#4821](https://dev.azure.com/contoso/Proj/_git/Repo/pullrequest/4821) Add retry to the sync job
 > Jo Lee · open · 6 files, +142 −31
 >
 > Retries failed sync batches up to three times with backoff, so one transient
