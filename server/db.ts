@@ -2573,7 +2573,11 @@ export class ArgusStore {
             WHERE r.canonical = p.canonical AND r.type = 'reviewed'
               AND json_extract(r.payload, '$.sessionId') IS NOT NULL
               AND json_extract(r.payload, '$.verdict') IS NULL
-              AND r.ts >= p.reviewed_at
+              AND r.id > COALESCE((
+                SELECT MAX(v.id) FROM pr_events v
+                WHERE v.canonical = p.canonical AND v.type = 'reviewed'
+                  AND json_extract(v.payload, '$.verdict') IS NOT NULL
+              ), 0)
           )
         ))
         AND NOT EXISTS (
