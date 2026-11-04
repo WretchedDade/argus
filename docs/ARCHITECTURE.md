@@ -45,7 +45,7 @@ flowchart LR
 `extension.ts` runs these steps when the Copilot app loads it:
 
 1. Resolve the database file (`server/storage.ts`) and copy the old file if the user changed the location.
-2. Open `ArgusStore`. The constructor creates the schema.
+2. Open `ArgusStore`. The constructor runs the pending migrations.
 3. Build `getConfig()`. It merges the defaults, `argus.config.json`, and the overrides saved in the store.
 4. Build a `PollerContext` (`{ store, getConfig }`). The poller does not start yet.
 5. Register the canvas. Each open canvas instance starts its own HTTP server on a stable loopback port. All instances share the one store and poller. The **first canvas to open** starts the poller. When the **last canvas closes**, the poller stops. A host with no open canvas does not poll ADO.
@@ -77,7 +77,7 @@ Other tables: `poll_runs`, `activity_log`, `settings` (key/value, holds the save
 
 User-managed columns live on `prs`. Only the dedicated action methods write them. `upsertPr` never does.
 
-The schema is a `CREATE TABLE IF NOT EXISTS` script (`SCHEMA`). There is no migration framework. New columns on an existing table use `#ensureColumn`.
+The schema lives in `server/store/migrations.ts` as an ordered list of migrations. `PRAGMA user_version` stores how many have run. At startup, `runMigrations` runs the pending ones in one `BEGIN IMMEDIATE` transaction, so two processes cannot race and a failure changes nothing.
 
 ## API
 
@@ -125,13 +125,13 @@ The logic is in `server/storage.ts` and `server/config.ts`. See the README secti
 2. In `src/lib/api.ts`, add the response type, an entry in `api`, and a `queryOptions`.
 3. Add a test next to the code that you changed (see [CONTRIBUTING.md](../CONTRIBUTING.md#test)).
 
-## How to add a column
+## How to change the schema
 
-1. Add the column to the `CREATE TABLE` statement in `SCHEMA` in `server/db.ts`. This covers new databases.
-2. Add `this.#ensureColumn("<table>", "<column>", "<TYPE>")` in the constructor, after the `SCHEMA` call. This covers existing databases. Use a nullable column or a `DEFAULT`, because old rows have no value.
+1. Add a new entry at the end of `migrations` in `server/store/migrations.ts`. Its `up(db)` runs plain SQL (for example `db.exec("ALTER TABLE prs ADD COLUMN foo TEXT")`). Never edit or reorder an entry that is released.
+2. Use a nullable column or a `DEFAULT`, because old rows have no value.
 3. Update the row type and the `rowTo...` mapper (for example `rowToPr`) and the shared type in `server/types.ts`.
 4. Write the column from one place. Poller data goes through `upsertPr`. User-managed data goes through a dedicated action method.
-5. Add a test in `server/db.test.ts`. It must open an old-schema database and check that the column is added.
+5. Add a test in `server/store/migrations.test.ts` or `server/db.test.ts`. It must open a database at the old version and check the result.
 
 Argus has no down-migration. A column change must be safe for a user who upgrades and keeps their history.
 
