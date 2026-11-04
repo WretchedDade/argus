@@ -26,6 +26,7 @@ export default tseslint.config(
                         "scripts/*.ts",
                         "packages/ado-client/src/*.test.ts",
                     ],
+                    maximumDefaultProjectFileMatchCount_THIS_WILL_SLOW_DOWN_LINTING: 12,
                 },
                 tsconfigRootDir: import.meta.dirname,
             },
