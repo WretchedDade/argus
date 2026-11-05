@@ -810,6 +810,10 @@ export interface ArgusConfig {
     teamLabels: Record<string, string>;
     periods: Period[];
     reviewSkillName: string;
+    reviewModels: Record<
+        "quick" | "full" | "automatic",
+        { model: string; reasoningEffort: string }
+    >;
     recencyDays: number;
     retentionDays: number;
     workStartHour: number;
