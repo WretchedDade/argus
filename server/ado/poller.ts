@@ -242,7 +242,8 @@ async function runReconcile(
 
         // Backfill authors on migrated PRs the old tracker didn't capture (bounded per
         // cycle so a single poll stays quick; drains over a few cycles).
-        const needAuthor = ctx.store.prsMissingAuthor(50);
+        const inOrg = (canonical: string) => inConfiguredOrg(canonical, cfg);
+        const needAuthor = ctx.store.prsMissingAuthor(50, inOrg);
         if (needAuthor.length) {
             note(
                 "info",
@@ -252,7 +253,11 @@ async function runReconcile(
         }
 
         // Replace repository GUIDs on migrated PRs with the repository name.
-        await backfillRepoNames(ctx.store, cfg, ctx.store.prsWithRepoId(20));
+        await backfillRepoNames(
+            ctx.store,
+            cfg,
+            ctx.store.prsWithRepoId(20, inOrg),
+        );
 
         // Backfill "my comment count" for recorded reviews that don't have it yet
         // (recorded before this existed, or an immediate count that failed).
@@ -354,9 +359,14 @@ type OrgConfig = Pick<ArgusConfig, "orgUrl" | "project" | "orgSlug">;
 
 // A numeric PR id only identifies a PR inside its own organization. Rows stored
 // under another organization are skipped, never looked up in the current one.
+// Requests use `orgUrl`, so it must name the same organization as the slug.
 function inConfiguredOrg(canonical: string, cfg: OrgConfig): boolean {
-    const org = orgFromCanonical(canonical);
-    return !!org && org.toLowerCase() === cfg.orgSlug.toLowerCase();
+    const org = orgFromCanonical(canonical)?.toLowerCase();
+    if (!org) return false;
+    return (
+        org === cfg.orgSlug.toLowerCase() &&
+        org === orgFromCanonical(cfg.orgUrl)?.toLowerCase()
+    );
 }
 
 export async function backfillAuthors(

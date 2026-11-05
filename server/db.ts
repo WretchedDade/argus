@@ -893,13 +893,18 @@ export class ArgusStore {
 
     // Migrated PRs whose author the old tracker didn't capture; the poller backfills
     // them from ADO a bounded batch per cycle until none remain.
-    prsMissingAuthor(limit = 50): { canonical: string; number: number }[] {
-        return this.#prep(
-            "SELECT canonical, number FROM prs WHERE author IS NULL LIMIT ?",
-        ).all(limit) as unknown as {
-            canonical: string;
-            number: number;
-        }[];
+    // `accept` filters before the limit, so skipped rows cannot fill the batch.
+    prsMissingAuthor(
+        limit = 50,
+        accept: (canonical: string) => boolean = () => true,
+    ): { canonical: string; number: number }[] {
+        return (
+            this.#prep(
+                "SELECT canonical, number FROM prs WHERE author IS NULL",
+            ).all() as unknown as { canonical: string; number: number }[]
+        )
+            .filter((r) => accept(r.canonical))
+            .slice(0, limit);
     }
 
     setAuthor(canonical: string, author: string): void {
@@ -2627,13 +2632,19 @@ export class ArgusStore {
     }
 
     // Migrated PRs may carry a repository GUID instead of its name.
-    prsWithRepoId(limit = 50): { canonical: string; number: number }[] {
-        return this.#prep(
-            `SELECT canonical, number FROM prs
+    prsWithRepoId(
+        limit = 50,
+        accept: (canonical: string) => boolean = () => true,
+    ): { canonical: string; number: number }[] {
+        return (
+            this.#prep(
+                `SELECT canonical, number FROM prs
              WHERE state != 'closed'
-               AND repo GLOB '[0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]-[0-9a-f][0-9a-f][0-9a-f][0-9a-f]-*'
-             LIMIT ?`,
-        ).all(limit) as unknown as { canonical: string; number: number }[];
+               AND repo GLOB '[0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]-[0-9a-f][0-9a-f][0-9a-f][0-9a-f]-*'`,
+            ).all() as unknown as { canonical: string; number: number }[]
+        )
+            .filter((r) => accept(r.canonical))
+            .slice(0, limit);
     }
 
     setRepo(canonical: string, repo: string): void {

@@ -30,7 +30,7 @@ function add(canonical: string, org: string, number: number): void {
         number,
         title: "t",
         description: "",
-        author: "",
+        author: null,
         isVendor: false,
         role: "reviewer",
         teams: [],
@@ -75,7 +75,7 @@ try {
         "https://dev.azure.com/org-b#8",
         "https://dev.azure.com/org-b#8",
     ]);
-    assert.equal(store.getPr(rowA)?.author, "");
+    assert.equal(store.getPr(rowA)?.author, null);
     assert.equal(store.getPr(rowA)?.repo, "repo");
 
     calls.length = 0;
@@ -91,6 +91,31 @@ try {
     assert.deepEqual(calls, ["https://dev.azure.com/org-b#8"]);
     assert.notEqual(store.getPr(rowA)?.state, "closed");
     assert.equal(store.getPr(rowB)?.state, "closed");
+
+    // A slug that disagrees with the request URL skips every lookup.
+    calls.length = 0;
+    const mismatched = { ...cfg, orgSlug: "org-a" };
+    await backfillAuthors(store, mismatched, rows, show);
+    assert.deepEqual(calls, []);
+
+    // Skipped rows must not fill the batch limit.
+    for (let n = 100; n < 105; n++)
+        add(
+            `https://org-a.visualstudio.com/Project/_git/repo/pullrequest/${n}`,
+            "org-a",
+            n,
+        );
+    add(
+        "https://org-b.visualstudio.com/Project/_git/repo/pullrequest/200",
+        "org-b",
+        200,
+    );
+    const inOrg = (c: string) => orgFromCanonical(c) === "org-b";
+    assert.deepEqual(
+        store.prsMissingAuthor(1, inOrg).map((r) => r.number),
+        [200],
+    );
+    assert.equal(store.prsMissingAuthor(3).length, 3);
 } finally {
     store.close();
     rmSync(dir, { recursive: true, force: true });
