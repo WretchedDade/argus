@@ -1,4 +1,10 @@
 import { createFileRoute } from "@tanstack/react-router";
+import {
+    ErrorBanner,
+    LoadErrorPage,
+    PendingPage,
+} from "../components/ErrorBanner";
+import { warmQuery } from "../lib/query-defaults";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
     Check,
@@ -20,7 +26,7 @@ import { pushToast } from "../lib/toast";
 // My own authored PRs — a flat list (count stays low). The framing is "what's
 // blocking this from merging", so each card leads with review status.
 export const Route = createFileRoute("/mine")({
-    loader: ({ context }) => context.queryClient.ensureQueryData(prsQuery),
+    loader: ({ context }) => warmQuery(context.queryClient, prsQuery),
     component: MyPrs,
 });
 
@@ -256,6 +262,16 @@ function MyPrs() {
         .filter((p) => p.role === "author")
         .sort((a, b) => Date.parse(b.updatedAt) - Date.parse(a.updatedAt));
 
+    if (prs.isPending && !prs.data) return <PendingPage />;
+    if (prs.isError && !prs.data) {
+        return (
+            <LoadErrorPage
+                what="your pull requests"
+                error={prs.error}
+                onRetry={() => void prs.refetch()}
+            />
+        );
+    }
     const copy = async () => {
         const done = () =>
             pushToast(
@@ -286,6 +302,13 @@ function MyPrs() {
 
     return (
         <div className="mx-auto flex max-w-3xl flex-col gap-3">
+            {prs.isError && (
+                <ErrorBanner
+                    title="Couldn't load PRs"
+                    error={prs.error}
+                    onRetry={() => void prs.refetch()}
+                />
+            )}
             <div className="flex items-center justify-between gap-3">
                 <div className="flex items-baseline gap-2">
                     <h1 className="text-fg text-lg font-semibold">My PRs</h1>

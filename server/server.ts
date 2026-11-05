@@ -1,6 +1,7 @@
 import { createServer, type Server } from "node:http";
 import { handleApi, type ApiContext } from "./api.ts";
 import { serveStatic } from "./static.ts";
+import { injectFault, parseFaults } from "./faults.ts";
 import { log } from "./log.ts";
 
 const STABLE_PORT_BASE = 48200;
@@ -28,8 +29,10 @@ export async function startServer(
     instance: Instance,
     ctx: ServerContext,
 ): Promise<void> {
+    const faults = parseFaults(process.env.ARGUS_FAKE_FAULT);
     const server = createServer(async (req, res) => {
         try {
+            if (await injectFault(faults, req, res)) return;
             if (await handleApi(req, res, ctx)) return;
             if (req.method === "GET") {
                 const route = new URL(req.url || "/", "http://127.0.0.1")

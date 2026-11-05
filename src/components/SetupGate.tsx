@@ -10,6 +10,8 @@ import {
 import { BrandMark } from "./BrandMark";
 import { SegToggle } from "./SegToggle";
 import { pushToast } from "../lib/toast";
+import { setupFormReady } from "../lib/errors";
+import { LoadErrorPage, PendingPage } from "./ErrorBanner";
 
 const inputCls =
     "border-line bg-canvas mt-1 w-full rounded-md border px-2.5 py-1.5 text-sm";
@@ -20,8 +22,26 @@ const inputCls =
 // setup_complete so the board takes over. Reachable again only by clearing the
 // store; everything here is also editable later under Settings.
 export function SetupGate() {
+    const config = useQuery(configQuery);
+    if (setupFormReady(config)) return <SetupForm cfg={config.data!} />;
+    return (
+        <div className="app-bg text-fg flex min-h-screen items-center justify-center p-6">
+            {config.isError ? (
+                <LoadErrorPage
+                    what="your config"
+                    error={config.error}
+                    onRetry={() => void config.refetch()}
+                    showActivityLink={false}
+                />
+            ) : (
+                <PendingPage />
+            )}
+        </div>
+    );
+}
+
+function SetupForm({ cfg }: { cfg: ArgusConfig }) {
     const qc = useQueryClient();
-    const cfg = useQuery(configQuery).data as ArgusConfig;
     const detected = useQuery(healthQuery).data?.poller.me ?? null;
 
     const [me, setMe] = useState(cfg?.me ?? "");

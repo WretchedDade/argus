@@ -31,6 +31,7 @@ npm run standalone
 - After a **client** change (`src/`): run `npm run build:client` (or keep `npm run dev` running, which is a watch build), then refresh the browser.
 - After a **server** change (`server/`): stop the runner and start it again.
 - The standalone runner polls live Azure DevOps. The `data` folder holds private PR data. Do not share it or commit it.
+- To see the error states, set `ARGUS_FAKE_FAULT` to a comma-separated list before you start the runner. The values are `prs` (PR list fails with a 500, so the banners and Retry show), `prs-bad` (PR list returns bad data, so the router error screen shows), `config` and `config-slow` (config fails, or loads after 5 seconds), and `setup` (forces the setup screen; combine with `config` or `config-slow` to test the setup form, and do not submit it). Remove the variable and restart to go back to normal.
 
 The README section "Standalone browser preview" lists the environment variables for more than one preview at the same time.
 

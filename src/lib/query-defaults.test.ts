@@ -4,8 +4,19 @@ import {
     claimPrRefresh,
     createQueryClient,
     releasePrRefresh,
+    warmQuery,
     DEFAULT_STALE_TIME_MS,
 } from "./query-defaults.ts";
+
+test("warmQuery swallows a failing fetch so the route still renders", async () => {
+    const qc = createQueryClient();
+    await warmQuery(qc, {
+        queryKey: ["boom"],
+        queryFn: () => Promise.reject(new Error("down")),
+        retry: false,
+    });
+    assert.equal(qc.getQueryState(["boom"])?.status, "error");
+});
 
 test("the query client sets a non-zero default staleTime", () => {
     const opts = createQueryClient().getDefaultOptions().queries;

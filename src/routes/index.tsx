@@ -2,6 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { prsQuery, configQuery } from "../lib/api";
 import { TriageQueue } from "../components/TriageQueue";
 import { parseQueueFilters } from "../lib/queue-filters";
+import { warmQuery } from "../lib/query-defaults";
 
 // Board = the triage queue: PRs to review (reviewer or via a team), bucketed by
 // how much attention they need. Your own authored PRs live on the My PRs route.
@@ -9,7 +10,7 @@ export const Route = createFileRoute("/")({
     validateSearch: parseQueueFilters,
     loader: ({ context }) =>
         Promise.all([
-            context.queryClient.ensureQueryData(prsQuery),
+            warmQuery(context.queryClient, prsQuery),
             context.queryClient.ensureQueryData(configQuery),
         ]),
     component: Board,
