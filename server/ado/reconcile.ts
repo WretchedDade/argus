@@ -193,7 +193,7 @@ function toUpsert(c: CurrentPr): PrUpsert {
         teams: c.teams,
         isDraft: c.isDraft,
         lastCommitSha: c.sha,
-        lastCommitAt: c.createdAt, // proxy; the bulk list carries no commit time
+        lastCommitAt: null, // the PR list has no commit time; the poller fills it in
         prCreatedAt: c.createdAt,
         sourceBranch: c.sourceBranch,
         targetBranch: c.targetBranch,

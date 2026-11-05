@@ -144,6 +144,15 @@ CREATE TABLE IF NOT EXISTS repo_scopes (
 );`);
         },
     },
+    {
+        // Older versions stored the PR creation date as the commit time. Clear
+        // those values so the poller reads the real commit time from ADO.
+        up(db) {
+            db.exec(`
+UPDATE prs SET last_commit_at = NULL WHERE last_commit_at = pr_created_at;
+UPDATE prs SET reviewed_sha_authored_at = NULL WHERE reviewed_sha_authored_at = pr_created_at;`);
+        },
+    },
 ];
 
 export function runMigrations(

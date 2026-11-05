@@ -443,11 +443,16 @@ export class ArgusStore {
         is_vendor = excluded.is_vendor, role = excluded.role, teams_json = excluded.teams_json,
         is_draft = excluded.is_draft,
         last_commit_sha = excluded.last_commit_sha,
-        last_commit_at = excluded.last_commit_at,
+        last_commit_at = CASE
+          WHEN excluded.last_commit_at IS NULL AND last_commit_sha IS excluded.last_commit_sha
+          THEN last_commit_at ELSE excluded.last_commit_at END,
         reviewed_sha_authored_at = CASE
           WHEN reviewed_sha IS NOT NULL AND reviewed_sha_authored_at IS NULL
             AND reviewed_sha = excluded.last_commit_sha
-          THEN excluded.last_commit_at ELSE reviewed_sha_authored_at END,
+          THEN CASE
+            WHEN excluded.last_commit_at IS NOT NULL THEN excluded.last_commit_at
+            WHEN last_commit_sha IS excluded.last_commit_sha THEN last_commit_at
+          END ELSE reviewed_sha_authored_at END,
         pr_created_at = excluded.pr_created_at,
         source_branch = excluded.source_branch,
         target_branch = excluded.target_branch,
@@ -905,6 +910,41 @@ export class ArgusStore {
         )
             .filter((r) => accept(r.canonical))
             .slice(0, limit);
+    }
+
+    // PRs whose head commit time is not known yet. The poller reads it from ADO a
+    // bounded batch per cycle. Pass a canonical to look at one PR only.
+    prsMissingCommitAt(
+        limit = 50,
+        canonical?: string,
+    ): {
+        canonical: string;
+        project: string;
+        repo: string;
+        sha: string;
+    }[] {
+        return this.#prep(
+            `SELECT canonical, project, repo, last_commit_sha AS sha FROM prs
+       WHERE last_commit_at IS NULL AND last_commit_sha IS NOT NULL
+         AND state != 'closed' AND (? IS NULL OR canonical = ?)
+       LIMIT ?`,
+        ).all(canonical ?? null, canonical ?? null, limit) as unknown as {
+            canonical: string;
+            project: string;
+            repo: string;
+            sha: string;
+        }[];
+    }
+
+    // Store the real commit time for a head sha. Ignored if the head moved on.
+    setLastCommitAt(canonical: string, sha: string, at: string): void {
+        this.#prep(
+            "UPDATE prs SET last_commit_at = ? WHERE canonical = ? AND last_commit_sha = ?",
+        ).run(at, canonical, sha);
+        this.#prep(
+            `UPDATE prs SET reviewed_sha_authored_at = ?
+       WHERE canonical = ? AND reviewed_sha = ? AND reviewed_sha_authored_at IS NULL`,
+        ).run(at, canonical, sha);
     }
 
     setAuthor(canonical: string, author: string): void {

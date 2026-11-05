@@ -52,7 +52,7 @@ One row for each PR that Argus tracks. It is the current snapshot. The poller wr
 | `state`                                                   | `pending`, `active`, `closed`, and so on                                 | ADO              |
 | `is_draft`                                                | Draft flag                                                               | ADO              |
 | `source_branch`, `target_branch`                          | Branch names                                                             | ADO              |
-| `last_commit_sha`, `last_commit_at`                       | Latest commit                                                            | ADO              |
+| `last_commit_sha`, `last_commit_at`                       | Latest commit and its commit time (read per commit; empty until read)    | ADO              |
 | `pr_created_at`                                           | When the PR was opened                                                   | ADO              |
 | `changed_files`, `changed_files_sha`                      | Count of changed files, and the commit it was counted at                 | ADO              |
 | `my_comments`, `other_comments`                           | Comment counts                                                           | ADO              |

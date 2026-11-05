@@ -168,6 +168,118 @@ test(
 );
 
 test(
+    "a version 3 database drops commit times copied from the PR creation date",
+    withDir((dir) => {
+        const file = path.join(dir, "v3.db");
+        new ArgusStore(file).close();
+        const old = new DatabaseSync(file);
+        old.exec(`
+            INSERT INTO prs (canonical, title, added_at, updated_at, pr_created_at, last_commit_at, reviewed_sha_authored_at)
+            VALUES ('copied', 'a', '2025-01-01', '2025-01-01', '2025-01-01T00:00:00Z', '2025-01-01T00:00:00Z', '2025-01-01T00:00:00Z'),
+                   ('real', 'b', '2025-01-01', '2025-01-01', '2025-01-01T00:00:00Z', '2025-01-05T00:00:00Z', '2025-01-05T00:00:00Z');
+            PRAGMA user_version = 3;
+        `);
+        old.close();
+
+        new ArgusStore(file).close();
+
+        const db = new DatabaseSync(file);
+        const row = (canonical: string) =>
+            db
+                .prepare(
+                    "SELECT last_commit_at AS c, reviewed_sha_authored_at AS r FROM prs WHERE canonical = ?",
+                )
+                .get(canonical) as { c: string | null; r: string | null };
+        assert.deepEqual({ ...row("copied") }, { c: null, r: null });
+        assert.deepEqual(
+            { ...row("real") },
+            { c: "2025-01-05T00:00:00Z", r: "2025-01-05T00:00:00Z" },
+        );
+        db.close();
+    }),
+);
+
+test(
+    "the waiting time follows the head commit, not the PR creation date",
+    withDir((dir) => {
+        const store = new ArgusStore(path.join(dir, "waiting.db"));
+        const hoursAgo = (h: number) =>
+            new Date(Date.now() - h * 3_600_000).toISOString();
+        const base = {
+            canonical: "pr-1",
+            org: "o",
+            project: "p",
+            repo: "r",
+            number: 1,
+            title: "t",
+            description: "",
+            author: "a",
+            isVendor: false,
+            role: "reviewer" as const,
+            teams: [],
+            isDraft: false,
+            prCreatedAt: hoursAgo(240),
+            sourceBranch: "f",
+            targetBranch: "main",
+        };
+        store.upsertPr({ ...base, lastCommitSha: "sha-1", lastCommitAt: null });
+        assert.equal(store.prsMissingCommitAt().length, 1);
+
+        store.setLastCommitAt("pr-1", "sha-1", hoursAgo(2));
+        assert.equal(store.prsMissingCommitAt().length, 0);
+        const waiting = () => store.computeInsights(30).backlog.longestHours;
+        assert.ok(Math.abs((waiting() ?? NaN) - 2) < 0.1);
+
+        // A poll with no commit time keeps the value for the same head.
+        store.upsertPr({ ...base, lastCommitSha: "sha-1", lastCommitAt: null });
+        assert.ok(Math.abs((waiting() ?? NaN) - 2) < 0.1);
+
+        // A new head clears it until the poller reads the new commit time.
+        store.upsertPr({ ...base, lastCommitSha: "sha-2", lastCommitAt: null });
+        assert.equal(store.prsMissingCommitAt().length, 1);
+        store.setLastCommitAt("pr-1", "sha-1", hoursAgo(100));
+        assert.equal(store.prsMissingCommitAt().length, 1);
+        store.close();
+    }),
+);
+
+test(
+    "setLastCommitAt fills the reviewed sha date for the same sha",
+    withDir((dir) => {
+        const file = path.join(dir, "reviewed.db");
+        const store = new ArgusStore(file);
+        store.upsertPr({
+            canonical: "pr-1",
+            org: "o",
+            project: "p",
+            repo: "r",
+            number: 1,
+            title: "t",
+            description: "",
+            author: "a",
+            isVendor: false,
+            role: "reviewer",
+            teams: [],
+            isDraft: false,
+            lastCommitSha: "sha-1",
+            lastCommitAt: null,
+            prCreatedAt: "2025-01-01T00:00:00Z",
+            sourceBranch: "f",
+            targetBranch: "main",
+        });
+        store.recordReview("pr-1", { sha: "sha-1" });
+        store.setLastCommitAt("pr-1", "sha-1", "2025-01-03T00:00:00Z");
+        const raw = new DatabaseSync(file);
+        const row = raw
+            .prepare("SELECT reviewed_sha_authored_at AS a FROM prs")
+            .get() as { a: string | null };
+        raw.close();
+        assert.equal(row.a, "2025-01-03T00:00:00Z");
+        store.close();
+    }),
+);
+
+test(
     "three processes opening the same new file at once all succeed",
     withDir(async (dir) => {
         const file = path.join(dir, "race.db");
