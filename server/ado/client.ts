@@ -492,3 +492,33 @@ export function fetchPrThreads(
         "7.1",
     ]).then((j) => j?.value ?? []);
 }
+
+// Commit time (committer date) of one commit. The PR list does not carry it.
+export function fetchCommitDate(
+    orgUrl: string,
+    project: string,
+    repo: string,
+    sha: string,
+): Promise<string | null> {
+    type Commit = { committer?: { date?: string } };
+    if (useBroker())
+        return restJson<Commit>(
+            `${orgRoot(orgUrl)}/${enc(project)}/_apis/git/repositories/${enc(repo)}/commits/${enc(sha)}?api-version=7.1`,
+        ).then((j) => j.committer?.date ?? null);
+    return azJson<Commit>([
+        "devops",
+        "invoke",
+        "--area",
+        "git",
+        "--resource",
+        "commits",
+        "--route-parameters",
+        `project=${project}`,
+        `repositoryId=${repo}`,
+        `commitId=${sha}`,
+        "--org",
+        orgUrl.replace(/\/$/, ""),
+        "--api-version",
+        "7.1",
+    ]).then((j) => j?.committer?.date ?? null);
+}

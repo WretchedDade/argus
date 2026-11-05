@@ -119,6 +119,18 @@ const types = (p: ReturnType<typeof reconcile>) =>
     assert.equal(plan.items.length, 0);
 }
 
+// The PR list has no commit time, so the plan must not reuse the creation date.
+{
+    const old = new Date(nowMs - 5 * 86_400_000).toISOString();
+    const plan = reconcile(
+        [pr({ createdAt: old, sha: "sha2" })],
+        new Map([[key, snap({ sha: "sha1" })]]),
+        opts,
+    );
+    assert.equal(plan.items[0].upsert.lastCommitAt, null);
+    assert.equal(plan.items[0].upsert.prCreatedAt, old);
+}
+
 assert.equal(
     countBlobChanges([
         ...Array.from({ length: 15 }, () => ({

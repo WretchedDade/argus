@@ -9,6 +9,7 @@ import {
     AdoError,
     countReviewComments,
     fetchPrThreads,
+    fetchCommitDate,
     prChangedFileCount,
     setAuthProvider,
 } from "./client.ts";
@@ -116,6 +117,34 @@ export async function runWhenPollerIdle(fn: () => void): Promise<void> {
     fn();
 }
 
+// Read the real head commit time for PRs that lack it (a bounded batch per call).
+// A failed read leaves the PR unset, so the next cycle retries it.
+async function fillCommitTimes(
+    ctx: PollerContext,
+    limit = 50,
+    canonical?: string,
+): Promise<number> {
+    const cfg = ctx.getConfig();
+    let filled = 0;
+    for (const p of ctx.store.prsMissingCommitAt(limit, canonical)) {
+        try {
+            const at = await fetchCommitDate(
+                cfg.orgUrl,
+                p.project,
+                p.repo,
+                p.sha,
+            );
+            if (at) {
+                ctx.store.setLastCommitAt(p.canonical, p.sha, at);
+                filled++;
+            }
+        } catch {
+            /* retry next cycle */
+        }
+    }
+    return filled;
+}
+
 async function runReconcile(
     ctx: PollerContext,
 ): Promise<ReconcileSummary | null> {
@@ -198,6 +227,9 @@ async function runReconcile(
         if (s.newRecent) note("info", `adding ${s.newRecent} new PR(s)`);
 
         const applied = ctx.store.applyPlan(plan, runId);
+        const commitTimes = await fillCommitTimes(ctx);
+        if (commitTimes)
+            note("info", `read commit time for ${commitTimes} PR(s)`);
         for (const m of mine)
             ctx.store.setOwnership(
                 m.canonical,
@@ -478,7 +510,7 @@ async function refreshPrInner(
         teams: norm.teams,
         isDraft: norm.isDraft,
         lastCommitSha: norm.sha,
-        lastCommitAt: norm.createdAt,
+        lastCommitAt: null,
         prCreatedAt: norm.createdAt,
         sourceBranch: norm.sourceBranch,
         targetBranch: norm.targetBranch,
@@ -499,6 +531,7 @@ async function refreshPrInner(
     ctx.store.setDescription(canonical, norm.description);
     ctx.store.applyScopePolicy();
     ctx.store.setChangedFiles(canonical, changedFiles, norm.sha);
+    await fillCommitTimes(ctx, 1, canonical);
 }
 
 // Manually track a PR by number — the escape hatch for PRs the auto-discovery
@@ -553,7 +586,7 @@ async function trackByNumberInner(
         teams: norm.teams,
         isDraft: norm.isDraft,
         lastCommitSha: norm.sha,
-        lastCommitAt: norm.createdAt,
+        lastCommitAt: null,
         prCreatedAt: norm.createdAt,
         sourceBranch: norm.sourceBranch,
         targetBranch: norm.targetBranch,
@@ -574,6 +607,7 @@ async function trackByNumberInner(
     ctx.store.restorePr(norm.canonical);
     if (!existed)
         ctx.store.appendEvent(norm.canonical, "added", { source: "manual" });
+    await fillCommitTimes(ctx, 1, norm.canonical);
     return { ok: true, canonical: norm.canonical };
 }
 
