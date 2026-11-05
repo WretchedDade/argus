@@ -541,6 +541,7 @@ function Settings() {
                                             <div className="flex gap-2">
                                                 <input
                                                     className={inputCls}
+                                                    aria-label={`${mode.label} model ID`}
                                                     placeholder="Model ID"
                                                     value={
                                                         field.state.value.model
@@ -556,6 +557,7 @@ function Settings() {
                                                 />
                                                 <input
                                                     className={inputCls}
+                                                    aria-label={`${mode.label} reasoning effort`}
                                                     placeholder="Effort (low, medium, high)"
                                                     value={
                                                         field.state.value
