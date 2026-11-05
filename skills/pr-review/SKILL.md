@@ -87,7 +87,9 @@ step 5) first and give them the most depth. Review the rest more briefly and
 mark those findings as outside the reviewer's areas. If you could not tell which
 areas are the reviewer's, review everything equally.
 
-Do not use Turn 1 and Turn 2. Present everything in one message, after the brief:
+Do not use Turn 1 and Turn 2. Post the brief and the findings as chat text. Ask
+the reviewer a question only after you post them. Present everything in one
+message, after the brief:
 
 - Your findings, each with its file, line, and label (see Phase 1).
 - A line on what you covered, including which areas you treated as the
@@ -168,17 +170,25 @@ PR number a Markdown link to the PR's web page
 (`https://dev.azure.com/<org>/<project>/_git/<repo>/pullrequest/<id>`), so the
 reviewer can open it in one click. Do not use the API URL.
 
-Example (the details are made up):
+Deliver the brief as a normal assistant message in the session, in plain
+Markdown: not in a blockquote, not in a code fence. Never put the brief in an
+`ask_user` question. If you must ask the reviewer something, post the brief
+first, then ask in a later step.
 
-> **Quick review** · [#4821](https://dev.azure.com/contoso/Proj/_git/Repo/pullrequest/4821) Add retry to the sync job
-> Jo Lee · open · 6 files, +142 −31
->
-> Retries failed sync batches up to three times with backoff, so one transient
-> error no longer fails the whole job. Linked work item: #3310.
->
-> **Yours:** `RetryPolicy.cs`, `SyncJob.cs`
-> **Others:** tests (QA), infra (Platform)
-> **Threads:** 2 open. One asks about the backoff cap.
+This is the shape to print (the details are made up, and the block below is only
+a template, so do not copy the fence):
+
+```markdown
+**Quick review** · [#4821](https://dev.azure.com/contoso/Proj/_git/Repo/pullrequest/4821) Add retry to the sync job
+Jo Lee · open · 6 files, +142 −31
+
+Retries failed sync batches up to three times with backoff, so one transient
+error no longer fails the whole job. Linked work item: #3310.
+
+**Yours:** `RetryPolicy.cs`, `SyncJob.cs`
+**Others:** tests (QA), infra (Platform)
+**Threads:** 2 open. One asks about the backoff cap.
+```
 
 ## Phase 1 — Findings and comments
 
