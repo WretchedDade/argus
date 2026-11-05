@@ -188,19 +188,20 @@ Copy-Item argus.config.example.json argus.config.json
 
 Use JSON field names, not environment variable names:
 
-| JSON fields                    | Value                                                                                   |
-| ------------------------------ | --------------------------------------------------------------------------------------- |
-| `orgUrl`, `orgSlug`, `project` | Strings identifying the Azure DevOps organization and project                           |
-| `me`                           | Identity string, or `null` to detect the identity from `az`                             |
-| `avatarUrl`, `reviewSkillName` | Strings for the custom avatar URL and review skill name                                 |
-| `teamPatterns`                 | Array of reviewer-group glob strings                                                    |
-| `teamLabels`                   | Object mapping reviewer-group names to short label strings                              |
-| `periods`                      | Array of objects with string fields `label`, `start`, and `end`; dates use `YYYY-MM-DD` |
-| `recencyDays`, `retentionDays` | Numbers of days                                                                         |
-| `workStartHour`, `workEndHour` | Numeric hours, for example `9` and `17`                                                 |
-| `workDays`                     | Array of weekday numbers, Sunday=`0` through Saturday=`6`                               |
-| `checkForUpdates`              | Boolean; `false` stops the daily check for new releases                                 |
-| `vendorPattern`                | Regular expression for vendor display names; default `\(.+\)`; empty turns the rule off |
+| JSON fields                    | Value                                                                                                                                  |
+| ------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------- |
+| `orgUrl`, `orgSlug`, `project` | Strings identifying the Azure DevOps organization and project                                                                          |
+| `me`                           | Identity string, or `null` to detect the identity from `az`                                                                            |
+| `avatarUrl`, `reviewSkillName` | Strings for the custom avatar URL and review skill name                                                                                |
+| `reviewModels`                 | Object with `quick`, `full`, and `automatic` keys; each has string fields `model` and `reasoningEffort`. Empty strings use the default |
+| `teamPatterns`                 | Array of reviewer-group glob strings                                                                                                   |
+| `teamLabels`                   | Object mapping reviewer-group names to short label strings                                                                             |
+| `periods`                      | Array of objects with string fields `label`, `start`, and `end`; dates use `YYYY-MM-DD`                                                |
+| `recencyDays`, `retentionDays` | Numbers of days                                                                                                                        |
+| `workStartHour`, `workEndHour` | Numeric hours, for example `9` and `17`                                                                                                |
+| `workDays`                     | Array of weekday numbers, Sunday=`0` through Saturday=`6`                                                                              |
+| `checkForUpdates`              | Boolean; `false` stops the daily check for new releases                                                                                |
+| `vendorPattern`                | Regular expression for vendor display names; default `\(.+\)`; empty turns the rule off                                                |
 
 For example, the JSON equivalent of `ARGUS_WORK_HOURS=9-17` and
 `ARGUS_WORK_DAYS=1-5` is:

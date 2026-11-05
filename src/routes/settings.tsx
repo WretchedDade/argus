@@ -143,8 +143,20 @@ function Row({
 const inputCls =
     "border-line bg-canvas mt-1 w-full rounded-md border px-2.5 py-1.5 text-sm";
 
+const trimModel = (m: { model: string; reasoningEffort: string }) => ({
+    model: m.model.trim(),
+    reasoningEffort: m.reasoningEffort.trim(),
+});
+
+const REVIEW_MODES = [
+    { id: "quick", label: "Quick review" },
+    { id: "full", label: "Full review" },
+    { id: "automatic", label: "Automatic review" },
+] as const;
+
 const GROUPS = [
     { id: "general", label: "General" },
+    { id: "review", label: "Review" },
     { id: "account", label: "Account" },
     { id: "ado", label: "Azure DevOps" },
     { id: "app", label: "System" },
@@ -230,6 +242,11 @@ function Settings() {
             teamLabels: cfg.teamLabels,
             periods: cfg.periods ?? [],
             reviewSkillName: cfg.reviewSkillName ?? "pr-review",
+            reviewModels: cfg.reviewModels ?? {
+                quick: { model: "", reasoningEffort: "" },
+                full: { model: "", reasoningEffort: "" },
+                automatic: { model: "", reasoningEffort: "" },
+            },
             recencyDays: cfg.recencyDays,
             retentionDays: cfg.retentionDays,
             workStartHour: cfg.workStartHour,
@@ -254,6 +271,11 @@ function Settings() {
                     ),
                     reviewSkillName:
                         value.reviewSkillName.trim() || "pr-review",
+                    reviewModels: {
+                        quick: trimModel(value.reviewModels.quick),
+                        full: trimModel(value.reviewModels.full),
+                        automatic: trimModel(value.reviewModels.automatic),
+                    },
                     recencyDays: Number(value.recencyDays),
                     retentionDays: Number(value.retentionDays),
                     workStartHour: Number(value.workStartHour),
@@ -482,7 +504,7 @@ function Settings() {
                         <RepoScopePanel />
                     </Group>
 
-                    <Group id="general" active={tab}>
+                    <Group id="review" active={tab}>
                         <section className="flex flex-col gap-3">
                             <h2 className="text-muted text-xs font-medium uppercase tracking-wide">
                                 Review
@@ -506,6 +528,63 @@ function Settings() {
                                     </Row>
                                 )}
                             </form.Field>
+                            {REVIEW_MODES.map((mode) => (
+                                <form.Field
+                                    key={mode.id}
+                                    name={`reviewModels.${mode.id}`}
+                                >
+                                    {(field) => (
+                                        <Row
+                                            label={`${mode.label}: model and reasoning effort`}
+                                            hint="Both optional. Leave a field empty to use the default."
+                                        >
+                                            <div className="flex gap-2">
+                                                <input
+                                                    className={inputCls}
+                                                    aria-label={`${mode.label} model ID`}
+                                                    placeholder="Model ID"
+                                                    value={
+                                                        field.state.value.model
+                                                    }
+                                                    onChange={(e) =>
+                                                        field.handleChange({
+                                                            ...field.state
+                                                                .value,
+                                                            model: e.target
+                                                                .value,
+                                                        })
+                                                    }
+                                                />
+                                                <input
+                                                    className={inputCls}
+                                                    aria-label={`${mode.label} reasoning effort`}
+                                                    placeholder="Effort (low, medium, high)"
+                                                    value={
+                                                        field.state.value
+                                                            .reasoningEffort
+                                                    }
+                                                    onChange={(e) =>
+                                                        field.handleChange({
+                                                            ...field.state
+                                                                .value,
+                                                            reasoningEffort:
+                                                                e.target.value,
+                                                        })
+                                                    }
+                                                />
+                                            </div>
+                                        </Row>
+                                    )}
+                                </form.Field>
+                            ))}
+                        </section>
+                    </Group>
+
+                    <Group id="general" active={tab}>
+                        <section className="flex flex-col gap-3">
+                            <h2 className="text-muted text-xs font-medium uppercase tracking-wide">
+                                People
+                            </h2>
                             <form.Field name="vendorPattern">
                                 {(field) => (
                                     <Row
