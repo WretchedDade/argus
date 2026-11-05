@@ -228,11 +228,11 @@ test(
         store.setLastCommitAt("pr-1", "sha-1", hoursAgo(2));
         assert.equal(store.prsMissingCommitAt().length, 0);
         const waiting = () => store.computeInsights(30).backlog.longestHours;
-        assert.ok((waiting() ?? Infinity) < 3);
+        assert.ok(Math.abs((waiting() ?? NaN) - 2) < 0.1);
 
         // A poll with no commit time keeps the value for the same head.
         store.upsertPr({ ...base, lastCommitSha: "sha-1", lastCommitAt: null });
-        assert.ok((waiting() ?? Infinity) < 3);
+        assert.ok(Math.abs((waiting() ?? NaN) - 2) < 0.1);
 
         // A new head clears it until the poller reads the new commit time.
         store.upsertPr({ ...base, lastCommitSha: "sha-2", lastCommitAt: null });
