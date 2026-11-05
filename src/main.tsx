@@ -3,6 +3,7 @@ import { createRoot } from "react-dom/client";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { createRouter, RouterProvider } from "@tanstack/react-router";
 import { createQueryClient } from "./lib/query-defaults";
+import { PendingPage, RouteError } from "./components/ErrorBanner";
 import { routeTree } from "./routeTree.gen";
 import "./styles.css";
 
@@ -15,6 +16,17 @@ const router = createRouter({
     context: { queryClient },
     defaultPreload: "intent",
     scrollRestoration: true,
+    defaultPendingMs: 300,
+    defaultPendingComponent: PendingPage,
+    defaultErrorComponent: ({ error, reset }) => (
+        <RouteError
+            error={error}
+            reset={() => {
+                reset();
+                void router.invalidate();
+            }}
+        />
+    ),
 });
 
 declare module "@tanstack/react-router" {

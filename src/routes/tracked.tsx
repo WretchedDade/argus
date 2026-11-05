@@ -1,6 +1,8 @@
 import { useMemo, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { ErrorBanner, LoadErrorPage } from "../components/ErrorBanner";
+import { warmQuery } from "../lib/query-defaults";
 import { ChevronDown, ChevronRight, Search } from "lucide-react";
 import {
     api,
@@ -18,8 +20,8 @@ import { resolveTeamLabel, shortAge, shortRepo } from "../lib/format";
 export const Route = createFileRoute("/tracked")({
     loader: ({ context }) =>
         Promise.all([
-            context.queryClient.ensureQueryData(prsQuery),
-            context.queryClient.ensureQueryData(configQuery),
+            warmQuery(context.queryClient, prsQuery),
+            warmQuery(context.queryClient, configQuery),
         ]),
     component: TrackedPage,
 });
@@ -259,7 +261,8 @@ function TrackedPage() {
         mutationFn: (canonical: string) => api.restorePr(canonical),
         onSuccess: () => queryClient.invalidateQueries(),
     });
-    const prsData = useQuery(prsQuery).data;
+    const prsQ = useQuery(prsQuery);
+    const prsData = prsQ.data;
     const prs = useMemo(() => prsData ?? [], [prsData]);
     const labelsData = useQuery(configQuery).data?.teamLabels;
     const labels = useMemo(() => labelsData ?? {}, [labelsData]);
@@ -292,6 +295,16 @@ function TrackedPage() {
         ] as { v: GroupBy; label: string }[]
     ).filter((o) => o.v !== primary);
 
+    if (prsQ.isError && !prsQ.data) {
+        return (
+            <LoadErrorPage
+                what="your pull requests"
+                error={prsQ.error}
+                onRetry={() => void prsQ.refetch()}
+            />
+        );
+    }
+
     return (
         <div className="mx-auto flex max-w-3xl flex-col gap-4">
             <div className="flex flex-wrap items-center justify-between gap-3">
@@ -314,6 +327,14 @@ function TrackedPage() {
                     />
                 </div>
             </div>
+
+            {prsQ.isError && (
+                <ErrorBanner
+                    title="Couldn't load PRs"
+                    error={prsQ.error}
+                    onRetry={() => void prsQ.refetch()}
+                />
+            )}
 
             <StaleSweepBanner />
 

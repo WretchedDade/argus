@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { ErrorBanner, LoadErrorPage } from "./ErrorBanner";
 import {
     AlarmClock,
     AlertTriangle,
@@ -262,11 +263,32 @@ export function TriageQueue({
 
     // First load, before the poller has returned anything.
     if (prs.isLoading && !prs.data) return <BoardSkeleton />;
+    if (prs.isError && !prs.data) {
+        return (
+            <LoadErrorPage
+                what="your pull requests"
+                error={prs.error}
+                onRetry={() => void prs.refetch()}
+            />
+        );
+    }
 
-    const banner =
+    const pollBanner =
         poller && (!poller.authOk || poller.lastError) ? (
             <PollBanner authOk={poller.authOk} error={poller.lastError} />
         ) : null;
+    const banner = (
+        <>
+            {prs.isError && (
+                <ErrorBanner
+                    title="Couldn't load PRs"
+                    error={prs.error}
+                    onRetry={() => void prs.refetch()}
+                />
+            )}
+            {pollBanner}
+        </>
+    );
 
     const allReview = (prs.data ?? []).filter((p: Pr) => p.role !== "author");
     const filterControls = (

@@ -1,6 +1,7 @@
 // Typed client for the /api routes served by extension.mjs.
 
 import { SLOW_STALE_TIME_MS } from "./query-defaults";
+import { ApiError } from "./errors";
 
 export type Lane = "quick" | "review";
 export type PrState = "pending" | "reviewed" | "closed";
@@ -447,7 +448,12 @@ export interface ChangeFeed {
 
 async function getJson<T>(path: string): Promise<T> {
     const res = await fetch(path, { headers: { accept: "application/json" } });
-    if (!res.ok) throw new Error(`${path} -> ${res.status}`);
+    if (!res.ok) {
+        const body = (await res.json().catch(() => null)) as {
+            error?: string;
+        } | null;
+        throw new ApiError(path, res.status, body?.error ?? null);
+    }
     return (await res.json()) as T;
 }
 
