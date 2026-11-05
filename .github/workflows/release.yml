@@ -3,8 +3,8 @@ name: Release
 # Runs when package.json changes on main. If the version has no tag yet and is
 # a minor or major version (patch = 0), the workflow builds the ZIP and creates
 # the tag and the release. A daily scheduled run also releases the current
-# version (patch included) when it has no tag yet. Patches release on push
-# only through the daily run or a manual run.
+# version (patch included) when it has no tag yet. A push never releases a
+# patch: patches release only through the daily run or a manual run.
 on:
     push:
         branches: [main]
