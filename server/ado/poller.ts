@@ -248,19 +248,11 @@ async function runReconcile(
                 "info",
                 `backfilling author on ${needAuthor.length} migrated PR(s)`,
             );
-            for (const p of needAuthor) {
-                const raw = await showPr(p.number, cfg.orgUrl, cfg.project);
-                const name = raw?.createdBy?.displayName;
-                if (name) ctx.store.setAuthor(p.canonical, name);
-            }
+            await backfillAuthors(ctx.store, cfg, needAuthor);
         }
 
         // Replace repository GUIDs on migrated PRs with the repository name.
-        for (const p of ctx.store.prsWithRepoId(20)) {
-            const raw = await showPr(p.number, cfg.orgUrl, cfg.project);
-            const name = raw?.repository?.name;
-            if (name) ctx.store.setRepo(p.canonical, name);
-        }
+        await backfillRepoNames(ctx.store, cfg, ctx.store.prsWithRepoId(20));
 
         // Backfill "my comment count" for recorded reviews that don't have it yet
         // (recorded before this existed, or an immediate count that failed).
@@ -320,8 +312,7 @@ async function runReconcile(
         note("info", "checking for merged/abandoned PRs…");
         const { closed } = await closeDeparted(
             ctx.store,
-            cfg.orgUrl,
-            cfg.project,
+            cfg,
             mine.map((m) => m.canonical),
             snapshots,
             runId,
@@ -358,17 +349,55 @@ async function runReconcile(
     }
 }
 
+type ShowPr = typeof showPr;
+type OrgConfig = Pick<ArgusConfig, "orgUrl" | "project" | "orgSlug">;
+
+// A numeric PR id only identifies a PR inside its own organization. Rows stored
+// under another organization are skipped, never looked up in the current one.
+function inConfiguredOrg(canonical: string, cfg: OrgConfig): boolean {
+    const org = orgFromCanonical(canonical);
+    return !!org && org.toLowerCase() === cfg.orgSlug.toLowerCase();
+}
+
+export async function backfillAuthors(
+    store: ArgusStore,
+    cfg: OrgConfig,
+    rows: { canonical: string; number: number }[],
+    show: ShowPr = showPr,
+): Promise<void> {
+    for (const p of rows) {
+        if (!inConfiguredOrg(p.canonical, cfg)) continue;
+        const raw = await show(p.number, cfg.orgUrl, cfg.project);
+        const name = raw?.createdBy?.displayName;
+        if (name) store.setAuthor(p.canonical, name);
+    }
+}
+
+export async function backfillRepoNames(
+    store: ArgusStore,
+    cfg: OrgConfig,
+    rows: { canonical: string; number: number }[],
+    show: ShowPr = showPr,
+): Promise<void> {
+    for (const p of rows) {
+        if (!inConfiguredOrg(p.canonical, cfg)) continue;
+        const raw = await show(p.number, cfg.orgUrl, cfg.project);
+        const name = raw?.repository?.name;
+        if (name) store.setRepo(p.canonical, name);
+    }
+}
+
 // Tracked PRs no longer in my active list get one targeted show to catch merges
 // and abandons. Terminal PRs are then frozen (state=closed excludes them). Closed
 // PRs that had a linked review session are collected so their sessions can be
 // archived.
-async function closeDeparted(
+export async function closeDeparted(
     store: ArgusStore,
-    orgUrl: string,
-    project: string,
+    cfg: OrgConfig,
     mineCanonicals: string[],
     snapshots: Map<string, { state: string; dismissed: boolean }>,
     runId: number,
+    show: ShowPr = showPr,
 ): Promise<{ closed: number; archivable: ArchivableSession[] }> {
     const mineSet = new Set(mineCanonicals);
     let closed = 0;
@@ -376,8 +405,9 @@ async function closeDeparted(
     for (const [canonical, snap] of snapshots) {
         if (snap.state === "closed" || snap.dismissed || mineSet.has(canonical))
             continue;
+        if (!inConfiguredOrg(canonical, cfg)) continue;
         const id = numberFromCanonical(canonical);
-        const pr = id ? await showPr(id, orgUrl, project) : null;
+        const pr = id ? await show(id, cfg.orgUrl, cfg.project) : null;
         if (pr && (pr.status === "completed" || pr.status === "abandoned")) {
             const rec = store.getPr(canonical);
             store.markClosed(canonical, pr.status, undefined, runId);
@@ -398,6 +428,22 @@ async function closeDeparted(
 function numberFromCanonical(canonical: string): number | null {
     const m = canonical.match(/pullrequest\/(\d+)/);
     return m ? Number(m[1]) : null;
+}
+
+// Organization of a stored PR: `{org}.visualstudio.com/...` or `dev.azure.com/{org}/...`.
+export function orgFromCanonical(canonical: string): string | null {
+    let url: URL;
+    try {
+        url = new URL(canonical);
+    } catch {
+        return null;
+    }
+    const host = url.hostname.toLowerCase();
+    if (host.endsWith(".visualstudio.com"))
+        return host.slice(0, -".visualstudio.com".length) || null;
+    if (host === "dev.azure.com")
+        return url.pathname.split("/").filter(Boolean)[0] ?? null;
+    return null;
 }
 
 // Call after the signed-in account or provider changes. Drops the cached and
@@ -436,7 +482,7 @@ async function refreshPrInner(
 ): Promise<void> {
     const cfg = ctx.getConfig();
     const id = numberFromCanonical(canonical);
-    if (!id) return;
+    if (!id || !inConfiguredOrg(canonical, cfg)) return;
     const raw = await showPr(id, cfg.orgUrl, cfg.project);
     if (!raw) return;
     if (raw.status === "completed" || raw.status === "abandoned") {
