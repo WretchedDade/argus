@@ -9,6 +9,20 @@ export interface Period {
     end: string; // YYYY-MM-DD (inclusive)
 }
 
+// Model settings for the review session. An empty field means "use the host default".
+export interface ReviewModelSetting {
+    model: string;
+    reasoningEffort: string;
+}
+
+export const REVIEW_MODES = ["quick", "full", "automatic"] as const;
+export type ReviewMode = (typeof REVIEW_MODES)[number];
+
+export const EMPTY_REVIEW_MODEL: ReviewModelSetting = {
+    model: "",
+    reasoningEffort: "",
+};
+
 // Poller configuration. Defaults come from env; a user can override any field
 // from the Settings screen (persisted in the store). `me` overrides the az
 // identity when set. `defaultConfig() + saved overrides` = the effective config.
@@ -23,6 +37,7 @@ export interface ArgusConfig {
     teamLabels: Record<string, string>; // seen team display name -> friendly label
     periods: Period[]; // named context bands for the load chart
     reviewSkillName: string; // the skill the Review buttons tell the agent to run
+    reviewModels: Record<ReviewMode, ReviewModelSetting>; // model and effort per review mode
     recencyDays: number;
     retentionDays: number;
     workStartHour: number;
@@ -63,6 +78,17 @@ const optional = (schema: z.ZodString, pattern: RegExp, message: string) =>
         message,
     });
 
+// These values go into the dispatch prompt, so they use the same safe characters as a slug.
+const ReviewModelSchema = () =>
+    z.object({
+        model: optional(z.string(), SLUG, "contains unsafe characters"),
+        reasoningEffort: optional(
+            z.string(),
+            SLUG,
+            "contains unsafe characters",
+        ),
+    });
+
 export const ConfigSchema = z.object({
     me: z.string().max(320).nullable(),
     adoAuth: z.enum(["az", "broker"]),
@@ -82,6 +108,11 @@ export const ConfigSchema = z.object({
         )
         .max(200),
     reviewSkillName: z.string().max(200),
+    reviewModels: z.object({
+        quick: ReviewModelSchema(),
+        full: ReviewModelSchema(),
+        automatic: ReviewModelSchema(),
+    }),
     recencyDays: z.number().int().min(1).max(365),
     retentionDays: z.number().int().min(1).max(365),
     workStartHour: z.number().int().min(0).max(23),
@@ -155,6 +186,14 @@ export function hasRequiredSetup(config: ArgusConfig): boolean {
     }
 }
 
+function emptyReviewModels(): Record<ReviewMode, ReviewModelSetting> {
+    return {
+        quick: { ...EMPTY_REVIEW_MODEL },
+        full: { ...EMPTY_REVIEW_MODEL },
+        automatic: { ...EMPTY_REVIEW_MODEL },
+    };
+}
+
 const SAFE_DEFAULTS: ArgusConfig = {
     me: null,
     adoAuth: "az",
@@ -166,6 +205,7 @@ const SAFE_DEFAULTS: ArgusConfig = {
     teamLabels: {},
     periods: [],
     reviewSkillName: "pr-review",
+    reviewModels: emptyReviewModels(),
     recencyDays: 7,
     retentionDays: 2,
     workStartHour: 9,
@@ -214,6 +254,7 @@ function envConfig(): ArgusConfig {
         teamLabels: {},
         periods: [],
         reviewSkillName: process.env.ARGUS_REVIEW_SKILL ?? "pr-review",
+        reviewModels: emptyReviewModels(),
         recencyDays: Number(process.env.ARGUS_RECENCY_DAYS ?? 7),
         retentionDays: Number(process.env.ARGUS_LOG_RETENTION_DAYS ?? 2),
         workStartHour: startHour,
