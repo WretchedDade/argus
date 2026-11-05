@@ -2,11 +2,15 @@ name: Release
 
 # Runs when package.json changes on main. If the version has no tag yet and is
 # a minor or major version (patch = 0), the workflow builds the ZIP and creates
-# the tag and the release. Patch versions release only through a manual run.
+# the tag and the release. A daily scheduled run also releases the current
+# version (patch included) when it has no tag yet. A push never releases a
+# patch: patches release only through the daily run or a manual run.
 on:
     push:
         branches: [main]
         paths: [package.json]
+    schedule:
+        - cron: "0 22 * * *"
     workflow_dispatch:
 
 permissions:
@@ -33,11 +37,11 @@ jobs:
               run: |
                   version=$(node -p "require('./package.json').version")
                   echo "version=$version" >> "$GITHUB_OUTPUT"
-                  # Patch versions (X.Y.Z with Z > 0) do not release on push. A manual run can still release one.
+                  # Patch versions (X.Y.Z with Z > 0) do not release on push. The daily run and a manual run can release one.
                   core="${version%%[-+]*}"
                   patch="${core##*.}"
-                  if [ "$patch" != "0" ] && [ "$GITHUB_EVENT_NAME" != "workflow_dispatch" ]; then
-                      echo "Version $version is a patch. Patches do not release automatically."
+                  if [ "$patch" != "0" ] && [ "$GITHUB_EVENT_NAME" = "push" ]; then
+                      echo "Version $version is a patch. It releases in the daily run."
                       echo "needs_release=false" >> "$GITHUB_OUTPUT"
                       exit 0
                   fi

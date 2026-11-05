@@ -69,7 +69,7 @@ Read [CONTRIBUTING.md](../CONTRIBUTING.md) for setup, checks, and the PR process
 
 ## Releases and versioning
 
-Argus uses semantic versioning (`MAJOR.MINOR.PATCH`). The version lives in `package.json` (`version`). A release is published when a change to `package.json` reaches `main` with a minor or major version (patch `0`, for example `0.5.0`) that has no tag yet. The Release workflow creates the tag. A patch version (for example `0.5.1`) does not release automatically: the next minor release includes it. To release a patch, run the Release workflow manually (`workflow_dispatch`) on `main`. Other commits and merges to `main` do not publish anything.
+Argus uses semantic versioning (`MAJOR.MINOR.PATCH`). The version lives in `package.json` (`version`). A release is published when a change to `package.json` reaches `main` with a minor or major version (patch `0`, for example `0.5.0`) that has no tag yet. The Release workflow creates the tag. A patch version (for example `0.5.1`) does not release on push. A daily scheduled run of the Release workflow (22:00 UTC) releases the current `package.json` version when it has no tag yet, so a patch ships that day. If several patches merge in one day, only the latest is tagged. To release a patch sooner, run the Release workflow manually (`workflow_dispatch`) on `main`. Other commits and merges to `main` do not publish anything.
 
 Version policy while on `0.x`:
 
