@@ -23,6 +23,7 @@ const router = createRouter({
             error={error}
             reset={() => {
                 reset();
+                void queryClient.resetQueries();
                 void router.invalidate();
             }}
         />

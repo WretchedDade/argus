@@ -1,7 +1,11 @@
 import { useMemo, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ErrorBanner, LoadErrorPage } from "../components/ErrorBanner";
+import {
+    ErrorBanner,
+    LoadErrorPage,
+    PendingPage,
+} from "../components/ErrorBanner";
 import { warmQuery } from "../lib/query-defaults";
 import { ChevronDown, ChevronRight, Search } from "lucide-react";
 import {
@@ -21,7 +25,7 @@ export const Route = createFileRoute("/tracked")({
     loader: ({ context }) =>
         Promise.all([
             warmQuery(context.queryClient, prsQuery),
-            warmQuery(context.queryClient, configQuery),
+            context.queryClient.ensureQueryData(configQuery),
         ]),
     component: TrackedPage,
 });
@@ -295,6 +299,7 @@ function TrackedPage() {
         ] as { v: GroupBy; label: string }[]
     ).filter((o) => o.v !== primary);
 
+    if (prsQ.isPending && !prsQ.data) return <PendingPage />;
     if (prsQ.isError && !prsQ.data) {
         return (
             <LoadErrorPage

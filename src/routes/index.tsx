@@ -11,7 +11,7 @@ export const Route = createFileRoute("/")({
     loader: ({ context }) =>
         Promise.all([
             warmQuery(context.queryClient, prsQuery),
-            warmQuery(context.queryClient, configQuery),
+            context.queryClient.ensureQueryData(configQuery),
         ]),
     component: Board,
 });

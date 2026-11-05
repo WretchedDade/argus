@@ -44,7 +44,7 @@ test("errorMessage reads Error, string, and unknown values", () => {
     assert.equal(errorMessage(new Error("")), "Something went wrong.");
 });
 
-test("setupFormReady waits for the config query to succeed", () => {
-    assert.equal(setupFormReady({ isSuccess: false }), false);
-    assert.equal(setupFormReady({ isSuccess: true }), true);
+test("setupFormReady waits for config data and survives a failed refetch", () => {
+    assert.equal(setupFormReady({ data: undefined }), false);
+    assert.equal(setupFormReady({ data: { orgs: [] } }), true);
 });

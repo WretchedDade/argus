@@ -1,5 +1,9 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { ErrorBanner, LoadErrorPage } from "../components/ErrorBanner";
+import {
+    ErrorBanner,
+    LoadErrorPage,
+    PendingPage,
+} from "../components/ErrorBanner";
 import { warmQuery } from "../lib/query-defaults";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -258,6 +262,7 @@ function MyPrs() {
         .filter((p) => p.role === "author")
         .sort((a, b) => Date.parse(b.updatedAt) - Date.parse(a.updatedAt));
 
+    if (prs.isPending && !prs.data) return <PendingPage />;
     if (prs.isError && !prs.data) {
         return (
             <LoadErrorPage

@@ -6,8 +6,8 @@ export function errorMessage(err: unknown): string {
 }
 
 // The setup form copies the config into state once, so it must mount after the config loads.
-export function setupFormReady(query: { isSuccess: boolean }): boolean {
-    return query.isSuccess;
+export function setupFormReady(query: { data?: unknown }): boolean {
+    return query.data !== undefined;
 }
 
 // A failed Argus API call. `serverMessage` is the `error` text from the JSON body, if any.
