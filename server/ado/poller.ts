@@ -118,7 +118,9 @@ export async function runWhenPollerIdle(fn: () => void): Promise<void> {
 }
 
 // Read the real head commit time for PRs that lack it (a bounded batch per call).
-// A failed read leaves the PR unset, so the next cycle retries it.
+const COMMIT_RETRY_MS = 60 * 60_000;
+const commitLookupFailures = new Map<string, number>();
+
 async function fillCommitTimes(
     ctx: PollerContext,
     limit = 50,
@@ -126,7 +128,19 @@ async function fillCommitTimes(
 ): Promise<number> {
     const cfg = ctx.getConfig();
     let filled = 0;
-    for (const p of ctx.store.prsMissingCommitAt(limit, canonical)) {
+    // A failed lookup waits one hour, so it cannot block later PRs in the batch.
+    const candidates = ctx.store
+        .prsMissingCommitAt(Number.MAX_SAFE_INTEGER, canonical)
+        .filter((p) => {
+            if (canonical) return true;
+            const failedAt = commitLookupFailures.get(
+                `${p.canonical}@${p.sha}`,
+            );
+            return !failedAt || Date.now() - failedAt > COMMIT_RETRY_MS;
+        })
+        .slice(0, limit);
+    for (const p of candidates) {
+        const failKey = `${p.canonical}@${p.sha}`;
         try {
             const at = await fetchCommitDate(
                 cfg.orgUrl,
@@ -136,10 +150,13 @@ async function fillCommitTimes(
             );
             if (at) {
                 ctx.store.setLastCommitAt(p.canonical, p.sha, at);
+                commitLookupFailures.delete(failKey);
                 filled++;
+            } else {
+                commitLookupFailures.set(failKey, Date.now());
             }
         } catch {
-            /* retry next cycle */
+            commitLookupFailures.set(failKey, Date.now());
         }
     }
     return filled;
