@@ -86,7 +86,9 @@ try {
     assert.equal(badType.status, 415);
 
     // Wrong method on a POST-only auth route is not found.
-    assert.equal((await send("GET", "/api/auth/sign-in", json)).status, 404);
+    const missing = await send("GET", "/api/auth/sign-in", json);
+    assert.equal(missing.status, 404);
+    assert.equal(errorOf(missing.body), "not found");
 
     // Missing fields get the store's validation message.
     const invalid = await send("POST", "/api/auth/registration", json);

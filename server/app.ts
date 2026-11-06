@@ -23,6 +23,9 @@ export function createApp(ctx: ApiContext) {
             await next();
         })
         .route("/api/auth", authRoutes(ctx))
+        .notFound((honoContext) =>
+            honoContext.json({ error: "not found" }, 404),
+        )
         .onError((error, honoContext) => {
             if (error instanceof HTTPException)
                 return honoContext.json({ error: error.message }, error.status);
