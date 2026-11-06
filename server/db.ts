@@ -3,6 +3,7 @@ import { mkdirSync } from "node:fs";
 import { randomUUID } from "node:crypto";
 import path from "node:path";
 import type {
+    ActivityEntry,
     ActivityEvent,
     ActivityEventType,
     ActivityVerdict,
@@ -37,14 +38,7 @@ import { log } from "./log.ts";
 import type { ReleaseInfo } from "./update-check.ts";
 
 // Operational log rows returned to the activity/runs routes.
-export interface ActivityEntry {
-    id: number;
-    ts: string;
-    level: string;
-    msg: string;
-    data: Record<string, unknown> | null;
-    runId: number | null;
-}
+export type { ActivityEntry };
 
 export interface PollRun {
     id: number;

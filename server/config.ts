@@ -1,51 +1,28 @@
 import { existsSync, readFileSync } from "node:fs";
 import { z } from "zod";
+import type {
+    ArgusConfig,
+    Period,
+    ReviewMode,
+    ReviewModelSetting,
+} from "#shared/schemas/config";
 
-// A named date range (e.g. "Hackathon", "Team week") shown as a shaded band on
-// the Load & capacity chart, for context on why load dipped/spiked that period.
-export interface Period {
-    label: string;
-    start: string; // YYYY-MM-DD (inclusive)
-    end: string; // YYYY-MM-DD (inclusive)
-}
+export type { ArgusConfig, Period, ReviewMode, ReviewModelSetting };
 
-// Model settings for the review session. An empty field means "use the host default".
-export interface ReviewModelSetting {
-    model: string;
-    reasoningEffort: string;
-}
+// Poller configuration. `defaultConfig() + saved overrides` = the effective config.
+// Defaults come from env; a user can override any field from the Settings screen.
+// The shape lives in shared/schemas/config.ts.
 
-export const REVIEW_MODES = ["quick", "full", "automatic"] as const;
-export type ReviewMode = (typeof REVIEW_MODES)[number];
+export const REVIEW_MODES: readonly ReviewMode[] = [
+    "quick",
+    "full",
+    "automatic",
+];
 
 export const EMPTY_REVIEW_MODEL: ReviewModelSetting = {
     model: "",
     reasoningEffort: "",
 };
-
-// Poller configuration. Defaults come from env; a user can override any field
-// from the Settings screen (persisted in the store). `me` overrides the az
-// identity when set. `defaultConfig() + saved overrides` = the effective config.
-export interface ArgusConfig {
-    me: string | null; // identity override; null = use the signed-in account
-    adoAuth: "az" | "broker"; // how Argus authenticates to Azure DevOps
-    avatarUrl: string; // optional custom avatar image for your own PRs (else initials)
-    orgUrl: string;
-    orgSlug: string;
-    project: string;
-    teamPatterns: string[];
-    teamLabels: Record<string, string>; // seen team display name -> friendly label
-    periods: Period[]; // named context bands for the load chart
-    reviewSkillName: string; // the skill the Review buttons tell the agent to run
-    reviewModels: Record<ReviewMode, ReviewModelSetting>; // model and effort per review mode
-    recencyDays: number;
-    retentionDays: number;
-    workStartHour: number;
-    workEndHour: number;
-    workDays: number[];
-    checkForUpdates: boolean; // ask GitHub for new Argus releases
-    vendorPattern: string; // regex for vendor display names; "" turns the rule off
-}
 
 // Default: a "(Company)" parenthetical in the display name marks a vendor.
 export const DEFAULT_VENDOR_PATTERN = "\\(.+\\)";

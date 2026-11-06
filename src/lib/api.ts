@@ -13,17 +13,46 @@ import type {
     PrState,
 } from "#shared/schemas/pr";
 
-export type { AuthorMeta, Lane, Pr, PrReviewState, PrRole, PrState };
+import { NoticesResponseSchema, type Notice } from "#shared/schemas/notice";
+import {
+    ActivityEntriesResponseSchema,
+    type ActivityEntry,
+} from "#shared/schemas/activity";
+import {
+    ConfigResponseSchema,
+    type ArgusConfig,
+    type Period,
+} from "#shared/schemas/config";
+import {
+    InsightsResponseSchema,
+    LoadDetailResponseSchema,
+    WeeklyReviewFactsResponseSchema,
+    type Insights,
+    type InsightsAuthoredPr,
+    type InsightsCount,
+    type InsightsLoadBucket,
+    type InsightsWaiting,
+    type LoadDayPr,
+    type LoadDetail,
+    type WeeklyReviewEffort,
+    type WeeklyReviewFacts,
+    type WeeklyReviewPr,
+} from "#shared/schemas/insights";
 
-export interface Notice {
-    id: string;
-    kind: "app-update" | "skill-update" | "storage";
-    title: string;
-    detail: string;
-    href?: string;
-    actionLabel?: string;
-    secondaryActionLabel?: string;
-}
+export type { AuthorMeta, Lane, Pr, PrReviewState, PrRole, PrState };
+export type { Notice, ActivityEntry, ArgusConfig, Period };
+export type {
+    Insights,
+    InsightsAuthoredPr,
+    InsightsCount,
+    InsightsLoadBucket,
+    InsightsWaiting,
+    LoadDayPr,
+    LoadDetail,
+    WeeklyReviewEffort,
+    WeeklyReviewFacts,
+    WeeklyReviewPr,
+};
 
 export type UpdatePhase =
     | "idle"
@@ -50,238 +79,6 @@ export interface ArchivableSession {
     number: number;
     status: string;
     sessionId: string;
-}
-
-export interface InsightsCount {
-    label: string;
-    count: number;
-}
-
-export interface InsightsWaiting {
-    canonical: string;
-    repo: string;
-    number: number;
-    title: string;
-    waitingHours: number;
-}
-
-export interface InsightsLoadBucket {
-    key: string;
-    inflow: number;
-    throughput: number;
-    backlog: number;
-}
-
-export interface LoadDayPr {
-    canonical: string;
-    repo: string;
-    number: number;
-    title: string;
-    state: string | null;
-    ageDays: number;
-    dayKey: string;
-}
-
-export interface LoadDetail {
-    key: string;
-    endKey: string;
-    granularity: "day" | "week";
-    peakDayKey: string;
-    arrived: LoadDayPr[];
-    reviewed: LoadDayPr[];
-    onPlate: LoadDayPr[];
-}
-
-export interface WeeklyReviewPr {
-    canonical: string;
-    repo: string;
-    number: number;
-    title: string;
-    author: string | null;
-    authorType: "FTE" | "Vendor" | "Automated";
-    reviewActions: number;
-    lifetimeReviewActions: number;
-    updateEpisodes: number;
-    latestReviewAt: string;
-    finalLane: Lane;
-    changedFiles: number | null;
-    totalComments: number | null;
-    otherComments: number | null;
-    effort: WeeklyReviewEffort | null;
-}
-
-export interface WeeklyReviewEffort {
-    score: number;
-    size: number;
-    updates: number;
-    depth: number;
-    discussion: number;
-    revisits: number;
-}
-
-export interface WeeklyReviewFacts {
-    startKey: string;
-    endKey: string;
-    actionCount: number;
-    uniquePrCount: number;
-    prs: WeeklyReviewPr[];
-    coverage: {
-        sizeKnown: number;
-        commentsKnown: number;
-        scoreKnown: number;
-    };
-    effort: {
-        total: number;
-        average: number | null;
-    };
-}
-
-export interface InsightsAuthoredPr {
-    canonical: string;
-    repo: string;
-    number: number;
-    title: string;
-    activeComments: number;
-    blockers: string[];
-    completable: boolean;
-}
-
-export interface Insights {
-    generatedAt: string;
-    summary: {
-        reviewsAllTime: number;
-        firstReviewAt: string | null;
-        lastReviewAt: string | null;
-        trackingSince: string | null;
-    };
-    latency: {
-        count: number;
-        pending: number;
-        medianHours: number | null;
-        p90Hours: number | null;
-        fastestHours: number | null;
-        slowestHours: number | null;
-        points: {
-            at: string;
-            hours: number;
-            repo: string;
-            number: number;
-            verdict: string | null;
-        }[];
-        distribution: InsightsCount[];
-    };
-    throughput: {
-        total: number;
-        weekly: {
-            week: string;
-            quick: number;
-            review: number;
-            total: number;
-        }[];
-    };
-    load: {
-        daily: InsightsLoadBucket[];
-        weekly: InsightsLoadBucket[];
-        peak: { count: number; at: string | null };
-    };
-    backlog: {
-        waitingCount: number;
-        longestHours: number | null;
-        buckets: InsightsCount[];
-        longest: InsightsWaiting[];
-    };
-    distribution: {
-        byTeam: InsightsCount[];
-        byRepo: InsightsCount[];
-        byAuthorType: InsightsCount[];
-    };
-    reach: {
-        items: {
-            at: string;
-            author: string;
-            vendor: boolean;
-            repo: string;
-            teams: string[];
-        }[];
-    };
-    votePattern: {
-        byType: {
-            label: string;
-            approved: number;
-            suggestions: number;
-            waiting: number;
-            rejected: number;
-        }[];
-        total: number;
-        avgComments: number | null;
-        commentsMeasured: number;
-    };
-    reviewDepth: {
-        measured: number;
-        totalComments: number;
-        avg: number | null;
-        median: number | null;
-        p90: number | null;
-        zeroRate: number | null;
-        histogram: InsightsCount[];
-        byType: {
-            label: string;
-            avg: number | null;
-            count: number;
-            total: number;
-        }[];
-        byRepo: { label: string; avg: number; count: number }[];
-        byLatency: { label: string; avg: number | null; count: number }[];
-    };
-    votePath: {
-        measured: number;
-        outcomes: { firstPass: number; gated: number; held: number };
-        turns: { turn: number; verdict: string; count: number }[];
-    };
-    reviewCoverage: {
-        origins: {
-            team: string;
-            total: number;
-            me: number;
-            teammate: number;
-            needs: number;
-            prs: {
-                number: number;
-                repo: string;
-                title: string;
-                coverage: "me" | "teammate" | "needs";
-            }[];
-        }[];
-    };
-    reviewRhythm: {
-        items: {
-            at: string;
-            repo: string;
-            team: string | null;
-            number: number;
-            title: string;
-            verdict: string | null;
-            author: string | null;
-            isVendor: boolean;
-        }[];
-    };
-    balance: {
-        days: {
-            key: string;
-            inflow: number;
-            throughput: number;
-            level: number;
-        }[];
-        heavyLine: number;
-    };
-    authored: {
-        open: number;
-        completable: number;
-        blocked: number;
-        mergedCount: number;
-        medianMergeHours: number | null;
-        openList: InsightsAuthoredPr[];
-    };
 }
 
 export interface StaleCandidate {
@@ -366,15 +163,6 @@ async function postAuth(path: string): Promise<AuthStatus> {
     return body;
 }
 
-export interface ActivityEntry {
-    id: number;
-    ts: string;
-    level: string;
-    msg: string;
-    data: Record<string, unknown> | null;
-    runId: number | null;
-}
-
 export interface PollRun {
     id: number;
     startedAt: string;
@@ -455,9 +243,9 @@ export const api = {
     switchAccount: () => postAuth("/api/auth/switch-account"),
     signOut: () => postAuth("/api/auth/sign-out"),
     activity: (limit = 100) =>
-        getJson<{ entries: ActivityEntry[] }>(
-            `/api/activity?limit=${limit}`,
-        ).then((r) => r.entries),
+        getJson<unknown>(`/api/activity?limit=${limit}`).then(
+            (r) => ActivityEntriesResponseSchema.parse(r).entries,
+        ),
     runs: (limit = 50) =>
         getJson<{ runs: PollRun[] }>(`/api/runs?limit=${limit}`).then(
             (r) => r.runs,
@@ -574,7 +362,9 @@ export const api = {
     },
     changes: () => getJson<ChangeFeed>("/api/changes"),
     notices: () =>
-        getJson<{ notices: Notice[] }>("/api/notices").then((r) => r.notices),
+        getJson<unknown>("/api/notices").then(
+            (r) => NoticesResponseSchema.parse(r).notices,
+        ),
     actOnNotice: async (id: string): Promise<void> => {
         const res = await fetch("/api/notices/act", {
             method: "POST",
@@ -643,17 +433,17 @@ export const api = {
         if (!res.ok) throw new Error(`notices/dismiss -> ${res.status}`);
     },
     insights: () =>
-        getJson<{ insights: Insights }>("/api/insights").then(
-            (r) => r.insights,
+        getJson<unknown>("/api/insights").then(
+            (r) => InsightsResponseSchema.parse(r).insights,
         ),
     weeklyReviewFacts: (startKey: string) =>
-        getJson<{ facts: WeeklyReviewFacts }>(
+        getJson<unknown>(
             `/api/reviews/week?key=${encodeURIComponent(startKey)}`,
-        ).then((r) => r.facts),
+        ).then((r) => WeeklyReviewFactsResponseSchema.parse(r).facts),
     loadDetail: (key: string, granularity: "day" | "week") =>
-        getJson<{ detail: LoadDetail }>(
+        getJson<unknown>(
             `/api/load/detail?key=${key}&granularity=${granularity}`,
-        ).then((r) => r.detail),
+        ).then((r) => LoadDetailResponseSchema.parse(r).detail),
     markChangesRead: async (canonical: string): Promise<void> => {
         const res = await fetch("/api/changes/read", {
             method: "POST",
@@ -768,39 +558,11 @@ export const prDetailQuery = (canonical: string) =>
         refetchInterval: 10_000,
     });
 
-export interface Period {
-    label: string;
-    start: string;
-    end: string;
-}
-
-export interface ArgusConfig {
-    me: string | null;
-    adoAuth: "az" | "broker";
-    avatarUrl: string;
-    orgUrl: string;
-    orgSlug: string;
-    project: string;
-    teamPatterns: string[];
-    teamLabels: Record<string, string>;
-    periods: Period[];
-    reviewSkillName: string;
-    reviewModels: Record<
-        "quick" | "full" | "automatic",
-        { model: string; reasoningEffort: string }
-    >;
-    recencyDays: number;
-    retentionDays: number;
-    workStartHour: number;
-    workEndHour: number;
-    workDays: number[];
-    checkForUpdates: boolean;
-    vendorPattern: string;
-}
-
 export const configApi = {
     get: () =>
-        getJson<{ config: ArgusConfig }>("/api/config").then((r) => r.config),
+        getJson<unknown>("/api/config").then(
+            (r) => ConfigResponseSchema.parse(r).config,
+        ),
     save: async (overrides: Partial<ArgusConfig>): Promise<ArgusConfig> => {
         const res = await fetch("/api/config", {
             method: "POST",
