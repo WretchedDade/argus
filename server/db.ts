@@ -1,14 +1,10 @@
 import { DatabaseSync, type StatementSync } from "node:sqlite";
 import { mkdirSync } from "node:fs";
-import { randomUUID } from "node:crypto";
 import path from "node:path";
 import type {
     ActivityEntry,
     ActivityEvent,
-    ActivityEventType,
-    ActivityVerdict,
     ArchivableSession,
-    ArchiveReason,
     AuthorMeta,
     Insights,
     InsightsCount,
@@ -22,148 +18,34 @@ import type {
     PrEventType,
     PrReviewState,
     PrRole,
-    PrState,
     PrUpsert,
     RepoScope,
     RunEvent,
     WeeklyReviewEffort,
     WeeklyReviewFacts,
 } from "./types.ts";
-import { ARCHIVE_REASONS, STALE_ARCHIVE_DAYS } from "./types.ts";
+import { STALE_ARCHIVE_DAYS } from "./types.ts";
 import type { Plan, Snapshot } from "./ado/reconcile.ts";
-import { salvageConfigOverrides, type ConfigOverrides } from "./config.ts";
+import type { ConfigOverrides } from "./config.ts";
 import { runMigrations } from "./store/migrations.ts";
-import { isVendorName } from "./ado/normalize.ts";
-import { log } from "./log.ts";
-import type { ReleaseInfo } from "./update-check.ts";
+import { prep } from "./store/prep.ts";
+import * as activity from "./store/activity.ts";
+import * as events from "./store/events.ts";
+import type { PollRun, PollRunResult } from "./store/activity.ts";
+import * as prs from "./store/prs.ts";
+import { manuallyDismissed } from "./store/prs.ts";
+import * as settings from "./store/settings.ts";
 
 // Operational log rows returned to the activity/runs routes.
 export type { ActivityEntry };
 
-export interface PollRun {
-    id: number;
-    startedAt: string;
-    finishedAt: string | null;
-    ok: boolean;
-    mine: number | null;
-    tracked: number | null;
-    added: number | null;
-    updated: number | null;
-    events: number | null;
-    closed: number | null;
-    error: string | null;
-}
+export type { PollRun, PollRunResult } from "./store/activity.ts";
 
-export interface PollRunResult {
-    ok: boolean;
-    mine?: number;
-    tracked?: number;
-    added?: number;
-    updated?: number;
-    events?: number;
-    closed?: number;
-    error?: string | null;
-}
-
-interface ActivityRow {
-    id: number;
-    ts: string;
-    level: string;
-    msg: string;
-    data: string | null;
-    run_id: number | null;
-}
-
-interface PollRunRow {
-    id: number;
-    started_at: string;
-    finished_at: string | null;
-    ok: number;
-    mine: number | null;
-    tracked: number | null;
-    added: number | null;
-    updated: number | null;
-    events: number | null;
-    closed: number | null;
-    error: string | null;
-}
-
-function rowToActivity(r: ActivityRow): ActivityEntry {
-    return {
-        id: r.id,
-        ts: r.ts,
-        level: r.level,
-        msg: r.msg,
-        data: r.data ? (JSON.parse(r.data) as Record<string, unknown>) : null,
-        runId: r.run_id,
-    };
-}
-
-function rowToRun(r: PollRunRow): PollRun {
-    return {
-        id: r.id,
-        startedAt: r.started_at,
-        finishedAt: r.finished_at,
-        ok: !!r.ok,
-        mine: r.mine,
-        tracked: r.tracked,
-        added: r.added,
-        updated: r.updated,
-        events: r.events,
-        closed: r.closed,
-        error: r.error,
-    };
-}
-
-const b = (v: boolean): number => (v ? 1 : 0);
-const AUTOMATIC_TOKEN_TTL_MS = 6 * 60 * 60 * 1000;
-const now = (): string => new Date().toISOString();
-const ARCHIVE_REASONS_SQL = ARCHIVE_REASONS.map((r) => `'${r}'`).join(", ");
-
-const isAutoArchive = (reason: string | null): reason is ArchiveReason =>
-    !!reason && (ARCHIVE_REASONS as readonly string[]).includes(reason);
-
-// A dismissal the user chose. Archived PRs stay in history analysis.
-const manuallyDismissed = (p: {
-    dismissed: number;
-    dismissedReason: string | null;
-}): boolean => !!p.dismissed && !isAutoArchive(p.dismissedReason);
-
-// Effective scope: the per-PR override, then the repo default, then "in". An "out"
-// repo default does not hide a PR you are named on (author or direct reviewer).
-export function resolveOutOfScope(
-    override: string | null,
-    repoDefault: string | null,
-    role: string | null,
-): boolean {
-    if (override === "in") return false;
-    if (override === "out") return true;
-    if (repoDefault !== "out") return false;
-    return role !== "author" && role !== "reviewer";
-}
-
-export interface StaleCandidate {
-    canonical: string;
-    repo: string;
-    number: number;
-    title: string;
-    author: string | null;
-    updatedAt: string;
-    idleDays: number;
-}
-const REVIEW_COUNT_SQL = `(
-  SELECT COUNT(*) FROM pr_events e
-  WHERE e.canonical = p.canonical
-    AND e.type = 'reviewed'
-    AND json_extract(e.payload, '$.verdict') IN ('approved', 'suggestions', 'waiting', 'rejected')
-)`;
-
-const COVERED_AT_SQL = `(
-  SELECT MAX(e.ts) FROM pr_events e
-  WHERE e.canonical = p.canonical
-    AND e.type = 'review_state'
-    AND json_extract(e.payload, '$.to') = 'covered'
-)`;
+export {
+    resolveOutOfScope,
+    type ListOptions,
+    type StaleCandidate,
+} from "./store/prs.ts";
 
 const HOUR_MS = 3_600_000;
 const WEEK_MS = 604_800_000;
@@ -261,117 +143,8 @@ function weeklyReviewEffort(pr: {
     };
 }
 
-interface PrRow {
-    canonical: string;
-    org: string;
-    project: string;
-    repo: string;
-    number: number;
-    title: string;
-    description: string | null;
-    author: string | null;
-    is_vendor: number;
-    role: string | null;
-    teams_json: string | null;
-    required_approver_groups_json: string | null;
-    review_count: number;
-    covered_at: string | null;
-    review_state: string | null;
-    approvals_json: string | null;
-    author_meta_json: string | null;
-    lane: string;
-    state: string;
-    is_draft: number;
-    dismissed: number;
-    dismissed_reason: string | null;
-    dismissed_at: string | null;
-    out_of_scope: number;
-    snoozed_until: string | null;
-    snooze_mode: string | null;
-    reviewed_sha: string | null;
-    last_commit_sha: string | null;
-    last_commit_at: string | null;
-    pr_created_at: string | null;
-    added_at: string;
-    updated_at: string;
-    review_session_id: string | null;
-    changed_files: number | null;
-}
-
-function rowToPr(r: PrRow): Pr {
-    return {
-        canonical: r.canonical,
-        org: r.org,
-        project: r.project,
-        repo: r.repo,
-        number: r.number,
-        title: r.title,
-        description: r.description ?? "",
-        author: r.author,
-        isVendor: !!r.is_vendor,
-        role: (r.role as PrRole) ?? "reviewer",
-        teams: r.teams_json ? (JSON.parse(r.teams_json) as string[]) : [],
-        requiredApproverGroups: r.required_approver_groups_json
-            ? (JSON.parse(r.required_approver_groups_json) as string[])
-            : [],
-        reviewState: (r.review_state as PrReviewState) ?? null,
-        otherVotes: r.approvals_json
-            ? (JSON.parse(r.approvals_json) as { name: string; vote: number }[])
-            : [],
-        lane: r.lane as Lane,
-        state: r.state as PrState,
-        isDraft: !!r.is_draft,
-        dismissed: !!r.dismissed,
-        dismissedReason: r.dismissed_reason,
-        dismissedAt: r.dismissed_at,
-        outOfScope: !!r.out_of_scope,
-        snoozedUntil: r.snoozed_until,
-        snoozeMode: (r.snooze_mode as "time" | "fte" | null) ?? null,
-        lastCommitSha: r.last_commit_sha,
-        lastCommitAt: r.last_commit_at,
-        prCreatedAt: r.pr_created_at,
-        addedAt: r.added_at,
-        updatedAt: r.updated_at,
-        reviewSessionId: r.review_session_id,
-        reviewedSha: r.reviewed_sha,
-        reviewCount: r.review_count,
-        coveredAt: r.covered_at ?? null,
-        changedFiles: r.changed_files ?? null,
-        authorMeta: r.author_meta_json
-            ? (JSON.parse(r.author_meta_json) as AuthorMeta)
-            : null,
-    };
-}
-
-interface EventRow {
-    id: number;
-    canonical: string;
-    ts: string;
-    type: string;
-    payload: string | null;
-}
-
-function rowToEvent(r: EventRow): PrEvent {
-    return {
-        id: r.id,
-        canonical: r.canonical,
-        ts: r.ts,
-        type: r.type as PrEventType,
-        payload: r.payload
-            ? (JSON.parse(r.payload) as Record<string, unknown>)
-            : null,
-    };
-}
-
-export interface ListOptions {
-    includeClosed?: boolean;
-    includeDismissed?: boolean;
-    archivedOnly?: boolean;
-}
-
 export class ArgusStore {
     #db: DatabaseSync;
-    #stmts = new Map<string, StatementSync>();
 
     constructor(file: string) {
         mkdirSync(path.dirname(file), { recursive: true });
@@ -405,138 +178,38 @@ export class ArgusStore {
         }
     }
 
-    // Cache prepared statements by SQL text so hot paths don't recompile.
     #prep(sql: string): StatementSync {
-        let stmt = this.#stmts.get(sql);
-        if (!stmt) {
-            stmt = this.#db.prepare(sql);
-            this.#stmts.set(sql, stmt);
-        }
-        return stmt;
+        return prep(this.#db, sql);
     }
 
-    // Insert on first sight, otherwise refresh only ADO-sourced columns. Triage
-    // columns (lane, state, dismissed, snooze, session, added_at) are untouched.
     upsertPr(pr: PrUpsert): void {
-        const ts = now();
-        this.#prep(
-            `
-      INSERT INTO prs (canonical, org, project, repo, number, title, description, author,
-                       is_vendor, role, teams_json, is_draft, last_commit_sha,
-                       last_commit_at, pr_created_at, source_branch, target_branch, added_at, updated_at)
-      VALUES ($canonical, $org, $project, $repo, $number, $title, $description, $author,
-              $is_vendor, $role, $teams_json, $is_draft, $last_commit_sha,
-              $last_commit_at, $pr_created_at, $source_branch, $target_branch, $ts, $ts)
-      ON CONFLICT(canonical) DO UPDATE SET
-        org = excluded.org, project = excluded.project, repo = excluded.repo,
-        number = excluded.number, title = excluded.title,
-        description = CASE
-          WHEN description IS NULL OR description = '' OR length(excluded.description) >= length(description)
-          THEN excluded.description ELSE description END,
-        author = excluded.author,
-        is_vendor = excluded.is_vendor, role = excluded.role, teams_json = excluded.teams_json,
-        is_draft = excluded.is_draft,
-        last_commit_sha = excluded.last_commit_sha,
-        last_commit_at = CASE
-          WHEN excluded.last_commit_at IS NULL AND last_commit_sha IS excluded.last_commit_sha
-          THEN last_commit_at ELSE excluded.last_commit_at END,
-        reviewed_sha_authored_at = CASE
-          WHEN reviewed_sha IS NOT NULL AND reviewed_sha_authored_at IS NULL
-            AND reviewed_sha = excluded.last_commit_sha
-          THEN CASE
-            WHEN excluded.last_commit_at IS NOT NULL THEN excluded.last_commit_at
-            WHEN last_commit_sha IS excluded.last_commit_sha THEN last_commit_at
-          END ELSE reviewed_sha_authored_at END,
-        pr_created_at = excluded.pr_created_at,
-        source_branch = excluded.source_branch,
-        target_branch = excluded.target_branch,
-        updated_at = excluded.updated_at
-    `,
-        ).run({
-            $canonical: pr.canonical,
-            $org: pr.org,
-            $project: pr.project,
-            $repo: pr.repo,
-            $number: pr.number,
-            $title: pr.title,
-            $description: pr.description,
-            $author: pr.author,
-            $is_vendor: b(pr.isVendor),
-            $role: pr.role,
-            $teams_json: JSON.stringify(pr.teams),
-            $is_draft: b(pr.isDraft),
-            $last_commit_sha: pr.lastCommitSha,
-            $last_commit_at: pr.lastCommitAt,
-            $pr_created_at: pr.prCreatedAt,
-            $source_branch: pr.sourceBranch ?? null,
-            $target_branch: pr.targetBranch ?? null,
-            $ts: ts,
-        });
+        prs.upsertPr(this.#db, pr);
     }
 
     getPr(canonical: string): Pr | null {
-        this.#clearExpiredSnoozes();
-        const row = this.#prep(
-            `SELECT p.*, ${REVIEW_COUNT_SQL} AS review_count, ${COVERED_AT_SQL} AS covered_at FROM prs p WHERE canonical = ?`,
-        ).get(canonical) as PrRow | undefined;
-        return row ? rowToPr(row) : null;
+        return prs.getPr(this.#db, canonical);
     }
 
-    // Resolve a PR number to its canonical, across any state (incl. closed and
-    // dismissed) so search can reach historical PRs. ADO PR ids are unique within
-    // the org, so number alone is enough; newest wins if somehow duplicated.
     findCanonicalByNumber(number: number): string | null {
-        const row = this.#prep(
-            "SELECT canonical FROM prs WHERE number = ? ORDER BY updated_at DESC LIMIT 1",
-        ).get(number) as { canonical: string } | undefined;
-        return row?.canonical ?? null;
+        return prs.findCanonicalByNumber(this.#db, number);
     }
 
-    listPrs(opts: ListOptions = {}): Pr[] {
-        this.#clearExpiredSnoozes();
-        const where: string[] = [];
-        if (!opts.includeClosed) where.push("state != 'closed'");
-        if (opts.archivedOnly)
-            where.push(
-                `dismissed = 1 AND dismissed_reason IN (${ARCHIVE_REASONS_SQL})`,
-            );
-        else if (!opts.includeDismissed) where.push("dismissed = 0");
-        const clause = where.length ? `WHERE ${where.join(" AND ")}` : "";
-        const rows = this.#prep(
-            `SELECT p.*, ${REVIEW_COUNT_SQL} AS review_count, ${COVERED_AT_SQL} AS covered_at FROM prs p ${clause} ORDER BY updated_at DESC`,
-        ).all() as unknown as PrRow[];
-        return rows.map(rowToPr);
-    }
-
-    #clearExpiredSnoozes(): void {
-        this.#prep(
-            "UPDATE prs SET snoozed_until = NULL, snooze_mode = NULL WHERE snoozed_until IS NOT NULL AND snoozed_until <= ?",
-        ).run(now());
+    listPrs(opts: prs.ListOptions = {}): Pr[] {
+        return prs.listPrs(this.#db, opts);
     }
 
     appendEvent(
         canonical: string,
         type: PrEventType,
         payload?: Record<string, unknown>,
-        ts: string = now(),
+        ts?: string,
         runId?: number,
     ): void {
-        this.#prep(
-            "INSERT INTO pr_events (canonical, ts, type, payload, run_id) VALUES (?, ?, ?, ?, ?)",
-        ).run(
-            canonical,
-            ts,
-            type,
-            payload ? JSON.stringify(payload) : null,
-            runId ?? null,
-        );
+        events.appendEvent(this.#db, canonical, type, payload, ts, runId);
     }
 
     listEvents(canonical: string): PrEvent[] {
-        const rows = this.#prep(
-            "SELECT * FROM pr_events WHERE canonical = ? ORDER BY ts ASC, id ASC",
-        ).all(canonical) as unknown as EventRow[];
-        return rows.map(rowToEvent);
+        return events.listEvents(this.#db, canonical);
     }
 
     weeklyReviewFacts(startKey: string): WeeklyReviewFacts {
@@ -651,263 +324,32 @@ export class ArgusStore {
     // as authored_opened/authored_merged. Vote churn by other reviewers only
     // surfaces on PRs I authored (on PRs I review, only my own vote is "mine").
     listPrActivity(sinceMs: number, untilMs: number): ActivityEvent[] {
-        const WANTED =
-            "('added','closed','reviewed','vote_changed','review_state','commit_pushed','comment_posted')";
-        const sinceIso = new Date(sinceMs).toISOString();
-        const untilIso = new Date(untilMs).toISOString();
-        const rows = this.#prep(
-            `
-      SELECT e.id, e.canonical, e.ts, e.type, e.payload,
-             p.org, p.project, p.repo, p.number, p.title, p.author, p.is_vendor,
-             p.role, p.teams_json, p.review_session_id, p.author_meta_json
-      FROM pr_events e JOIN prs p ON e.canonical = p.canonical
-      WHERE e.type IN ${WANTED} AND e.ts >= ? AND e.ts < ?
-      ORDER BY e.ts ASC, e.id ASC
-    `,
-        ).all(sinceIso, untilIso) as unknown as {
-            id: number;
-            canonical: string;
-            ts: string;
-            type: string;
-            payload: string | null;
-            org: string;
-            project: string;
-            repo: string;
-            number: number;
-            title: string;
-            author: string | null;
-            is_vendor: number;
-            role: string | null;
-            teams_json: string | null;
-            review_session_id: string | null;
-            author_meta_json: string | null;
-        }[];
-
-        const VERDICTS = new Set<ActivityVerdict>([
-            "approved",
-            "suggestions",
-            "rejected",
-            "waiting",
-        ]);
-        const out: ActivityEvent[] = [];
-        for (const r of rows) {
-            // Defensive exact-window check (SQL bound is lexicographic on ISO strings;
-            // guard against any non-UTC legacy timestamp slipping through).
-            const t = Date.parse(r.ts);
-            if (!(t >= sinceMs && t < untilMs)) continue;
-
-            const role = (r.role as PrRole) ?? "reviewer";
-            const payload = r.payload
-                ? (JSON.parse(r.payload) as Record<string, unknown>)
-                : {};
-
-            // Drop other reviewers' vote churn on PRs I only review — not my activity.
-            if (
-                r.type === "vote_changed" &&
-                role !== "author" &&
-                payload.mine !== true
-            )
-                continue;
-
-            let type: ActivityEventType;
-            if (r.type === "added")
-                type = role === "author" ? "authored_opened" : "added";
-            else if (r.type === "closed")
-                type =
-                    role === "author" && payload.reason === "completed"
-                        ? "authored_merged"
-                        : "closed";
-            else type = r.type as ActivityEventType;
-
-            let verdict: ActivityVerdict | null = null;
-            if (
-                r.type === "reviewed" &&
-                typeof payload.verdict === "string" &&
-                VERDICTS.has(payload.verdict as ActivityVerdict)
-            ) {
-                verdict = payload.verdict as ActivityVerdict;
-            } else if (
-                r.type === "review_state" &&
-                typeof payload.to === "string" &&
-                VERDICTS.has(payload.to as ActivityVerdict)
-            ) {
-                verdict = payload.to as ActivityVerdict;
-            }
-
-            const vote =
-                r.type === "vote_changed" && typeof payload.vote === "number"
-                    ? payload.vote
-                    : null;
-            const meta = r.author_meta_json
-                ? (JSON.parse(r.author_meta_json) as AuthorMeta)
-                : null;
-
-            out.push({
-                id: r.id,
-                ts: r.ts,
-                type,
-                role,
-                pr: {
-                    canonical: r.canonical,
-                    org: r.org,
-                    project: r.project,
-                    repo: r.repo,
-                    number: r.number,
-                    title: r.title,
-                    author: r.author,
-                    isVendor: !!r.is_vendor,
-                    teams: r.teams_json
-                        ? (JSON.parse(r.teams_json) as string[])
-                        : [],
-                    url: r.canonical,
-                },
-                verdict,
-                vote,
-                activeComments: meta ? meta.activeComments : null,
-                resolvedComments: meta ? meta.resolvedComments : null,
-                reviewSessionId: r.review_session_id,
-            });
-        }
-        return out;
+        return events.listPrActivity(this.#db, sinceMs, untilMs);
     }
 
-    // Per-PR changes a run produced, joined with PR identity for display.
     listRunEvents(runId: number): RunEvent[] {
-        const rows = this.#prep(
-            `
-      SELECT e.id, e.canonical, e.ts, e.type, e.payload, p.repo, p.number, p.title
-      FROM pr_events e JOIN prs p ON e.canonical = p.canonical
-      WHERE e.run_id = ? ORDER BY e.id ASC
-    `,
-        ).all(runId) as unknown as {
-            id: number;
-            canonical: string;
-            ts: string;
-            type: string;
-            payload: string | null;
-            repo: string;
-            number: number;
-            title: string;
-        }[];
-        return rows.map((r) => ({
-            id: r.id,
-            canonical: r.canonical,
-            ts: r.ts,
-            type: r.type as PrEventType,
-            payload: r.payload
-                ? (JSON.parse(r.payload) as Record<string, unknown>)
-                : null,
-            repo: r.repo,
-            number: r.number,
-            title: r.title,
-        }));
+        return events.listRunEvents(this.#db, runId);
     }
 
-    // --- "what's changed" feed (external events the user cares about) ---
-
-    // The exact set of change signals the bell's change-feed surfaces —
-    // deliberately narrow, one per scenario the user cares about:
-    //   1. new commits on a PR you already recorded a verdict on (re-review)
-    //   2. a PR newly added to your queue
-    //   3. an "until FTE approves" snooze cleared by an FTE approval
-    // Scenario 4 (a merged PR ready to archive its review session) is handled
-    // separately by the archive banner (the `archivable` list), which groups them
-    // into one line with an Archive action — NOT here, so a merged PR doesn't
-    // surface as a plain row that only opens the detail page. Everything else
-    // (teammate votes, review_state churn, drafts, commits on unreviewed PRs) is
-    // intentionally excluded as noise. References the joined `p` (prs) row, so
-    // every query using this filter must JOIN prs p.
-    static #CHANGE_FILTER = `(
-        e.type = 'added'
-        OR (e.type = 'commit_pushed' AND p.reviewed_at IS NOT NULL)
-        OR e.type = 'fte_woke'
-      )`;
-
-    // Unread change events: surfaced changes newer than the caught-up watermark
-    // and not individually marked read. This is the notifications bell feed.
-    listUnreadChanges(limit = 200): RunEvent[] {
-        const baseline = this.getChangesSeenAt();
-        const nowTs = now();
-        const clause = baseline ? " AND e.ts > ?" : "";
-        const params: (string | number)[] = baseline
-            ? [baseline, nowTs, limit]
-            : [nowTs, limit];
-        const rows = this.#prep(
-            `
-      SELECT e.id, e.canonical, e.ts, e.type, e.payload, p.repo, p.number, p.title
-      FROM pr_events e JOIN prs p ON e.canonical = p.canonical
-      WHERE ${ArgusStore.#CHANGE_FILTER}${clause}
-        AND e.id NOT IN (SELECT event_id FROM changes_read)
-        AND p.out_of_scope = 0
-        AND p.dismissed = 0
-        AND COALESCE(p.snooze_mode, '') != 'fte'
-        AND (p.snoozed_until IS NULL OR p.snoozed_until <= ?)
-      ORDER BY e.ts DESC, e.id DESC LIMIT ?
-    `,
-        ).all(...params) as unknown as {
-            id: number;
-            canonical: string;
-            ts: string;
-            type: string;
-            payload: string | null;
-            repo: string;
-            number: number;
-            title: string;
-        }[];
-        return rows.map((r) => ({
-            id: r.id,
-            canonical: r.canonical,
-            ts: r.ts,
-            type: r.type as PrEventType,
-            payload: r.payload
-                ? (JSON.parse(r.payload) as Record<string, unknown>)
-                : null,
-            repo: r.repo,
-            number: r.number,
-            title: r.title,
-        }));
+    listUnreadChanges(limit?: number): RunEvent[] {
+        return events.listUnreadChanges(this.#db, limit);
     }
 
-    // Mark every currently-unread change for one PR as read (used when the user
-    // clicks through to re-review that PR).
     markChangesReadForPr(canonical: string): void {
-        const ts = now();
-        this.#prep(
-            `
-      INSERT OR IGNORE INTO changes_read (event_id, read_at)
-      SELECT e.id, ? FROM pr_events e JOIN prs p ON e.canonical = p.canonical
-      WHERE e.canonical = ? AND ${ArgusStore.#CHANGE_FILTER}
-    `,
-        ).run(ts, canonical);
+        events.markChangesReadForPr(this.#db, canonical);
     }
 
-    // Clear the whole feed by advancing the caught-up watermark to now.
     markAllChangesRead(): void {
-        this.setChangesSeenAt();
+        events.markAllChangesRead(this.#db);
     }
 
-    // --- reviewed-sha authored dates (for review latency) ---
-    // Captured synchronously in recordReview from last_commit_at (see there); no
-    // separate resolution step is needed.
-
-    // Migrated PRs whose author the old tracker didn't capture; the poller backfills
-    // them from ADO a bounded batch per cycle until none remain.
-    // `accept` filters before the limit, so skipped rows cannot fill the batch.
     prsMissingAuthor(
         limit = 50,
         accept: (canonical: string) => boolean = () => true,
     ): { canonical: string; number: number }[] {
-        return (
-            this.#prep(
-                "SELECT canonical, number FROM prs WHERE author IS NULL",
-            ).all() as unknown as { canonical: string; number: number }[]
-        )
-            .filter((r) => accept(r.canonical))
-            .slice(0, limit);
+        return prs.prsMissingAuthor(this.#db, limit, accept);
     }
 
-    // PRs whose head commit time is not known yet. The poller reads it from ADO a
-    // bounded batch per cycle. Pass a canonical to look at one PR only.
     prsMissingCommitAt(
         limit = 50,
         canonical?: string,
@@ -917,69 +359,27 @@ export class ArgusStore {
         repo: string;
         sha: string;
     }[] {
-        return this.#prep(
-            `SELECT canonical, project, repo, last_commit_sha AS sha FROM prs
-       WHERE last_commit_at IS NULL AND last_commit_sha IS NOT NULL
-         AND state != 'closed' AND (? IS NULL OR canonical = ?)
-       LIMIT ?`,
-        ).all(canonical ?? null, canonical ?? null, limit) as unknown as {
-            canonical: string;
-            project: string;
-            repo: string;
-            sha: string;
-        }[];
+        return prs.prsMissingCommitAt(this.#db, limit, canonical);
     }
 
-    // Store the real commit time for a head sha. Ignored if the head moved on.
     setLastCommitAt(canonical: string, sha: string, at: string): void {
-        this.#prep(
-            "UPDATE prs SET last_commit_at = ? WHERE canonical = ? AND last_commit_sha = ?",
-        ).run(at, canonical, sha);
-        this.#prep(
-            `UPDATE prs SET reviewed_sha_authored_at = ?
-       WHERE canonical = ? AND reviewed_sha = ? AND reviewed_sha_authored_at IS NULL`,
-        ).run(at, canonical, sha);
+        prs.setLastCommitAt(this.#db, canonical, sha, at);
     }
 
     setAuthor(canonical: string, author: string): void {
-        this.#prep("UPDATE prs SET author = ? WHERE canonical = ?").run(
-            author,
-            canonical,
-        );
+        prs.setAuthor(this.#db, canonical, author);
     }
 
-    // PRs you've voted on (terminal verdict, not your own) whose "my comment count"
-    // hasn't been counted yet — drives the one-time backfill and go-forward counts.
     prsNeedingCommentCount(
         limit = 25,
     ): { canonical: string; number: number; project: string; repo: string }[] {
-        return this.#prep(
-            `SELECT canonical, number, project, repo FROM prs
-       WHERE (my_comments IS NULL OR other_comments IS NULL) AND (role IS NULL OR role != 'author')
-         AND EXISTS (
-           SELECT 1 FROM pr_events e
-           WHERE e.canonical = prs.canonical AND e.type = 'reviewed'
-             AND json_extract(e.payload, '$.verdict') IS NOT NULL
-         )
-       LIMIT ?`,
-        ).all(limit) as unknown as {
-            canonical: string;
-            number: number;
-            project: string;
-            repo: string;
-        }[];
+        return prs.prsNeedingCommentCount(this.#db, limit);
     }
 
     setCommentCounts(canonical: string, mine: number, others: number): void {
-        this.#prep(
-            "UPDATE prs SET my_comments = ?, other_comments = ? WHERE canonical = ?",
-        ).run(mine, others, canonical);
+        prs.setCommentCounts(this.#db, canonical, mine, others);
     }
 
-    // --- PR size (files changed) ---
-
-    // Active board PRs whose file count is missing or stale (a new commit landed
-    // since it was counted). New PRs bypass the bounded historical backfill.
     prsNeedingFileCount(
         limit = 20,
         newPrs: ReadonlySet<string> = new Set(),
@@ -990,25 +390,7 @@ export class ArgusStore {
         targetBranch: string;
         sha: string | null;
     }[] {
-        const rows = this.#prep(
-            `
-      SELECT canonical, repo, source_branch AS sourceBranch, target_branch AS targetBranch, last_commit_sha AS sha
-      FROM prs
-      WHERE state != 'closed' AND dismissed = 0 AND out_of_scope = 0
-        AND source_branch IS NOT NULL AND target_branch IS NOT NULL
-        AND (changed_files IS NULL OR changed_files_sha IS NOT last_commit_sha)
-    `,
-        ).all() as unknown as {
-            canonical: string;
-            repo: string;
-            sourceBranch: string;
-            targetBranch: string;
-            sha: string | null;
-        }[];
-        return [
-            ...rows.filter((pr) => newPrs.has(pr.canonical)),
-            ...rows.filter((pr) => !newPrs.has(pr.canonical)).slice(0, limit),
-        ];
+        return prs.prsNeedingFileCount(this.#db, limit, newPrs);
     }
 
     setChangedFiles(
@@ -1016,9 +398,7 @@ export class ArgusStore {
         count: number,
         sha: string | null,
     ): void {
-        this.#prep(
-            "UPDATE prs SET changed_files = ?, changed_files_sha = ? WHERE canonical = ?",
-        ).run(count, sha, canonical);
+        prs.setChangedFiles(this.#db, canonical, count, sha);
     }
 
     // --- Insights: aggregate analytics computed on demand from events + PRs ---
@@ -2111,7 +1491,7 @@ export class ArgusStore {
             )?.t ?? null;
 
         return {
-            generatedAt: now(),
+            generatedAt: new Date().toISOString(),
             summary: {
                 reviewsAllTime: new Set(
                     reviewed.map((review) => review.canonical),
@@ -2228,109 +1608,33 @@ export class ArgusStore {
     }
 
     getChangesSeenAt(): string | null {
-        return this.#getSetting("changes_seen_at");
+        return events.getChangesSeenAt(this.#db);
     }
 
-    setChangesSeenAt(ts: string = now()): void {
-        this.#setSetting("changes_seen_at", ts);
+    setChangesSeenAt(ts?: string): void {
+        events.setChangesSeenAt(this.#db, ts);
     }
 
-    // Prior state of every tracked PR, keyed by canonical, for the reconciler to
-    // diff against. Reviewer votes come from the snapshot column.
     listSnapshots(): Map<string, Snapshot> {
-        const rows = this.#prep(
-            "SELECT canonical, last_commit_sha, is_draft, state, dismissed, dismissed_reason, reviewers_json FROM prs",
-        ).all() as unknown as {
-            canonical: string;
-            last_commit_sha: string | null;
-            is_draft: number;
-            state: string;
-            dismissed: number;
-            dismissed_reason: string | null;
-            reviewers_json: string | null;
-        }[];
-        const map = new Map<string, Snapshot>();
-        for (const r of rows) {
-            const archived = r.dismissed
-                ? isAutoArchive(r.dismissed_reason)
-                    ? r.dismissed_reason
-                    : null
-                : null;
-            map.set(r.canonical, {
-                sha: r.last_commit_sha,
-                isDraft: !!r.is_draft,
-                state: r.state as PrState,
-                dismissed: !!r.dismissed && !archived,
-                archived,
-                votes: r.reviewers_json
-                    ? (JSON.parse(r.reviewers_json) as Record<string, number>)
-                    : {},
-            });
-        }
-        return map;
+        return prs.listSnapshots(this.#db);
     }
 
-    // Apply a reconcile plan atomically: events, metadata, and the vote snapshot
-    // for every PR commit together, so a crash can't half-write a change.
     applyPlan(
         plan: Plan,
         runId?: number,
     ): { added: number; updated: number; events: number } {
-        let added = 0;
-        let updated = 0;
-        let events = 0;
-        // IMMEDIATE avoids SQLITE_BUSY_SNAPSHOT when another host writes first.
-        this.#db.exec("BEGIN IMMEDIATE");
-        try {
-            for (const item of plan.items) {
-                for (const ev of item.events) {
-                    this.appendEvent(
-                        ev.canonical,
-                        ev.type,
-                        ev.payload,
-                        ev.ts,
-                        runId,
-                    );
-                    events += 1;
-                }
-                this.upsertPr(item.upsert);
-                if (item.revive) this.#revive(item.upsert.canonical, "updated");
-                this.#setReviewers(item.upsert.canonical, item.votes);
-                if (item.isAdd) added += 1;
-                else updated += 1;
-            }
-            this.#db.exec("COMMIT");
-        } catch (err) {
-            this.#db.exec("ROLLBACK");
-            throw err;
-        }
-        return { added, updated, events };
+        return prs.applyPlan(this.#db, plan, runId);
     }
 
-    // Terminal transition detected out of band (PR left the active list).
     markClosed(
         canonical: string,
         reason: string,
-        ts: string = now(),
+        ts?: string,
         runId?: number,
     ): void {
-        this.appendEvent(canonical, "closed", { reason }, ts, runId);
-        this.#prep(
-            "UPDATE prs SET state = 'closed', updated_at = ? WHERE canonical = ?",
-        ).run(ts, canonical);
+        prs.markClosed(this.#db, canonical, reason, ts, runId);
     }
 
-    #setReviewers(canonical: string, votes: Record<string, number>): void {
-        this.#prep("UPDATE prs SET reviewers_json = ? WHERE canonical = ?").run(
-            JSON.stringify(votes),
-            canonical,
-        );
-    }
-
-    // Role/teams/reviewState (and the description preview) are cheap metadata that
-    // can change without a signature change (a team added, a teammate voting, an
-    // edited description), so the poller refreshes them for every mine PR each
-    // cycle. No-op for canonicals not yet tracked.
     setOwnership(
         canonical: string,
         role: PrRole,
@@ -2342,619 +1646,168 @@ export class ArgusStore {
         requiredApproverGroups: string[],
         vendorPattern?: string,
     ): void {
-        const prev = this.#prep(
-            "SELECT review_state AS s, description AS d FROM prs WHERE canonical = ?",
-        ).get(canonical) as { s: string | null; d: string | null } | undefined;
-        // Don't let a truncated bulk-list description overwrite a longer stored one.
-        const keepDesc =
-            prev?.d && description.length < prev.d.length
-                ? prev.d
-                : description;
-        this.#prep(
-            "UPDATE prs SET role = ?, teams_json = ?, review_state = ?, description = ?, is_vendor = ?, approvals_json = ?, required_approver_groups_json = ? WHERE canonical = ?",
-        ).run(
+        prs.setOwnership(
+            this.#db,
+            canonical,
             role,
-            JSON.stringify(teams),
+            teams,
             reviewState,
-            keepDesc,
-            isVendor ? 1 : 0,
-            JSON.stringify(otherVotes),
-            JSON.stringify(requiredApproverGroups),
-            canonical,
+            description,
+            isVendor,
+            otherVotes,
+            requiredApproverGroups,
+            vendorPattern,
         );
-        // Record a timeline entry whenever my standing changes (e.g. needs → covered).
-        if (prev && prev.s !== reviewState) {
-            this.appendEvent(canonical, "review_state", {
-                from: prev.s,
-                to: reviewState,
-            });
-        }
-        // Wake an "until FTE approves" snooze once a teammate/FTE has approved, and
-        // emit a distinct signal (with the approver's name) so the bell can surface
-        // "an FTE cleared this for you" unambiguously — separate from a manual clear.
-        // The snooze means "hide until someone on my team has vetted this," so a
-        // non-vendor (FTE) approving vote wakes it directly — NOT only the stricter
-        // team "covered" state, which never applies when ADO lists me as an
-        // individual reviewer (role=reviewer) so my own reviewState stays "needs".
-        const row = this.#prep(
-            "SELECT snooze_mode AS m FROM prs WHERE canonical = ?",
-        ).get(canonical) as { m: string | null } | undefined;
-        if (row?.m === "fte") {
-            // Attribute the wake to a non-vendor (FTE) approver — a vendor approval
-            // doesn't cover the team's review, so it never wakes an fte-snooze.
-            const by =
-                otherVotes.find(
-                    (v) => v.vote >= 5 && !isVendorName(v.name, vendorPattern),
-                )?.name ?? null;
-            if (by || reviewState === "covered" || reviewState === "approved") {
-                this.appendEvent(canonical, "fte_woke", { by });
-                this.setSnooze(canonical, null, null);
-            }
-        }
     }
 
-    // Mark a PR out of scope (I don't need to review it) or back in. This is a
-    // per-PR override of the repo default. An out-of-scope PR is archived, not
-    // deleted; fully reversible.
     setOutOfScope(canonical: string, value: boolean): void {
-        this.#prep("UPDATE prs SET scope_override = ? WHERE canonical = ?").run(
-            value ? "out" : "in",
-            canonical,
-        );
-        this.appendEvent(canonical, value ? "out_of_scope" : "in_scope");
-        this.applyScopePolicy();
+        prs.setOutOfScope(this.#db, canonical, value);
     }
 
-    // The default scope of a repo. null removes the default. Per-PR overrides are kept.
     setRepoScope(
         repo: string,
         scope: RepoScope | null,
     ): { archived: number; revived: number; kept: number } {
-        if (scope) {
-            this.#prep(
-                "INSERT INTO repo_scopes (repo, scope) VALUES (?, ?) ON CONFLICT(repo) DO UPDATE SET scope = excluded.scope",
-            ).run(repo, scope);
-        } else {
-            this.#prep("DELETE FROM repo_scopes WHERE repo = ?").run(repo);
-        }
-        const result = this.applyScopePolicy();
-        // Open PRs that stay visible in an out repo: you author them or review by name.
-        const kept =
-            scope === "out"
-                ? (
-                      this.#prep(
-                          "SELECT COUNT(*) AS n FROM prs WHERE repo = ? AND state != 'closed' AND dismissed = 0 AND out_of_scope = 0 AND role IN ('author', 'reviewer')",
-                      ).get(repo) as { n: number }
-                  ).n
-                : 0;
-        return { ...result, kept };
+        return prs.setRepoScope(this.#db, repo, scope);
     }
 
-    // Every repo with tracked PRs, with its default scope and PR counts.
     listRepoScopes(): {
         repo: string;
         scope: RepoScope | null;
         open: number;
         hidden: number;
     }[] {
-        const rows = this.#prep(
-            `
-      SELECT p.repo AS repo, s.scope AS scope,
-             SUM(CASE WHEN p.dismissed = 0 THEN 1 ELSE 0 END) AS open,
-             SUM(CASE WHEN p.dismissed = 1 THEN 1 ELSE 0 END) AS hidden
-      FROM prs p LEFT JOIN repo_scopes s ON s.repo = p.repo
-      WHERE p.state != 'closed' AND p.repo != ''
-      GROUP BY p.repo
-      UNION
-      SELECT repo, scope, 0, 0 FROM repo_scopes
-      WHERE repo NOT IN (SELECT repo FROM prs WHERE state != 'closed')
-      ORDER BY repo
-    `,
-        ).all() as unknown as {
-            repo: string;
-            scope: string | null;
-            open: number;
-            hidden: number;
-        }[];
-        return rows.map((r) => ({
-            repo: r.repo,
-            scope: r.scope as RepoScope | null,
-            open: r.open,
-            hidden: r.hidden,
-        }));
+        return prs.listRepoScopes(this.#db);
     }
 
-    // Bring every open PR in line with the scope policy: refresh the effective
-    // `out_of_scope` flag, archive PRs that are now out, and revive PRs that were
-    // archived as out of scope and are now in. Never touches a manual dismissal.
     applyScopePolicy(): { archived: number; revived: number } {
-        const defaults = new Map(
-            (
-                this.#prep(
-                    "SELECT repo, scope FROM repo_scopes",
-                ).all() as unknown as {
-                    repo: string;
-                    scope: string;
-                }[]
-            ).map((r) => [r.repo, r.scope]),
-        );
-        const rows = this.#prep(
-            `SELECT canonical, repo, role, scope_override, out_of_scope, dismissed, dismissed_reason
-             FROM prs WHERE state != 'closed'`,
-        ).all() as unknown as {
-            canonical: string;
-            repo: string;
-            role: string | null;
-            scope_override: string | null;
-            out_of_scope: number;
-            dismissed: number;
-            dismissed_reason: string | null;
-        }[];
-        let archived = 0;
-        let revived = 0;
-        this.#db.exec("BEGIN IMMEDIATE");
-        try {
-            for (const r of rows) {
-                const out = resolveOutOfScope(
-                    r.scope_override,
-                    defaults.get(r.repo) ?? null,
-                    r.role,
-                );
-                if (out !== !!r.out_of_scope)
-                    this.#prep(
-                        "UPDATE prs SET out_of_scope = ? WHERE canonical = ?",
-                    ).run(b(out), r.canonical);
-                if (r.dismissed && !isAutoArchive(r.dismissed_reason)) continue;
-                if (out && !r.dismissed) {
-                    this.#archive(r.canonical, "out_of_scope");
-                    archived += 1;
-                } else if (
-                    !out &&
-                    r.dismissed &&
-                    r.dismissed_reason === "out_of_scope"
-                ) {
-                    this.#revive(r.canonical, "in_scope");
-                    revived += 1;
-                }
-            }
-            this.#db.exec("COMMIT");
-        } catch (err) {
-            this.#db.exec("ROLLBACK");
-            throw err;
-        }
-        return { archived, revived };
+        return prs.applyScopePolicy(this.#db);
     }
 
-    #archive(canonical: string, reason: ArchiveReason): void {
-        const ts = now();
-        const info = this.#prep(
-            "UPDATE prs SET dismissed = 1, dismissed_reason = ?, dismissed_at = ? WHERE canonical = ? AND dismissed = 0",
-        ).run(reason, ts, canonical);
-        if (info.changes > 0)
-            this.appendEvent(canonical, "archived", { reason }, ts);
-    }
-
-    // Clears an Argus archive only. A manual dismissal is never revived. A PR that
-    // was archived as stale also drops its old review session, so a fresh one starts.
-    #revive(canonical: string, because: string): void {
-        const row = this.#prep(
-            "SELECT dismissed_reason AS reason FROM prs WHERE canonical = ? AND dismissed = 1",
-        ).get(canonical) as { reason: string | null } | undefined;
-        if (!row || !isAutoArchive(row.reason)) return;
-        this.#prep(
-            `UPDATE prs SET dismissed = 0, dismissed_reason = NULL, dismissed_at = NULL${
-                row.reason === "stale" ? ", review_session_id = NULL" : ""
-            } WHERE canonical = ?`,
-        ).run(canonical);
-        this.appendEvent(canonical, "revived", { reason: row.reason, because });
-    }
-
-    // Manual restore from the Archived view. A restored PR stays visible even if it
-    // is out of scope or idle: the scope override and the revived event guard it.
     restorePr(canonical: string): boolean {
-        const row = this.#prep(
-            "SELECT dismissed, dismissed_reason AS reason, out_of_scope FROM prs WHERE canonical = ?",
-        ).get(canonical) as
-            | { dismissed: number; reason: string | null; out_of_scope: number }
-            | undefined;
-        if (!row?.dismissed || !isAutoArchive(row.reason)) return false;
-        if (row.out_of_scope) {
-            this.#prep(
-                "UPDATE prs SET scope_override = 'in', out_of_scope = 0 WHERE canonical = ?",
-            ).run(canonical);
-            this.appendEvent(canonical, "in_scope");
-        }
-        this.#revive(canonical, "manual");
-        // The Board reads updated_at as recency, so a restore resets it.
-        this.#prep("UPDATE prs SET updated_at = ? WHERE canonical = ?").run(
-            now(),
-            canonical,
-        );
-        return true;
+        return prs.restorePr(this.#db, canonical);
     }
 
-    // A refresh stores the new snapshot, so the next poll cannot see the change.
-    // Revive a stale archive here when the head commit or draft state moved.
     reviveStaleOnChange(
         canonical: string,
         sha: string | null,
         isDraft: boolean,
     ): void {
-        const row = this.#prep(
-            "SELECT last_commit_sha AS sha, is_draft AS draft FROM prs WHERE canonical = ? AND dismissed = 1 AND dismissed_reason = 'stale'",
-        ).get(canonical) as { sha: string | null; draft: number } | undefined;
-        if (row && (row.sha !== sha || !!row.draft !== isDraft))
-            this.#revive(canonical, "updated");
+        prs.reviveStaleOnChange(this.#db, canonical, sha, isDraft);
     }
 
     listArchived(): Pr[] {
-        return this.listPrs({ archivedOnly: true });
+        return prs.listArchived(this.#db);
     }
 
-    // Open PRs with no tracked change for `days` or more. Skips snoozed PRs, PRs
-    // with a review session newer than the last verdict, and PRs restored within the
-    // window (a restore resets the clock).
     staleCandidates(
         nowMs = Date.now(),
         days = STALE_ARCHIVE_DAYS,
-    ): StaleCandidate[] {
-        this.#clearExpiredSnoozes();
-        const cutoffMs = nowMs - days * 86_400_000;
-        const rows = this.#prep(
-            `
-      SELECT p.canonical, p.repo, p.number, p.title, p.author, p.updated_at AS updatedAt
-      FROM prs p
-      WHERE p.state != 'closed' AND p.dismissed = 0
-        AND p.snoozed_until IS NULL AND p.snooze_mode IS NULL
-        AND (p.review_session_id IS NULL OR (
-          p.reviewed_at IS NOT NULL AND NOT EXISTS (
-            SELECT 1 FROM pr_events r
-            WHERE r.canonical = p.canonical AND r.type = 'reviewed'
-              AND json_extract(r.payload, '$.sessionId') IS NOT NULL
-              AND json_extract(r.payload, '$.verdict') IS NULL
-              AND r.id > COALESCE((
-                SELECT MAX(v.id) FROM pr_events v
-                WHERE v.canonical = p.canonical AND v.type = 'reviewed'
-                  AND json_extract(v.payload, '$.verdict') IS NOT NULL
-              ), 0)
-          )
-        ))
-        AND NOT EXISTS (
-          SELECT 1 FROM pr_events e
-          WHERE e.canonical = p.canonical AND e.type = 'revived' AND e.ts > ?
-        )
-    `,
-        ).all(new Date(cutoffMs).toISOString()) as unknown as {
-            canonical: string;
-            repo: string;
-            number: number;
-            title: string;
-            author: string | null;
-            updatedAt: string;
-        }[];
-        return rows
-            .filter((r) => Date.parse(r.updatedAt) <= cutoffMs)
-            .map((r) => ({
-                ...r,
-                idleDays: Math.floor(
-                    (nowMs - Date.parse(r.updatedAt)) / 86_400_000,
-                ),
-            }))
-            .sort((a, c) => c.idleDays - a.idleDays);
+    ): prs.StaleCandidate[] {
+        return prs.staleCandidates(this.#db, nowMs, days);
     }
 
-    // Archive stale PRs. Pass canonicals to limit the sweep to a reviewed preview.
     archiveStale(only?: readonly string[], nowMs = Date.now()): number {
-        const allowed = only ? new Set(only) : null;
-        let count = 0;
-        for (const c of this.staleCandidates(nowMs)) {
-            if (allowed && !allowed.has(c.canonical)) continue;
-            this.#archive(c.canonical, "stale");
-            count += 1;
-        }
-        return count;
+        return prs.archiveStale(this.#db, only, nowMs);
     }
 
-    // The first stale sweep waits for the user's approval of a preview. After
-    // that, the poller sweeps on its own.
     isStaleSweepApproved(): boolean {
-        return this.#getSetting("stale_sweep_approved") === "1";
+        return prs.isStaleSweepApproved(this.#db);
     }
 
     approveStaleSweep(): void {
-        this.#setSetting("stale_sweep_approved", "1");
+        prs.approveStaleSweep(this.#db);
     }
 
-    // Migrated PRs may carry a repository GUID instead of its name.
     prsWithRepoId(
         limit = 50,
         accept: (canonical: string) => boolean = () => true,
     ): { canonical: string; number: number }[] {
-        return (
-            this.#prep(
-                `SELECT canonical, number FROM prs
-             WHERE state != 'closed'
-               AND repo GLOB '[0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]-[0-9a-f][0-9a-f][0-9a-f][0-9a-f]-*'`,
-            ).all() as unknown as { canonical: string; number: number }[]
-        )
-            .filter((r) => accept(r.canonical))
-            .slice(0, limit);
+        return prs.prsWithRepoId(this.#db, limit, accept);
     }
 
     setRepo(canonical: string, repo: string): void {
-        this.#prep("UPDATE prs SET repo = ? WHERE canonical = ?").run(
-            repo,
-            canonical,
-        );
-        this.applyScopePolicy();
+        prs.setRepo(this.#db, canonical, repo);
     }
 
-    // Move a PR between the quick and full-review lanes (manual triage).
     setLane(canonical: string, lane: Lane): void {
-        this.#prep("UPDATE prs SET lane = ? WHERE canonical = ?").run(
-            lane,
-            canonical,
-        );
-        this.appendEvent(canonical, "lane_changed", { lane });
+        prs.setLane(this.#db, canonical, lane);
     }
 
-    // Authoritative description write (from `az pr show`, which returns full text,
-    // unlike the bulk list). Bypasses the anti-truncation guard used elsewhere.
     setDescription(canonical: string, description: string): void {
-        this.#prep("UPDATE prs SET description = ? WHERE canonical = ?").run(
-            description,
-            canonical,
-        );
+        prs.setDescription(this.#db, canonical, description);
     }
 
-    // Link the child session that reviewed this PR, so a later re-review can target
-    // it. Cleared by passing null.
     setReviewSession(canonical: string, sessionId: string | null): void {
-        this.#prep(
-            "UPDATE prs SET review_session_id = ? WHERE canonical = ?",
-        ).run(sessionId, canonical);
-        this.appendEvent(
-            canonical,
-            "reviewed",
-            sessionId ? { sessionId } : { cleared: true },
-        );
+        prs.setReviewSession(this.#db, canonical, sessionId);
     }
 
-    // Fully untrack a PR: delete its row and event history. Used to undo an
-    // erroneous add / let the user drop a PR that shouldn't be on the board. Unlike
-    // dismiss (which keeps a tombstone so it never resurrects), remove is a clean
-    // delete — auto-discovery may re-add it later if it genuinely qualifies.
     removePr(canonical: string): void {
-        this.#prep("DELETE FROM pr_events WHERE canonical = ?").run(canonical);
-        this.#prep("DELETE FROM prs WHERE canonical = ?").run(canonical);
+        prs.removePr(this.#db, canonical);
     }
 
-    // Issue a one-time token for an automatic review. Overlapping reviews of one
-    // PR each keep their own token.
     issueAutomaticReviewToken(canonical: string, nowMs = Date.now()): string {
-        const token = randomUUID();
-        this.#prep(
-            "INSERT INTO automatic_review_tokens (canonical, token, issued_at) VALUES (?, ?, ?)",
-        ).run(canonical, token, nowMs);
-        return token;
+        return prs.issueAutomaticReviewToken(this.#db, canonical, nowMs);
     }
 
-    // While an automatic review of a PR holds a valid token, `approved` needs one
-    // of those tokens. Other verdicts, and PRs with no automatic review, pass.
-    // Tokens expire so a crashed review cannot block approvals indefinitely.
     checkVerdictAllowed(
         canonical: string,
         verdict: string | undefined,
         token?: string,
         nowMs = Date.now(),
     ): boolean {
-        this.#prep(
-            "DELETE FROM automatic_review_tokens WHERE canonical = ? AND issued_at < ?",
-        ).run(canonical, nowMs - AUTOMATIC_TOKEN_TTL_MS);
-        const rows = this.#prep(
-            "SELECT token FROM automatic_review_tokens WHERE canonical = ?",
-        ).all(canonical) as { token: string }[];
-        if (rows.length === 0) return true;
-        if (token && rows.some((r) => r.token === token)) {
-            if (!verdict) return true;
-            // Another host can consume the token first; only one delete wins.
-            const { changes } = this.#prep(
-                "DELETE FROM automatic_review_tokens WHERE canonical = ? AND token = ?",
-            ).run(canonical, token);
-            if (Number(changes) === 1) return true;
-        }
-        return verdict !== "approved";
+        return prs.checkVerdictAllowed(
+            this.#db,
+            canonical,
+            verdict,
+            token,
+            nowMs,
+        );
     }
 
-    // Remove one token, for a dispatch that failed before the review started.
     revokeAutomaticReviewToken(canonical: string, token: string): void {
-        this.#prep(
-            "DELETE FROM automatic_review_tokens WHERE canonical = ? AND token = ?",
-        ).run(canonical, token);
+        prs.revokeAutomaticReviewToken(this.#db, canonical, token);
     }
 
-    // Explicitly record a review outcome: the verdict, the commit reviewed (for
-    // re-push detection), and optionally the session that did it. The verdict is
-    // reflected into review_state immediately so the board collapses without
-    // waiting for the next ADO poll (which then reconciles the same value).
     recordReview(
         canonical: string,
         opts: { verdict?: string; sha?: string; sessionId?: string },
     ): void {
-        if (opts.sessionId)
-            this.#prep(
-                "UPDATE prs SET review_session_id = ? WHERE canonical = ?",
-            ).run(opts.sessionId, canonical);
-        if (opts.sha) {
-            this.#prep(
-                "UPDATE prs SET reviewed_sha = ? WHERE canonical = ?",
-            ).run(opts.sha, canonical);
-            // The reviewed sha is normally the head we last saw, so its authored date is
-            // last_commit_at (from the az PR list) — capture it now, no REST needed. If a
-            // re-push means the sha differs, leave it null (a later poll can't recover it).
-            this.#prep(
-                `
-        UPDATE prs
-        SET reviewed_sha_authored_at = CASE WHEN reviewed_sha = last_commit_sha THEN last_commit_at ELSE NULL END
-        WHERE canonical = ?
-      `,
-            ).run(canonical);
-        }
-        const VERDICT_STATES = new Set([
-            "approved",
-            "suggestions",
-            "waiting",
-            "rejected",
-        ]);
-        if (opts.verdict && VERDICT_STATES.has(opts.verdict)) {
-            this.#prep(
-                "UPDATE prs SET reviewed_at = ? WHERE canonical = ?",
-            ).run(now(), canonical);
-            // Mark my comment count stale so the poller recounts once (comments are
-            // effectively final at verdict time; a re-review re-triggers the count).
-            this.#prep(
-                "UPDATE prs SET my_comments = NULL, other_comments = NULL WHERE canonical = ?",
-            ).run(canonical);
-            const prev = this.#prep(
-                "SELECT review_state AS s FROM prs WHERE canonical = ?",
-            ).get(canonical) as { s: string | null } | undefined;
-            this.#prep(
-                "UPDATE prs SET review_state = ? WHERE canonical = ?",
-            ).run(opts.verdict, canonical);
-            if (prev && prev.s !== opts.verdict) {
-                this.appendEvent(canonical, "review_state", {
-                    from: prev.s,
-                    to: opts.verdict,
-                });
-            }
-        }
-        this.appendEvent(canonical, "reviewed", {
-            verdict: opts.verdict ?? null,
-            sha: opts.sha ?? null,
-            sessionId: opts.sessionId ?? null,
-        });
+        prs.recordReview(this.#db, canonical, opts);
     }
 
-    // Hide a PR: `until` (ISO) for a timed snooze, or mode "fte" to hide until a
-    // teammate/FTE approves (the poller wakes it in setOwnership). null clears it.
     setSnooze(
         canonical: string,
         until: string | null,
-        mode: "time" | "fte" | null = until ? "time" : null,
+        mode?: "time" | "fte" | null,
     ): void {
-        this.#prep(
-            "UPDATE prs SET snoozed_until = ?, snooze_mode = ? WHERE canonical = ?",
-        ).run(until, mode, canonical);
-        this.appendEvent(
-            canonical,
-            "snoozed",
-            mode ? { until, mode } : { cleared: true },
-        );
+        prs.setSnooze(this.#db, canonical, until, mode);
     }
 
-    // Store completability + comment counts for one of my authored PRs.
     setAuthorMeta(canonical: string, meta: AuthorMeta): void {
-        this.#prep(
-            "UPDATE prs SET author_meta_json = ? WHERE canonical = ?",
-        ).run(JSON.stringify(meta), canonical);
+        prs.setAuthorMeta(this.#db, canonical, meta);
     }
 
-    // Closed/merged PRs whose linked review sessions can be archived. Written by the
-    // poller, read + cleared by the user-initiated archive action (which has the
-    // session context the background poll lacks).
-    // Sessions ready to archive — computed directly: a closed PR (merged or
-    // abandoned) that still has a linked review session, OR an open PR that has
-    // gone stale (no activity past the recency window) with a linked session. Both
-    // are deterministic, so they don't depend on the poller catching a transition.
-    // Archiving clears the session link (see markReviewSessionsArchived), so items
-    // drop off — a stale PR that later wakes up gets a fresh review session, it is
-    // not re-flagged here. `status` distinguishes the reason ('completed'/reason
-    // vs 'stale') so the archive prompt reads correctly.
     getArchivable(recencyDays: number): ArchivableSession[] {
-        const staleMs = recencyDays * 86_400_000;
-        const now = Date.now();
-        const rows = this.#prep(
-            `
-      SELECT p.repo AS repo, p.number AS number, p.review_session_id AS sessionId,
-        p.state AS state, p.updated_at AS updatedAt,
-        (SELECT json_extract(e.payload, '$.reason') FROM pr_events e
-         WHERE e.canonical = p.canonical AND e.type = 'closed'
-         ORDER BY e.ts DESC LIMIT 1) AS closeReason
-      FROM prs p
-      WHERE p.review_session_id IS NOT NULL AND (p.dismissed = 0 OR p.dismissed_reason IN (${ARCHIVE_REASONS_SQL}))
-      ORDER BY p.updated_at DESC
-    `,
-        ).all() as unknown as {
-            repo: string;
-            number: number;
-            sessionId: string;
-            state: string;
-            updatedAt: string;
-            closeReason: string | null;
-        }[];
-        // Staleness is decided in JS with Date.parse (updated_at is stored in a
-        // locale format that is not lexicographically sortable), matching the rest
-        // of the store. Closed PRs are always archivable; open PRs only once idle
-        // past the recency window.
-        return rows
-            .filter(
-                (r) =>
-                    r.state === "closed" ||
-                    now - Date.parse(r.updatedAt) > staleMs,
-            )
-            .map((r) => ({
-                repo: r.repo,
-                number: r.number,
-                sessionId: r.sessionId,
-                status:
-                    r.state === "closed"
-                        ? (r.closeReason ?? "completed")
-                        : "stale",
-            }));
+        return prs.getArchivable(this.#db, recencyDays);
     }
 
-    // Drop the review-session link on PRs whose sessions were just archived, so
-    // they leave the archivable list. Keyed by sessionId (what the banner acts on).
     markReviewSessionsArchived(sessionIds: string[]): void {
-        if (sessionIds.length === 0) return;
-        const placeholders = sessionIds.map(() => "?").join(",");
-        this.#prep(
-            `UPDATE prs SET review_session_id = NULL WHERE review_session_id IN (${placeholders})`,
-        ).run(...sessionIds);
+        prs.markReviewSessionsArchived(this.#db, sessionIds);
     }
 
     // --- operational logging (pruned by age) ---
 
-    startPollRun(startedAt: string = now()): number {
-        const info = this.#prep(
-            "INSERT INTO poll_runs (started_at) VALUES (?)",
-        ).run(startedAt);
-        return Number(info.lastInsertRowid);
+    startPollRun(startedAt?: string): number {
+        return activity.startPollRun(this.#db, startedAt);
     }
 
     finishPollRun(
         runId: number,
         result: PollRunResult,
-        finishedAt: string = now(),
+        finishedAt?: string,
     ): void {
-        this.#prep(
-            `
-      UPDATE poll_runs SET finished_at = ?, ok = ?, mine = ?, tracked = ?, added = ?, updated = ?,
-                           events = ?, closed = ?, error = ?
-      WHERE id = ?
-    `,
-        ).run(
-            finishedAt,
-            result.ok ? 1 : 0,
-            result.mine ?? null,
-            result.tracked ?? null,
-            result.added ?? null,
-            result.updated ?? null,
-            result.events ?? null,
-            result.closed ?? null,
-            result.error ?? null,
-            runId,
-        );
+        activity.finishPollRun(this.#db, runId, result, finishedAt);
     }
 
     // Size of the active queue (what the Board shows): not closed, not dismissed.
@@ -2967,96 +1820,41 @@ export class ArgusStore {
         return r.n;
     }
 
-    // Append one trace line and mirror it to the extension log.
     recordActivity(
         level: string,
         msg: string,
         data?: Record<string, unknown>,
         runId?: number,
     ): void {
-        this.#prep(
-            "INSERT INTO activity_log (ts, level, msg, data, run_id) VALUES (?, ?, ?, ?, ?)",
-        ).run(
-            now(),
-            level,
-            msg,
-            data ? JSON.stringify(data) : null,
-            runId ?? null,
-        );
-        log(
-            data ? `${msg} ${JSON.stringify(data)}` : msg,
-            level === "info" ? undefined : level,
-        );
+        activity.recordActivity(this.#db, level, msg, data, runId);
     }
 
-    listActivity(limit = 100): ActivityEntry[] {
-        const rows = this.#prep(
-            "SELECT * FROM (SELECT * FROM activity_log ORDER BY id DESC LIMIT ?) ORDER BY id ASC",
-        ).all(limit) as unknown as ActivityRow[];
-        return rows.map(rowToActivity);
+    listActivity(limit?: number): ActivityEntry[] {
+        return activity.listActivity(this.#db, limit);
     }
 
-    // Trace lines for one run, in order, for the run-detail view.
     listActivityForRun(runId: number): ActivityEntry[] {
-        const rows = this.#prep(
-            "SELECT * FROM activity_log WHERE run_id = ? ORDER BY id ASC",
-        ).all(runId) as unknown as ActivityRow[];
-        return rows.map(rowToActivity);
+        return activity.listActivityForRun(this.#db, runId);
     }
 
-    listPollRuns(limit = 50): PollRun[] {
-        const rows = this.#prep(
-            "SELECT * FROM poll_runs ORDER BY id DESC LIMIT ?",
-        ).all(limit) as unknown as PollRunRow[];
-        return rows.map(rowToRun);
+    listPollRuns(limit?: number): PollRun[] {
+        return activity.listPollRuns(this.#db, limit);
     }
 
     getRun(id: number): PollRun | null {
-        const row = this.#prep("SELECT * FROM poll_runs WHERE id = ?").get(
-            id,
-        ) as PollRunRow | undefined;
-        return row ? rowToRun(row) : null;
+        return activity.getRun(this.#db, id);
     }
 
-    // Take or renew the poll lease. True when `owner` may poll. Another owner's
-    // lease blocks us until it expires.
-    acquirePollLease(
-        owner: string,
-        ttlMs: number,
-        nowMs: number = Date.now(),
-    ): boolean {
-        this.#db.exec("BEGIN IMMEDIATE");
-        try {
-            const row = this.#prep(
-                "SELECT owner, expires_at FROM poll_lease WHERE id = 1",
-            ).get() as { owner: string; expires_at: number } | undefined;
-            const free = !row || row.owner === owner || row.expires_at <= nowMs;
-            if (free) {
-                this.#prep(
-                    "INSERT OR REPLACE INTO poll_lease (id, owner, expires_at) VALUES (1, ?, ?)",
-                ).run(owner, nowMs + ttlMs);
-            }
-            this.#db.exec("COMMIT");
-            return free;
-        } catch (err) {
-            this.#db.exec("ROLLBACK");
-            throw err;
-        }
+    acquirePollLease(owner: string, ttlMs: number, nowMs?: number): boolean {
+        return activity.acquirePollLease(this.#db, owner, ttlMs, nowMs);
     }
 
     releasePollLease(owner: string): void {
-        this.#prep("DELETE FROM poll_lease WHERE id = 1 AND owner = ?").run(
-            owner,
-        );
+        activity.releasePollLease(this.#db, owner);
     }
 
-    // Drop operational logs older than the retention window. Cheap; run per cycle.
     pruneLogs(retentionDays: number): void {
-        const cutoff = new Date(
-            Date.now() - retentionDays * 86_400_000,
-        ).toISOString();
-        this.#prep("DELETE FROM activity_log WHERE ts < ?").run(cutoff);
-        this.#prep("DELETE FROM poll_runs WHERE started_at < ?").run(cutoff);
+        activity.pruneLogs(this.#db, retentionDays);
     }
 
     // Delete all PR data, events, logs, and tokens. Keeps the user's config and
@@ -3087,109 +1885,48 @@ export class ArgusStore {
         this.#db.exec("PRAGMA wal_checkpoint(TRUNCATE)");
     }
 
-    // User config overrides (set from the Settings screen), merged onto defaults.
     getConfigOverrides(): ConfigOverrides {
-        const row = this.#prep(
-            "SELECT value FROM settings WHERE key = 'config'",
-        ).get() as { value: string } | undefined;
-        return row ? salvageConfigOverrides(JSON.parse(row.value)) : {};
+        return settings.getConfigOverrides(this.#db);
     }
 
     saveConfigOverrides(overrides: ConfigOverrides): void {
-        this.#prep(
-            "INSERT INTO settings (key, value) VALUES ('config', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
-        ).run(JSON.stringify(overrides));
+        settings.saveConfigOverrides(this.#db, overrides);
     }
 
-    // First-run gate: true once the user has confirmed org/project/team setup.
-    // Until then the UI shows the setup screen instead of an empty, mis-configured
-    // board (the shipped defaults are one team's, so ownership is wrong otherwise).
     isSetupComplete(): boolean {
-        return this.#getSetting("setup_complete") === "1";
+        return settings.isSetupComplete(this.#db);
     }
 
     markSetupComplete(): void {
-        this.#setSetting("setup_complete", "1");
+        settings.markSetupComplete(this.#db);
     }
 
-    // Notice ids the user dismissed from the bell. An id changes when there is
-    // something new to say, so a dismissed notice does not return unchanged.
     getDismissedNotices(): string[] {
-        const raw = this.#getSetting("dismissed_notices");
-        return raw ? (JSON.parse(raw) as string[]) : [];
+        return settings.getDismissedNotices(this.#db);
     }
 
     dismissNotice(id: string): void {
-        // Session hosts share one database, so lock before the read-modify-write.
-        this.#db.exec("BEGIN IMMEDIATE");
-        try {
-            const ids = new Set(this.getDismissedNotices());
-            ids.add(id);
-            this.#setSetting("dismissed_notices", JSON.stringify([...ids]));
-            this.#db.exec("COMMIT");
-        } catch (err) {
-            this.#db.exec("ROLLBACK");
-            throw err;
-        }
+        settings.dismissNotice(this.#db, id);
     }
 
     restoreNotice(id: string): void {
-        this.#db.exec("BEGIN IMMEDIATE");
-        try {
-            const ids = new Set(this.getDismissedNotices());
-            if (ids.delete(id)) {
-                this.#setSetting("dismissed_notices", JSON.stringify([...ids]));
-            }
-            this.#db.exec("COMMIT");
-        } catch (err) {
-            this.#db.exec("ROLLBACK");
-            throw err;
-        }
+        settings.restoreNotice(this.#db, id);
     }
 
-    // Shared across session hosts so the daily GitHub check runs once a day.
-    getUpdateCheck(): {
-        checkedAt: number;
-        release: ReleaseInfo | null;
-    } | null {
-        const raw = this.#getSetting("update_check");
-        return raw
-            ? (JSON.parse(raw) as {
-                  checkedAt: number;
-                  release: ReleaseInfo | null;
-              })
-            : null;
+    getUpdateCheck(): settings.UpdateCheck | null {
+        return settings.getUpdateCheck(this.#db);
     }
 
-    setUpdateCheck(value: {
-        checkedAt: number;
-        release: ReleaseInfo | null;
-    }): void {
-        this.#setSetting("update_check", JSON.stringify(value));
+    setUpdateCheck(value: settings.UpdateCheck): void {
+        settings.setUpdateCheck(this.#db, value);
     }
 
-    #getSetting(key: string): string | null {
-        const row = this.#prep("SELECT value FROM settings WHERE key = ?").get(
-            key,
-        ) as { value: string } | undefined;
-        return row?.value ?? null;
-    }
-
-    #setSetting(key: string, value: string): void {
-        this.#prep(
-            "INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
-        ).run(key, value);
-    }
-
-    // Team (container reviewer) names seen during discovery, for the Settings picker.
     getSeenTeams(): string[] {
-        const v = this.#getSetting("seen_teams");
-        return v ? (JSON.parse(v) as string[]) : [];
+        return settings.getSeenTeams(this.#db);
     }
 
     addSeenTeams(names: string[]): void {
-        const merged = [...new Set([...this.getSeenTeams(), ...names])].sort();
-        this.#setSetting("seen_teams", JSON.stringify(merged));
+        settings.addSeenTeams(this.#db, names);
     }
 
     counts(): { prs: number; events: number } {

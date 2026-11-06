@@ -66,7 +66,7 @@ Each tick catches its own errors, so one failed run does not stop the schedule. 
 
 ## Store
 
-`ArgusStore` in `server/db.ts` uses `node:sqlite` in WAL mode. There are two data models:
+`ArgusStore` in `server/db.ts` uses `node:sqlite` in WAL mode. It keeps the database handle and delegates each method to a module in `server/store/`. Each module exports functions that take the handle: `settings.ts`, `activity.ts`, `events.ts`, and `prs.ts`. The insights and load analytics still live in `db.ts`. Add new queries to the matching module, and add a thin method to `ArgusStore`. There are two data models:
 
 - `prs` holds the **current snapshot** of each PR.
 - `pr_events` is the **append-only timeline**. Most metrics are derived from it.
