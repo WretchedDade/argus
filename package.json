@@ -3,6 +3,9 @@
     "private": true,
     "version": "0.12.2",
     "type": "module",
+    "imports": {
+        "#shared/*": "./shared/*.ts"
+    },
     "engines": {
         "node": ">=22.13"
     },
@@ -14,8 +17,8 @@
         "build": "npm run build:client && npm run build:server",
         "standalone": "node server/standalone.ts",
         "prepare": "husky",
-        "test": "node --test \"server/**/*.test.ts\" \"src/**/*.test.ts\" \"scripts/**/*.test.ts\" && npm test --prefix packages/ado-client",
-        "test:coverage": "node --test --experimental-test-coverage \"server/**/*.test.ts\" \"src/**/*.test.ts\" \"scripts/**/*.test.ts\" && npm test --prefix packages/ado-client",
+        "test": "node --test \"server/**/*.test.ts\" \"shared/**/*.test.ts\" \"src/**/*.test.ts\" \"scripts/**/*.test.ts\" && npm test --prefix packages/ado-client",
+        "test:coverage": "node --test --experimental-test-coverage \"server/**/*.test.ts\" \"shared/**/*.test.ts\" \"src/**/*.test.ts\" \"scripts/**/*.test.ts\" && npm test --prefix packages/ado-client",
         "typecheck": "tsc --noEmit",
         "lint": "eslint .",
         "format": "prettier --write .",

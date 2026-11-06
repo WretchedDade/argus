@@ -3,19 +3,17 @@
 import { SLOW_STALE_TIME_MS } from "./query-defaults";
 import { ApiError } from "./errors";
 
-export type Lane = "quick" | "review";
-export type PrState = "pending" | "reviewed" | "closed";
-export type PrRole = "author" | "reviewer" | "team";
-export type PrReviewState =
-    "needs" | "covered" | "suggestions" | "approved" | "waiting" | "rejected";
+import { PrsResponseSchema } from "#shared/schemas/pr";
+import type {
+    AuthorMeta,
+    Lane,
+    Pr,
+    PrReviewState,
+    PrRole,
+    PrState,
+} from "#shared/schemas/pr";
 
-export interface AuthorMeta {
-    completable: boolean;
-    blockers: string[];
-    activeComments: number;
-    resolvedComments: number;
-    mergeStatus: string;
-}
+export type { AuthorMeta, Lane, Pr, PrReviewState, PrRole, PrState };
 
 export interface Notice {
     id: string;
@@ -286,38 +284,6 @@ export interface Insights {
     };
 }
 
-export interface Pr {
-    canonical: string;
-    repo: string;
-    number: number;
-    title: string;
-    description: string;
-    author: string | null;
-    isVendor: boolean;
-    role: PrRole;
-    teams: string[];
-    requiredApproverGroups: string[];
-    reviewState: PrReviewState | null;
-    otherVotes: { name: string; vote: number }[];
-    lane: Lane;
-    state: PrState;
-    isDraft: boolean;
-    outOfScope: boolean;
-    dismissed: boolean;
-    dismissedReason: string | null;
-    dismissedAt: string | null;
-    snoozedUntil: string | null;
-    snoozeMode: "time" | "fte" | null;
-    reviewSessionId: string | null;
-    reviewedSha: string | null;
-    reviewCount: number;
-    coveredAt: string | null;
-    changedFiles: number | null;
-    authorMeta: AuthorMeta | null;
-    prCreatedAt: string | null;
-    updatedAt: string;
-}
-
 export interface StaleCandidate {
     canonical: string;
     repo: string;
@@ -468,7 +434,10 @@ async function postJson<T>(path: string, body: object): Promise<T> {
 }
 
 export const api = {
-    prs: () => getJson<{ prs: Pr[] }>("/api/prs").then((r) => r.prs),
+    prs: () =>
+        getJson<unknown>("/api/prs").then(
+            (r) => PrsResponseSchema.parse(r).prs,
+        ),
     health: () => getJson<Health>("/api/health"),
     authStatus: () => getJson<AuthStatus>("/api/auth/status"),
     authRegistration: () => getJson<AuthRegistration>("/api/auth/registration"),

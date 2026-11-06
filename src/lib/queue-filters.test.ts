@@ -8,6 +8,8 @@ import type { Pr } from "./api.ts";
 
 const pr: Pr = {
     canonical: "https://example.test/pr/1",
+    org: "org",
+    project: "project",
     repo: "Repo A",
     number: 1,
     title: "Filter the queue",
@@ -35,6 +37,9 @@ const pr: Pr = {
     changedFiles: null,
     authorMeta: null,
     prCreatedAt: null,
+    lastCommitSha: null,
+    lastCommitAt: null,
+    addedAt: "",
     updatedAt: "",
 };
 

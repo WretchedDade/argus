@@ -1,8 +1,16 @@
 // Domain types shared across the server. The DB stores snake_case columns and
 // 0/1 booleans; these are the camelCase, real-boolean shapes the app works with.
 
-export type Lane = "quick" | "review";
-export type PrState = "pending" | "reviewed" | "closed";
+import type {
+    AuthorMeta,
+    Lane,
+    Pr,
+    PrReviewState,
+    PrRole,
+    PrState,
+} from "#shared/schemas/pr";
+
+export type { AuthorMeta, Lane, Pr, PrReviewState, PrRole, PrState };
 
 // Why Argus hid a PR on its own. Any other `dismissed_reason` is a manual choice.
 export type ArchiveReason = "stale" | "out_of_scope";
@@ -14,15 +22,6 @@ export type RepoScope = "in" | "out";
 
 // Days without a tracked change before a PR is archived as stale.
 export const STALE_ARCHIVE_DAYS = 30;
-
-// How this PR is mine: I authored it, I'm a direct reviewer, or a team I'm on
-// is a reviewer. `teams` holds the matched team display names (may be several).
-export type PrRole = "author" | "reviewer" | "team";
-
-// My (or my team's) standing on a PR I review. `needs` = not voted yet;
-// `covered` = a teammate already satisfied the team's review for me.
-export type PrReviewState =
-    "needs" | "covered" | "suggestions" | "approved" | "waiting" | "rejected";
 
 export type PrEventType =
     | "added"
@@ -44,14 +43,6 @@ export type PrEventType =
     | "in_scope"
     | "removed"
     | "closed";
-
-export interface AuthorMeta {
-    completable: boolean;
-    blockers: string[]; // unmet blocking policies (e.g. "Minimum number of reviewers")
-    activeComments: number;
-    resolvedComments: number;
-    mergeStatus: string; // e.g. "succeeded" | "conflicts"
-}
 
 // A closed/merged PR whose linked review session can be archived.
 export interface ArchivableSession {
@@ -295,43 +286,6 @@ export interface Insights {
         medianMergeHours: number | null;
         openList: InsightsAuthoredPr[];
     };
-}
-
-export interface Pr {
-    canonical: string;
-    org: string;
-    project: string;
-    repo: string;
-    number: number;
-    title: string;
-    description: string;
-    author: string | null;
-    isVendor: boolean;
-    role: PrRole;
-    teams: string[];
-    requiredApproverGroups: string[];
-    reviewState: PrReviewState | null;
-    otherVotes: { name: string; vote: number }[];
-    lane: Lane;
-    state: PrState;
-    isDraft: boolean;
-    dismissed: boolean;
-    dismissedReason: string | null;
-    dismissedAt: string | null;
-    outOfScope: boolean;
-    snoozedUntil: string | null;
-    snoozeMode: "time" | "fte" | null;
-    lastCommitSha: string | null;
-    lastCommitAt: string | null;
-    prCreatedAt: string | null;
-    addedAt: string;
-    updatedAt: string;
-    reviewSessionId: string | null;
-    reviewedSha: string | null;
-    reviewCount: number;
-    coveredAt: string | null;
-    changedFiles: number | null;
-    authorMeta: AuthorMeta | null;
 }
 
 // Fields Argus learns from ADO on discovery/refresh. User-managed fields (lane,

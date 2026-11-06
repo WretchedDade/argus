@@ -1,6 +1,6 @@
 # Argus architecture
 
-This document shows how the parts of Argus connect. It also shows where the data lives and how to add a route, a column, or a chart.
+This document shows how the parts of Argus connect and where the data lives.
 
 ## Overview
 
@@ -123,35 +123,6 @@ There is no dev server. `npm run dev` runs a watch build, and you reload the can
 
 The logic is in `server/storage.ts` and `server/config.ts`. See the README section "Where the database lives" for the user view.
 
-## How to add a route (page)
+## More guides
 
-1. Create `src/routes/<name>.tsx`. Export `Route = createFileRoute("/<name>")({ component })`.
-2. Run `npm run build:client` (or `npm run dev`). Vite regenerates `src/routeTree.gen.ts`.
-3. To add it to the navigation, edit `tabs` or `menuTabs` in `src/routes/__root.tsx`.
-4. Fetch data with a `queryOptions` from `src/lib/api.ts` (see the next section for a new endpoint).
-
-## How to add an API endpoint
-
-1. In `server/api.ts`, add an `if (route === "/api/<name>")` block inside `handleApi`. Call a store method and reply with `sendJson`.
-2. In `src/lib/api.ts`, add the response type, an entry in `api`, and a `queryOptions`.
-3. Add a test next to the code that you changed (see [CONTRIBUTING.md](../CONTRIBUTING.md#test)).
-
-## How to change the schema
-
-1. Add a new entry at the end of `migrations` in `server/store/migrations.ts`. Its `up(db)` runs plain SQL (for example `db.exec("ALTER TABLE prs ADD COLUMN foo TEXT")`). Never edit or reorder an entry that is released.
-2. Use a nullable column or a `DEFAULT`, because old rows have no value.
-3. Update the row type and the `rowTo...` mapper (for example `rowToPr`) and the shared type in `server/types.ts`.
-4. Write the column from one place. Poller data goes through `upsertPr`. User-managed data goes through a dedicated action method.
-5. Add a test in `server/store/migrations.test.ts` or `server/db.test.ts`. It must open a database at the old version and check the result.
-
-Argus has no down-migration. A column change must be safe for a user who upgrades and keeps their history.
-
-## How to add a chart
-
-Charts show data from `/api/insights` (`computeInsights` in `server/db.ts`).
-
-1. Compute the data in the store. Add a field to the `Insights` type in `server/types.ts` and fill it in `computeInsights`. Derive it from `pr_events` when you can. Read `prs` snapshot columns only when the event timeline does not hold the value. Do not store a new copy of data that already exists.
-2. Add the matching type to `src/lib/api.ts`.
-3. Add a component to `src/components/Charts.tsx`. The file uses Recharts.
-4. Render it in `src/routes/insights.tsx` (or `recap.tsx`).
-5. Test the calculation in `server/db.test.ts`. Do not test Recharts itself.
+For conventions, see [patterns](patterns/README.md). For task steps, see [how-to](how-to/README.md).
