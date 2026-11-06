@@ -1,6 +1,6 @@
 # Copilot instructions for Argus
 
-Read [CONTRIBUTING.md](../CONTRIBUTING.md) for setup, checks, and the PR process. Read [docs/ARCHITECTURE.md](../docs/ARCHITECTURE.md) before you change the server, the database, or the client structure.
+Read [CONTRIBUTING.md](../CONTRIBUTING.md) for setup, checks, and the PR process. Read [docs/ARCHITECTURE.md](../docs/ARCHITECTURE.md) before you change the server, the database, or the client structure. Follow the conventions in [docs/patterns/](../docs/patterns/README.md), and use the task steps in [docs/how-to/](../docs/how-to/README.md).
 
 ## Project context
 
