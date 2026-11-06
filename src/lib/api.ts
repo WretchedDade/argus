@@ -1,5 +1,7 @@
 // Typed client for the /api routes served by extension.mjs.
 
+import { hc } from "hono/client";
+import type { AppType } from "../../server/app";
 import { SLOW_STALE_TIME_MS } from "./query-defaults";
 import { ApiError } from "./errors";
 
@@ -156,10 +158,11 @@ function readJson<T>(res: Response): Promise<T> {
     return res.json() as Promise<T>;
 }
 
-async function postAuth(path: string): Promise<AuthStatus> {
-    const res = await fetch(path, { method: "POST", headers: JSON_HEADERS });
-    const body = await readJson<AuthStatus & { error?: string }>(res);
-    if (!res.ok) throw new Error(body.error ?? `${path} -> ${res.status}`);
+const authClient = hc<AppType>("/", { headers: JSON_HEADERS }).api.auth;
+
+async function authResult<T>(res: Response, fallback: string): Promise<T> {
+    const body = (await res.json()) as T & { error?: string };
+    if (!res.ok) throw new Error(body.error ?? `${fallback} ${res.status}`);
     return body;
 }
 
@@ -229,19 +232,25 @@ export const api = {
     health: () => getJson<Health>("/api/health"),
     authStatus: () => getJson<AuthStatus>("/api/auth/status"),
     authRegistration: () => getJson<AuthRegistration>("/api/auth/registration"),
-    saveAuthRegistration: async (reg: AuthRegistration) => {
-        const res = await fetch("/api/auth/registration", {
-            method: "POST",
-            headers: { "content-type": "application/json" },
-            body: JSON.stringify(reg),
-        });
-        const body = await readJson<AuthRegistration & { error?: string }>(res);
-        if (!res.ok) throw new Error(body.error ?? `save failed ${res.status}`);
-        return body;
-    },
-    signIn: () => postAuth("/api/auth/sign-in"),
-    switchAccount: () => postAuth("/api/auth/switch-account"),
-    signOut: () => postAuth("/api/auth/sign-out"),
+    saveAuthRegistration: async (reg: AuthRegistration) =>
+        authResult<AuthRegistration>(
+            await authClient.registration.$post({
+                json: { clientId: reg.clientId, tenantId: reg.tenantId },
+            }),
+            "save failed",
+        ),
+    signIn: async () =>
+        authResult<AuthStatus>(await authClient["sign-in"].$post(), "sign-in"),
+    switchAccount: async () =>
+        authResult<AuthStatus>(
+            await authClient["switch-account"].$post(),
+            "switch-account",
+        ),
+    signOut: async () =>
+        authResult<AuthStatus>(
+            await authClient["sign-out"].$post(),
+            "sign-out",
+        ),
     activity: (limit = 100) =>
         getJson<unknown>(`/api/activity?limit=${limit}`).then(
             (r) => ActivityEntriesResponseSchema.parse(r).entries,
