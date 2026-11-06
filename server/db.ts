@@ -31,11 +31,12 @@ import type {
 } from "./types.ts";
 import { ARCHIVE_REASONS, STALE_ARCHIVE_DAYS } from "./types.ts";
 import type { Plan, Snapshot } from "./ado/reconcile.ts";
-import { salvageConfigOverrides, type ConfigOverrides } from "./config.ts";
+import type { ConfigOverrides } from "./config.ts";
 import { runMigrations } from "./store/migrations.ts";
+import { prep } from "./store/prep.ts";
+import * as settings from "./store/settings.ts";
 import { isVendorName } from "./ado/normalize.ts";
 import { log } from "./log.ts";
-import type { ReleaseInfo } from "./update-check.ts";
 
 // Operational log rows returned to the activity/runs routes.
 export type { ActivityEntry };
@@ -371,7 +372,6 @@ export interface ListOptions {
 
 export class ArgusStore {
     #db: DatabaseSync;
-    #stmts = new Map<string, StatementSync>();
 
     constructor(file: string) {
         mkdirSync(path.dirname(file), { recursive: true });
@@ -405,14 +405,8 @@ export class ArgusStore {
         }
     }
 
-    // Cache prepared statements by SQL text so hot paths don't recompile.
     #prep(sql: string): StatementSync {
-        let stmt = this.#stmts.get(sql);
-        if (!stmt) {
-            stmt = this.#db.prepare(sql);
-            this.#stmts.set(sql, stmt);
-        }
-        return stmt;
+        return prep(this.#db, sql);
     }
 
     // Insert on first sight, otherwise refresh only ADO-sourced columns. Triage
@@ -3087,109 +3081,56 @@ export class ArgusStore {
         this.#db.exec("PRAGMA wal_checkpoint(TRUNCATE)");
     }
 
-    // User config overrides (set from the Settings screen), merged onto defaults.
     getConfigOverrides(): ConfigOverrides {
-        const row = this.#prep(
-            "SELECT value FROM settings WHERE key = 'config'",
-        ).get() as { value: string } | undefined;
-        return row ? salvageConfigOverrides(JSON.parse(row.value)) : {};
+        return settings.getConfigOverrides(this.#db);
     }
 
     saveConfigOverrides(overrides: ConfigOverrides): void {
-        this.#prep(
-            "INSERT INTO settings (key, value) VALUES ('config', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
-        ).run(JSON.stringify(overrides));
+        settings.saveConfigOverrides(this.#db, overrides);
     }
 
-    // First-run gate: true once the user has confirmed org/project/team setup.
-    // Until then the UI shows the setup screen instead of an empty, mis-configured
-    // board (the shipped defaults are one team's, so ownership is wrong otherwise).
     isSetupComplete(): boolean {
-        return this.#getSetting("setup_complete") === "1";
+        return settings.isSetupComplete(this.#db);
     }
 
     markSetupComplete(): void {
-        this.#setSetting("setup_complete", "1");
+        settings.markSetupComplete(this.#db);
     }
 
-    // Notice ids the user dismissed from the bell. An id changes when there is
-    // something new to say, so a dismissed notice does not return unchanged.
     getDismissedNotices(): string[] {
-        const raw = this.#getSetting("dismissed_notices");
-        return raw ? (JSON.parse(raw) as string[]) : [];
+        return settings.getDismissedNotices(this.#db);
     }
 
     dismissNotice(id: string): void {
-        // Session hosts share one database, so lock before the read-modify-write.
-        this.#db.exec("BEGIN IMMEDIATE");
-        try {
-            const ids = new Set(this.getDismissedNotices());
-            ids.add(id);
-            this.#setSetting("dismissed_notices", JSON.stringify([...ids]));
-            this.#db.exec("COMMIT");
-        } catch (err) {
-            this.#db.exec("ROLLBACK");
-            throw err;
-        }
+        settings.dismissNotice(this.#db, id);
     }
 
     restoreNotice(id: string): void {
-        this.#db.exec("BEGIN IMMEDIATE");
-        try {
-            const ids = new Set(this.getDismissedNotices());
-            if (ids.delete(id)) {
-                this.#setSetting("dismissed_notices", JSON.stringify([...ids]));
-            }
-            this.#db.exec("COMMIT");
-        } catch (err) {
-            this.#db.exec("ROLLBACK");
-            throw err;
-        }
+        settings.restoreNotice(this.#db, id);
     }
 
-    // Shared across session hosts so the daily GitHub check runs once a day.
-    getUpdateCheck(): {
-        checkedAt: number;
-        release: ReleaseInfo | null;
-    } | null {
-        const raw = this.#getSetting("update_check");
-        return raw
-            ? (JSON.parse(raw) as {
-                  checkedAt: number;
-                  release: ReleaseInfo | null;
-              })
-            : null;
+    getUpdateCheck(): settings.UpdateCheck | null {
+        return settings.getUpdateCheck(this.#db);
     }
 
-    setUpdateCheck(value: {
-        checkedAt: number;
-        release: ReleaseInfo | null;
-    }): void {
-        this.#setSetting("update_check", JSON.stringify(value));
+    setUpdateCheck(value: settings.UpdateCheck): void {
+        settings.setUpdateCheck(this.#db, value);
     }
 
     #getSetting(key: string): string | null {
-        const row = this.#prep("SELECT value FROM settings WHERE key = ?").get(
-            key,
-        ) as { value: string } | undefined;
-        return row?.value ?? null;
+        return settings.getSetting(this.#db, key);
     }
 
     #setSetting(key: string, value: string): void {
-        this.#prep(
-            "INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
-        ).run(key, value);
+        settings.setSetting(this.#db, key, value);
     }
 
-    // Team (container reviewer) names seen during discovery, for the Settings picker.
     getSeenTeams(): string[] {
-        const v = this.#getSetting("seen_teams");
-        return v ? (JSON.parse(v) as string[]) : [];
+        return settings.getSeenTeams(this.#db);
     }
 
     addSeenTeams(names: string[]): void {
-        const merged = [...new Set([...this.getSeenTeams(), ...names])].sort();
-        this.#setSetting("seen_teams", JSON.stringify(merged));
+        settings.addSeenTeams(this.#db, names);
     }
 
     counts(): { prs: number; events: number } {
