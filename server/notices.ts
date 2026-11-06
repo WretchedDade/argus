@@ -1,14 +1,8 @@
+import type { Notice as WireNotice } from "#shared/schemas/notice";
 import { isNewerVersion, type ReleaseInfo } from "./update-check.ts";
 
 // One row in the notification bell, besides the review sessions ready to archive.
-export interface Notice {
-    id: string; // dismissal key; changes when there is something new to say
-    kind: "app-update" | "skill-update" | "storage";
-    title: string;
-    detail: string;
-    href?: string;
-    actionLabel?: string; // button that sends `prompt` to the chat
-    secondaryActionLabel?: string; // button that replaces the installed skill (skill-update only)
+export interface Notice extends WireNotice {
     prompt?: string; // server only; never sent to the browser
 }
 
