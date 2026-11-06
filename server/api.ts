@@ -20,20 +20,15 @@ import {
     ImageProxyError,
     isAllowedImageHost,
 } from "./ado/images.ts";
-import {
-    authStatus,
-    getRegistration,
-    saveRegistration,
-    type AdoRegistration,
-    setAuthProvider,
-    signIn,
-    signOut,
-    switchAccount,
-    useBroker,
-} from "./ado/client.ts";
+import { authStatus, setAuthProvider, useBroker } from "./ado/client.ts";
 import { ingestUrl } from "./ingest.ts";
 import { UpdateJob, type UpdatePhase } from "./update-job.ts";
 import { sendJson } from "./respond.ts";
+import { createHonoHandler, isHonoRoute } from "./app.ts";
+import {
+    assertTrustedRequest,
+    UntrustedRequestError,
+} from "./trusted-request.ts";
 import type { Notice } from "./notices.ts";
 import type { DbLocation } from "./storage.ts";
 // Chat message asking to archive the review sessions of PRs that closed/merged.
@@ -189,40 +184,18 @@ async function readJsonBody(req: IncomingMessage): Promise<ConfigOverrides> {
     return text ? (JSON.parse(text) as ConfigOverrides) : {};
 }
 
-export class UntrustedRequestError extends Error {
-    status: 403 | 415;
-    constructor(status: 403 | 415, message: string) {
-        super(message);
-        this.status = status;
+const honoHandlers = new WeakMap<
+    ApiContext,
+    ReturnType<typeof createHonoHandler>
+>();
+
+function honoHandler(ctx: ApiContext): ReturnType<typeof createHonoHandler> {
+    let handler = honoHandlers.get(ctx);
+    if (!handler) {
+        handler = createHonoHandler(ctx);
+        honoHandlers.set(ctx, handler);
     }
-}
-
-// Blocks DNS rebinding (Host), cross-site requests (Origin), and simple
-// cross-site form posts (JSON content type on mutating methods).
-export function assertTrustedRequest(req: IncomingMessage): void {
-    const port = req.socket.localPort;
-    const hosts = [`127.0.0.1:${port}`, `localhost:${port}`];
-    if (!req.headers.host || !hosts.includes(req.headers.host.toLowerCase()))
-        throw new UntrustedRequestError(403, "Untrusted host.");
-
-    const origin = req.headers.origin;
-    if (
-        origin !== undefined &&
-        !hosts.some((host) => origin.toLowerCase() === `http://${host}`)
-    )
-        throw new UntrustedRequestError(403, "Untrusted origin.");
-
-    if (["POST", "PUT", "PATCH", "DELETE"].includes(req.method ?? "")) {
-        const type = (req.headers["content-type"] ?? "")
-            .split(";")[0]
-            .trim()
-            .toLowerCase();
-        if (type !== "application/json")
-            throw new UntrustedRequestError(
-                415,
-                "Content-Type must be application/json.",
-            );
-    }
+    return handler;
 }
 
 function isMondayKey(key: string | null): key is string {
@@ -248,6 +221,11 @@ export async function handleApi(
     const route = url.pathname;
     if (!route.startsWith("/api/")) return false;
 
+    if (isHonoRoute(route)) {
+        await honoHandler(ctx)(req, res);
+        return true;
+    }
+
     try {
         assertTrustedRequest(req);
     } catch (error) {
@@ -256,52 +234,7 @@ export async function handleApi(
         return true;
     }
 
-    if (route === "/api/health" || route.startsWith("/api/auth/"))
-        setAuthProvider(ctx.getConfig().adoAuth); // another host may have saved a change
-
-    if (route === "/api/auth/registration") {
-        if (req.method === "POST") {
-            try {
-                saveRegistration(
-                    (await readJsonBody(req)) as unknown as AdoRegistration,
-                );
-                resetIdentity(ctx.store);
-            } catch (error) {
-                sendJson(res, 400, { error: (error as Error).message });
-                return true;
-            }
-        }
-        sendJson(res, 200, getRegistration());
-        return true;
-    }
-
-    if (route === "/api/auth/status") {
-        sendJson(res, 200, await authStatus());
-        return true;
-    }
-
-    if (
-        (route === "/api/auth/sign-in" ||
-            route === "/api/auth/switch-account" ||
-            route === "/api/auth/sign-out") &&
-        req.method === "POST"
-    ) {
-        try {
-            const status = await (route === "/api/auth/sign-in"
-                ? signIn()
-                : route === "/api/auth/sign-out"
-                  ? signOut()
-                  : switchAccount());
-            resetIdentity(ctx.store);
-            sendJson(res, 200, status);
-        } catch (error) {
-            sendJson(res, 502, {
-                error:
-                    error instanceof Error ? error.message : "Sign-in failed.",
-            });
-        }
-        return true;
-    }
+    if (route === "/api/health") setAuthProvider(ctx.getConfig().adoAuth); // another host may have saved a change
 
     if (route === "/api/health") {
         sendJson(res, 200, {

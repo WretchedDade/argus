@@ -92,7 +92,10 @@ export default tseslint.config(
                     policies: [
                         {
                             from: { element: { type: "client" } },
-                            disallow: { to: { element: { type: "server" } } },
+                            disallow: {
+                                to: { element: { type: "server" } },
+                                dependency: { kind: ["value"] },
+                            },
                         },
                     ],
                 },
