@@ -19,6 +19,7 @@
     "include": [
         "src",
         "server",
+        "shared",
         "scripts",
         "packages/ado-client/src",
         "vite.config.ts"
