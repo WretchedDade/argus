@@ -40,6 +40,7 @@ try {
         method: string,
         route: string,
         headers: Record<string, string> = {},
+        payload = "{}",
     ) =>
         new Promise<{ status: number; body: string }>((resolve, reject) => {
             const req = request(
@@ -60,7 +61,7 @@ try {
                 },
             );
             req.on("error", reject);
-            req.end(method === "POST" ? "{}" : undefined);
+            req.end(method === "POST" ? payload : undefined);
         });
     const errorOf = (body: string) =>
         (JSON.parse(body) as { error: string }).error;
@@ -91,6 +92,18 @@ try {
     const invalid = await send("POST", "/api/auth/registration", json);
     assert.equal(invalid.status, 400);
     assert.match(errorOf(invalid.body), /client\) ID is required/);
+
+    // Valid JSON that is not an object gets the same message.
+    for (const body of ["[]", "42", '"text"']) {
+        const nonObject = await send(
+            "POST",
+            "/api/auth/registration",
+            json,
+            body,
+        );
+        assert.equal(nonObject.status, 400);
+        assert.match(errorOf(nonObject.body), /client\) ID is required/);
+    }
 
     // The typed client reaches the same routes, and bad values fail the store check.
     const client = hc<AppType>(`http://127.0.0.1:${port}`, {

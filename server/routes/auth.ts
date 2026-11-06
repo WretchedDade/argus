@@ -17,7 +17,8 @@ import {
 
 // Bad types become "", so saveRegistration reports its "is required" message.
 const registrationSchema = z.preprocess(
-    (body) => body ?? {},
+    (body) =>
+        body && typeof body === "object" && !Array.isArray(body) ? body : {},
     z.object({
         clientId: z.string().catch(""),
         tenantId: z.string().catch(""),
