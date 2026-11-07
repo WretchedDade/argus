@@ -30,8 +30,15 @@ export async function serveStatic(
     route: string,
 ): Promise<void> {
     const rel = route === "/" ? "index.html" : route.replace(/^\/+/, "");
-    const target = path.join(distDir, rel);
-    if (!target.startsWith(distDir) || !(await exists(target))) {
+    const root = path.resolve(distDir);
+    const target = path.resolve(root, rel);
+    const relative = path.relative(root, target);
+    if (
+        relative === ".." ||
+        relative.startsWith(`..${path.sep}`) ||
+        path.isAbsolute(relative) ||
+        !(await exists(target))
+    ) {
         return serveIndex(res, distDir);
     }
     const body = await readFile(target);
