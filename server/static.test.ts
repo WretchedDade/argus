@@ -21,7 +21,9 @@ test("static assets never escape the build directory", async () => {
         void serveStatic(res, distDir, route);
     });
     try {
-        await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+        await new Promise<void>((resolve) =>
+            server.listen(0, "127.0.0.1", resolve),
+        );
         const address = server.address();
         assert.ok(address && typeof address !== "string");
         const url = `http://127.0.0.1:${address.port}/`;
@@ -35,7 +37,11 @@ test("static assets never escape the build directory", async () => {
             "/%2e%2e/dist-private/secret.js",
         ]) {
             route = traversal;
-            assert.equal(await (await fetch(url)).text(), "index fallback", traversal);
+            assert.equal(
+                await (await fetch(url)).text(),
+                "index fallback",
+                traversal,
+            );
         }
 
         route = "/missing";
