@@ -3,7 +3,8 @@ import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { createServer } from "node:http";
-import { handleApi, type ApiContext } from "../api.ts";
+import type { ApiContext } from "../api.ts";
+import { createHonoHandler } from "../app.ts";
 import { defaultConfig } from "../config.ts";
 import { ArgusStore } from "../db.ts";
 
@@ -47,8 +48,9 @@ const context: ApiContext = {
     markSetupComplete: () => {},
     installBaselineSkill: () => ({ installed: false, reason: "skipped" }),
 };
+const handler = createHonoHandler(context);
 const server = createServer((req, res) => {
-    void handleApi(req, res, context).catch(() => res.writeHead(500).end());
+    void handler(req, res).catch(() => res.writeHead(500).end());
 });
 const valid = {
     clientId: "11111111-2222-3333-4444-555555555555",

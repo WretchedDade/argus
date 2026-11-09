@@ -10,8 +10,8 @@ import {
     LoadDetailResponseSchema,
     WeeklyReviewFactsResponseSchema,
 } from "#shared/schemas/insights";
-import { handleApi, type ApiContext } from "./api.ts";
-import { isHonoRoute, type AppType } from "./app.ts";
+import type { ApiContext } from "./api.ts";
+import { createHonoHandler, type AppType } from "./app.ts";
 import { defaultConfig } from "./config.ts";
 import { ArgusStore } from "./db.ts";
 
@@ -24,8 +24,9 @@ const config = {
     workDays: [1, 3, 5],
 };
 const context = { store, getConfig: () => config } as ApiContext;
+const handler = createHonoHandler(context);
 const server = createServer((req, res) => {
-    void handleApi(req, res, context).catch(() => {
+    void handler(req, res).catch(() => {
         res.writeHead(500).end();
     });
 });
@@ -153,8 +154,9 @@ try {
         "/api/load/detail",
         "/api/reviews/week",
     ]) {
-        assert.equal(isHonoRoute(route), true, `${route} must use Hono`);
-        assert.equal(isHonoRoute(`${route}/extra`), false);
+        const missing = await get(`${route}/extra`);
+        assert.equal(missing.status, 404);
+        assert.deepEqual(await missing.json(), { error: "not found" });
     }
 } finally {
     await new Promise<void>((resolve, reject) =>

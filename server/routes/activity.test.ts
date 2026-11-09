@@ -2,25 +2,11 @@ import assert from "node:assert/strict";
 import { createServer } from "node:http";
 import { test } from "node:test";
 import { hc } from "hono/client";
-import { handleApi, type ApiContext } from "../api.ts";
-import { isHonoRoute, type AppType } from "../app.ts";
+import type { ApiContext } from "../api.ts";
+import { createHonoHandler, type AppType } from "../app.ts";
 import { defaultConfig } from "../config.ts";
 import { ArgusStore } from "../db.ts";
 import { ActivityFeedSchema } from "#shared/schemas/activity";
-
-test("activity routes belong to Hono", () => {
-    for (const route of [
-        "/api/activity",
-        "/api/pr-activity",
-        "/api/runs",
-        "/api/run",
-        "/api/changes",
-        "/api/changes/read",
-        "/api/changes/read-all",
-    ])
-        assert.equal(isHonoRoute(route), true, route);
-    assert.equal(isHonoRoute("/api/activity/missing"), false);
-});
 
 test("activity API preserves logs, run detail, change actions, and the Clio feed", async () => {
     const store = new ArgusStore(":memory:");
@@ -47,8 +33,9 @@ test("activity API preserves logs, run detail, change actions, and the Clio feed
         markSetupComplete: () => {},
         installBaselineSkill: () => ({ installed: false }),
     };
+    const handler = createHonoHandler(context);
     const server = createServer((req, res) => {
-        void handleApi(req, res, context).catch(() => {
+        void handler(req, res).catch(() => {
             res.writeHead(500).end();
         });
     });
@@ -59,6 +46,9 @@ test("activity API preserves logs, run detail, change actions, and the Clio feed
         const address = server.address();
         assert.ok(address && typeof address !== "string");
         const base = `http://127.0.0.1:${address.port}`;
+        const missing = await fetch(`${base}/api/activity/missing`);
+        assert.equal(missing.status, 404);
+        assert.deepEqual(await missing.json(), { error: "not found" });
         const client = hc<AppType>(base, {
             headers: { "content-type": "application/json" },
         }).api;
