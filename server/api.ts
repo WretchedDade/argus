@@ -653,11 +653,6 @@ export async function handleApi(
         return true;
     }
 
-    if (route === "/api/changes") {
-        sendJson(res, 200, { changes: ctx.store.listUnreadChanges() });
-        return true;
-    }
-
     if (route === "/api/insights") {
         const cfg = ctx.getConfig();
         sendJson(res, 200, {
@@ -676,25 +671,6 @@ export async function handleApi(
                 error: "key must be a Monday in YYYY-MM-DD format",
             });
         else sendJson(res, 200, { facts: ctx.store.weeklyReviewFacts(key) });
-        return true;
-    }
-
-    if (route === "/api/changes/read" && req.method === "POST") {
-        const { canonical } = (await readJsonBody(req)) as {
-            canonical?: string;
-        };
-        if (!canonical) {
-            sendJson(res, 400, { error: "canonical required" });
-            return true;
-        }
-        ctx.store.markChangesReadForPr(canonical);
-        sendJson(res, 200, { ok: true });
-        return true;
-    }
-
-    if (route === "/api/changes/read-all" && req.method === "POST") {
-        ctx.store.markAllChangesRead();
-        sendJson(res, 200, { ok: true });
         return true;
     }
 
@@ -842,58 +818,6 @@ export async function handleApi(
 
     if (route === "/api/teams") {
         sendJson(res, 200, { teams: ctx.store.getSeenTeams() });
-        return true;
-    }
-
-    if (route === "/api/activity") {
-        const limit = Number(url.searchParams.get("limit") ?? 100);
-        sendJson(res, 200, { entries: ctx.store.listActivity(limit) });
-        return true;
-    }
-
-    // Windowed PR activity feed for external consumers (Clio's capture pulse).
-    // ?since=<ISO8601>&until=<ISO8601>; until defaults to now, since to 24h before
-    // until. Events with ts in [since, until), time-ordered ascending.
-    if (route === "/api/pr-activity") {
-        const nowMs = Date.now();
-        const untilRaw = url.searchParams.get("until");
-        const sinceRaw = url.searchParams.get("since");
-        const untilMs = untilRaw ? Date.parse(untilRaw) : nowMs;
-        if (Number.isNaN(untilMs)) {
-            sendJson(res, 400, { error: "until must be ISO8601" });
-            return true;
-        }
-        const sinceMs = sinceRaw
-            ? Date.parse(sinceRaw)
-            : untilMs - 24 * 60 * 60 * 1000;
-        if (Number.isNaN(sinceMs)) {
-            sendJson(res, 400, { error: "since must be ISO8601" });
-            return true;
-        }
-        sendJson(res, 200, {
-            since: new Date(sinceMs).toISOString(),
-            until: new Date(untilMs).toISOString(),
-            generatedAt: new Date().toISOString(),
-            events: ctx.store.listPrActivity(sinceMs, untilMs),
-        });
-        return true;
-    }
-
-    if (route === "/api/runs") {
-        const limit = Number(url.searchParams.get("limit") ?? 50);
-        sendJson(res, 200, { runs: ctx.store.listPollRuns(limit) });
-        return true;
-    }
-
-    if (route === "/api/run") {
-        const id = Number(url.searchParams.get("id"));
-        if (!id) sendJson(res, 400, { error: "id required" });
-        else
-            sendJson(res, 200, {
-                run: ctx.store.getRun(id),
-                entries: ctx.store.listActivityForRun(id),
-                changes: ctx.store.listRunEvents(id),
-            });
         return true;
     }
 

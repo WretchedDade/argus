@@ -4,6 +4,7 @@ import { Hono } from "hono";
 import { HTTPException } from "hono/http-exception";
 import type { ApiContext } from "./api.ts";
 import { authRoutes } from "./routes/auth.ts";
+import { activityRoutes } from "./routes/activity.ts";
 import {
     assertTrustedRequest,
     UntrustedRequestError,
@@ -23,6 +24,7 @@ export function createApp(ctx: ApiContext) {
             await next();
         })
         .route("/api/auth", authRoutes(ctx))
+        .route("/api", activityRoutes(ctx))
         .notFound((honoContext) =>
             honoContext.json({ error: "not found" }, 404),
         )
@@ -37,7 +39,18 @@ export type AppType = ReturnType<typeof createApp>;
 
 // Routes that Hono serves. The old handler serves the rest during the migration.
 export function isHonoRoute(pathname: string): boolean {
-    return pathname.startsWith("/api/auth/");
+    return (
+        pathname.startsWith("/api/auth/") ||
+        [
+            "/api/activity",
+            "/api/pr-activity",
+            "/api/runs",
+            "/api/run",
+            "/api/changes",
+            "/api/changes/read",
+            "/api/changes/read-all",
+        ].includes(pathname)
+    );
 }
 
 export function createHonoHandler(
