@@ -92,12 +92,15 @@ Queries that count or list the board must exclude archived PRs. The audited quer
 
 ## API
 
-`server/api.ts` exports `handleApi`. It is one function that matches `url.pathname` against `/api/...` strings and returns `true` when it handled the request. `server/server.ts` calls it first, and serves the static client (`static.ts`) when it returns `false`.
+`server/app.ts` builds the Hono app. `server/routes/auth.ts` serves sign-in routes. `server/routes/prs.ts` serves PR reads and actions, archive and scope routes, and the image proxy. Review and archive prompt builders live in `server/prompts.ts`.
 
-Rules in the file:
+`server/api.ts` exports `handleApi`. It sends migrated routes to Hono and serves the remaining routes in the legacy handler. `server/server.ts` calls it first, and serves the static client (`static.ts`) when it returns `false`. Keep the legacy handler until all domains move to Hono.
+
+API rules:
 
 - Reads use `GET`. Actions that change data use `POST`.
-- Responses use `sendJson`. Do not write to `res` directly.
+- Hono JSON responses use `c.json`. Legacy JSON responses use `sendJson`. The image proxy returns bytes with its content type and cache headers.
+- The client uses `hc<AppType>` from `hono/client` for migrated domain calls. Keep schema checks for shared response types.
 - The API reaches the host through `ApiContext` (store, `getConfig`, poller functions). It imports one function directly from the poller: `resetIdentity`, which it calls after a sign-in change.
 
 ## Client
