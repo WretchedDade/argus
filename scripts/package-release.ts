@@ -67,7 +67,7 @@ writeFileSync(
 
 // extension.mjs bundles everything except these packages. Install only them,
 // with the versions and integrity values from the committed lockfile.
-const external = ["@azure/identity", "@azure/identity-broker"];
+const external = ["@azure/identity", "@azure/identity-broker", "pino"];
 const stagedLock = pruneLockfile(
     lock,
     { name: "argus", version: pkg.version },
@@ -102,7 +102,7 @@ execFileSync(
     process.execPath,
     [
         "-e",
-        "Promise.all([import('@azure/identity'),import('@azure/identity-broker')]).then(()=>console.log('runtime dependencies resolve'))",
+        "Promise.all([import('@azure/identity'),import('@azure/identity-broker'),import('pino')]).then(()=>console.log('runtime dependencies resolve'))",
     ],
     { cwd: ext, stdio: "inherit" },
 );

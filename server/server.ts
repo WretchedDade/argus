@@ -3,7 +3,9 @@ import type { ApiContext } from "./api.ts";
 import { createHonoHandler } from "./app.ts";
 import { serveStatic } from "./static.ts";
 import { injectFault, parseFaults } from "./faults.ts";
-import { log } from "./log.ts";
+import { logger } from "./log.ts";
+
+const log = logger.child({ component: "http" });
 
 const STABLE_PORT_BASE = 48200;
 const STABLE_PORT_SPAN = 1000;
@@ -33,10 +35,12 @@ export async function startServer(
     const faults = parseFaults(process.env.ARGUS_FAKE_FAULT);
     const handleRequest = createHonoHandler(ctx);
     const server = createServer(async (req, res) => {
+        let apiRequest = false;
         try {
             if (await injectFault(faults, req, res)) return;
             const route = new URL(req.url || "/", "http://127.0.0.1").pathname;
             if (route.startsWith("/api/")) {
+                apiRequest = true;
                 await handleRequest(req, res);
                 return;
             }
@@ -46,7 +50,8 @@ export async function startServer(
             res.statusCode = 404;
             res.end();
         } catch (err) {
-            log(`http error: ${(err as Error).message}`, "error");
+            if (!apiRequest)
+                log.error({ err, method: req.method }, "Static request failed");
             res.statusCode = 500;
             res.end();
         }
@@ -55,7 +60,19 @@ export async function startServer(
     // Prefer the stable port; fall back to an ephemeral one if it's taken.
     const port = stablePort(instance.instanceId);
     await new Promise<void>((resolve) => {
-        server.once("error", () => server.listen(0, "127.0.0.1", resolve));
+        server.once("error", (err: NodeJS.ErrnoException) => {
+            if (err.code === "EADDRINUSE")
+                log.debug(
+                    { port },
+                    "Canvas port occupied; using an ephemeral port",
+                );
+            else
+                log.warn(
+                    { err, port },
+                    "Canvas listener failed; trying an ephemeral port",
+                );
+            server.listen(0, "127.0.0.1", resolve);
+        });
         server.listen(port, "127.0.0.1", resolve);
     });
     const address = server.address();
@@ -98,27 +115,39 @@ export function startIngestServer(
 ): IngestHandle {
     const handleRequest = createHonoHandler(ctx);
     const server = createServer(async (req, res) => {
+        let apiRequest = false;
         try {
             const route = new URL(req.url || "/", "http://127.0.0.1").pathname;
             if (route.startsWith("/api/")) {
+                apiRequest = true;
                 await handleRequest(req, res);
                 return;
             }
             res.statusCode = 404;
             res.end();
         } catch (err) {
-            log(`ingest http error: ${(err as Error).message}`, "error");
+            if (!apiRequest) log.error({ err }, "Ingest request failed");
             res.statusCode = 500;
             res.end();
         }
     });
 
     let bound = false;
+    let bindErrorCode: string | null = null;
     let watch: ReturnType<typeof setInterval> | null = null;
 
     const attempt = () =>
         new Promise<boolean>((resolve) => {
-            const onError = () => resolve(false);
+            const onError = (err: NodeJS.ErrnoException) => {
+                const code = err.code ?? "UNKNOWN";
+                if (code !== "EADDRINUSE" && code !== bindErrorCode)
+                    log.warn(
+                        { err, port },
+                        "Ingest listener could not bind; will retry",
+                    );
+                bindErrorCode = code;
+                resolve(false);
+            };
             server.once("error", onError);
             server.listen(port, "127.0.0.1", () => {
                 server.removeListener("error", onError);
@@ -130,18 +159,20 @@ export function startIngestServer(
         if (bound) return;
         if (await attempt()) {
             bound = true;
+            bindErrorCode = null;
             if (watch) {
                 clearInterval(watch);
                 watch = null;
             }
-            log(`ingest server listening on 127.0.0.1:${port}`);
+            log.debug({ port }, "Ingest server listening");
         }
     };
 
     void tryBind().then(() => {
         if (!bound) {
-            log(
-                `ingest port ${port} owned by another host; watching to reclaim if it frees`,
+            log.debug(
+                { port },
+                "Ingest port owned by another host; watching for availability",
             );
             watch = setInterval(() => void tryBind(), 5000);
         }

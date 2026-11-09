@@ -73,6 +73,11 @@ export default tseslint.config(
         languageOptions: { globals: globals.node },
     },
     {
+        files: ["server/**/*.ts"],
+        ignores: ["**/*.test.ts"],
+        rules: { "no-console": "error" },
+    },
+    {
         files: ["src/**/*.{ts,tsx}", "server/**/*.ts"],
         plugins: { boundaries },
         settings: {

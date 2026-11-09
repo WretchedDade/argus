@@ -25,6 +25,8 @@ execFileSync(
         `
 await import('@azure/identity');
 await import('@azure/identity-broker');
+const { default: pino } = await import('pino');
+pino({ level: 'silent' }).info('Release logger check');
 if (process.platform !== 'win32' || process.arch !== 'x64')
     throw new Error('Release verification supports Windows x64 only');
 const { msalNodeRuntime } = await import('@azure/msal-node-runtime');

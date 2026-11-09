@@ -1,6 +1,7 @@
 import { fetchPrThreads, listPrPolicies } from "./client.ts";
 import type { AuthorMeta } from "../types.ts";
 import type { CurrentPr } from "./types.ts";
+import { logger } from "../log.ts";
 
 const RESOLVED_THREAD = new Set(["fixed", "wontfix", "closed", "bydesign"]);
 
@@ -10,6 +11,14 @@ const RESOLVED_THREAD = new Set(["fixed", "wontfix", "closed", "bydesign"]);
 export async function fetchAuthorMeta(
     pr: CurrentPr,
     orgUrl: string,
+    onFailure: (
+        operation: "policies" | "authorComments",
+        error: unknown,
+    ) => void = (operation, err) =>
+        logger.debug(
+            { component: "poller", operation, err },
+            "PR enrichment failed",
+        ),
 ): Promise<AuthorMeta> {
     const meta: AuthorMeta = {
         completable: false,
@@ -42,8 +51,8 @@ export async function fetchAuthorMeta(
             meta.blockers.length === 0 &&
             !pr.isDraft &&
             pr.mergeStatus === "succeeded";
-    } catch {
-        // leave blockers empty / completable false
+    } catch (err) {
+        onFailure("policies", err);
     }
 
     try {
@@ -64,8 +73,8 @@ export async function fetchAuthorMeta(
             ).length;
             meta.activeComments = real.length - meta.resolvedComments;
         }
-    } catch {
-        // leave comment counts at 0
+    } catch (err) {
+        onFailure("authorComments", err);
     }
 
     return meta;

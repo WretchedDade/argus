@@ -33,12 +33,13 @@ async function checkShutdown(signal: "SIGINT" | "SIGTERM"): Promise<void> {
                 ARGUS_INGEST_PORT: "0",
                 ARGUS_STANDALONE_ID: path.basename(dir),
                 ARGUS_ME: "reviewer@example.test",
+                ARGUS_LOG_LEVEL: "info",
             },
             stdio: ["ignore", "pipe", "pipe", "ipc"],
         },
     );
-    const { stdout, stderr } = child;
-    assert.ok(stdout && stderr);
+    const { stderr } = child;
+    assert.ok(stderr);
     const exited = once(child, "exit");
     let output = "";
     stderr.on("data", (chunk: Buffer) => {
@@ -55,12 +56,10 @@ async function checkShutdown(signal: "SIGINT" | "SIGTERM"): Promise<void> {
     });
     try {
         const ready = new Promise<string>((resolve) => {
-            stdout.on("data", (chunk: Buffer) => {
-                output += chunk.toString();
-                const match =
-                    /Argus standalone: (http:\/\/127\.0\.0\.1:\d+\/)/.exec(
-                        output,
-                    );
+            stderr.on("data", () => {
+                const match = /"url":"(http:\/\/127\.0\.0\.1:\d+\/)"/.exec(
+                    output,
+                );
                 if (match) resolve(match[1]);
             });
         });

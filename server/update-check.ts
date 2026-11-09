@@ -38,7 +38,10 @@ export async function fetchLatestRelease(
             },
             signal: AbortSignal.timeout(5000),
         });
-        if (!res.ok) return null;
+        if (!res.ok) {
+            log.debug({ status: res.status }, "Release check failed");
+            return null;
+        }
         const body = (await res.json()) as {
             tag_name?: unknown;
             html_url?: unknown;
@@ -52,8 +55,10 @@ export async function fetchLatestRelease(
             typeof body.tag_name !== "string" ||
             typeof body.html_url !== "string" ||
             !parseVersion(body.tag_name)
-        )
+        ) {
+            log.debug("Release check returned invalid metadata");
             return null;
+        }
         const version = body.tag_name.replace(/^v/, "");
         const zip = (Array.isArray(body.assets) ? body.assets : []).find(
             (a) =>
@@ -68,15 +73,22 @@ export async function fetchLatestRelease(
         if (
             typeof zip?.browser_download_url !== "string" ||
             typeof checksum?.browser_download_url !== "string"
-        )
+        ) {
+            log.debug("Release assets are not available");
             return null;
+        }
+        log.debug({ version }, "Release check completed");
         return {
             version,
             url: body.html_url,
             zipUrl: zip.browser_download_url,
             checksumUrl: checksum.browser_download_url,
         };
-    } catch {
+    } catch (err) {
+        log.debug({ err }, "Release check failed");
         return null;
     }
 }
+import { logger } from "./log.ts";
+
+const log = logger.child({ component: "update-check" });

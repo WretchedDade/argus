@@ -25,7 +25,7 @@ argus-vX.Y.Z/
   extension/                  -> install to %USERPROFILE%\.copilot\extensions\argus
     extension.mjs
     dist/
-    node_modules/              only the runtime packages (Azure sign-in) and their dependencies
+    node_modules/              runtime packages (Azure sign-in and Pino logging) and their dependencies
     package.json
     package-lock.json          pins the installed versions
     argus.config.example.json
