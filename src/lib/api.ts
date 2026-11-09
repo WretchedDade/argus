@@ -159,6 +159,20 @@ function readJson<T>(res: Response): Promise<T> {
 }
 
 const authClient = hc<AppType>("/", { headers: JSON_HEADERS }).api.auth;
+const noticeClient = hc<AppType>("/", { headers: JSON_HEADERS }).api;
+
+async function noticeRead<T>(
+    res: { ok: boolean; status: number; json: () => Promise<T> },
+    path: string,
+): Promise<T> {
+    if (!res.ok) {
+        const body = (await res.json().catch(() => null)) as {
+            error?: string;
+        } | null;
+        throw new ApiError(path, res.status, body?.error ?? null);
+    }
+    return res.json();
+}
 
 async function authResult<T>(res: Response, fallback: string): Promise<T> {
     const body = (await res.json()) as T & { error?: string };
@@ -370,36 +384,28 @@ export const api = {
         return readJson(res);
     },
     changes: () => getJson<ChangeFeed>("/api/changes"),
-    notices: () =>
-        getJson<unknown>("/api/notices").then(
-            (r) => NoticesResponseSchema.parse(r).notices,
-        ),
+    notices: async () => {
+        const res = await noticeClient.notices.$get();
+        return NoticesResponseSchema.parse(
+            await noticeRead(res, "/api/notices"),
+        ).notices;
+    },
     actOnNotice: async (id: string): Promise<void> => {
-        const res = await fetch("/api/notices/act", {
-            method: "POST",
-            headers: { "content-type": "application/json" },
-            body: JSON.stringify({ id }),
-        });
+        const res = await noticeClient.notices.act.$post({ json: { id } });
         if (!res.ok) throw new Error(`notices/act -> ${res.status}`);
     },
     useBundledSkill: async (): Promise<{ backupPath: string }> => {
-        const res = await fetch("/api/skill/replace", {
-            method: "POST",
-            headers: JSON_HEADERS,
-        });
+        const res = await noticeClient.skill.replace.$post();
         if (!res.ok) {
             const body = (await res.json().catch(() => null)) as {
                 error?: string;
             } | null;
             throw new Error(body?.error ?? `skill/replace -> ${res.status}`);
         }
-        return readJson(res);
+        return res.json();
     },
     applyUpdate: async (): Promise<void> => {
-        const res = await fetch("/api/update/apply", {
-            method: "POST",
-            headers: JSON_HEADERS,
-        });
+        const res = await noticeClient.update.apply.$post();
         if (!res.ok) {
             const body = (await res.json().catch(() => null)) as {
                 error?: string;
@@ -408,9 +414,9 @@ export const api = {
         }
     },
     updateStatus: async (): Promise<UpdateStatus> => {
-        const res = await fetch("/api/update/status");
+        const res = await noticeClient.update.status.$get();
         if (!res.ok) throw new Error(`update/status -> ${res.status}`);
-        return readJson(res);
+        return res.json();
     },
     deleteAllData: async (): Promise<void> => {
         const res = await fetch("/api/data/delete-all", {
@@ -425,20 +431,13 @@ export const api = {
         latest: string | null;
         updateAvailable: boolean;
     }> => {
-        const res = await fetch("/api/notices/check", {
-            method: "POST",
-            headers: JSON_HEADERS,
-        });
+        const res = await noticeClient.notices.check.$post();
         if (res.status === 409) throw new Error("off");
         if (!res.ok) throw new Error(`notices/check -> ${res.status}`);
-        return readJson(res);
+        return res.json();
     },
     dismissNotice: async (id: string): Promise<void> => {
-        const res = await fetch("/api/notices/dismiss", {
-            method: "POST",
-            headers: { "content-type": "application/json" },
-            body: JSON.stringify({ id }),
-        });
+        const res = await noticeClient.notices.dismiss.$post({ json: { id } });
         if (!res.ok) throw new Error(`notices/dismiss -> ${res.status}`);
     },
     insights: () =>
@@ -588,10 +587,10 @@ export const configApi = {
     },
     teams: () =>
         getJson<{ teams: string[] }>("/api/teams").then((r) => r.teams),
-    version: () =>
-        getJson<{ version: string | null }>("/api/version").then(
-            (r) => r.version,
-        ),
+    version: async () => {
+        const res = await noticeClient.version.$get();
+        return (await noticeRead(res, "/api/version")).version;
+    },
     setup: async (
         overrides: Partial<ArgusConfig> & {
             installPrReviewSkill?: boolean;

@@ -22,7 +22,7 @@ import {
 } from "./ado/images.ts";
 import { authStatus, setAuthProvider, useBroker } from "./ado/client.ts";
 import { ingestUrl } from "./ingest.ts";
-import { UpdateJob, type UpdatePhase } from "./update-job.ts";
+import type { UpdateJob, UpdatePhase } from "./update-job.ts";
 import { sendJson } from "./respond.ts";
 import { createHonoHandler, isHonoRoute } from "./app.ts";
 import {
@@ -702,120 +702,6 @@ export async function handleApi(
         sendJson(res, 200, {
             archivable: ctx.store.getArchivable(ctx.getConfig().recencyDays),
         });
-        return true;
-    }
-
-    if (route === "/api/version" && req.method === "GET") {
-        sendJson(res, 200, { version: ctx.appVersion ?? null });
-        return true;
-    }
-
-    if (route === "/api/notices" && req.method === "GET") {
-        const dismissed = new Set(ctx.store.getDismissedNotices());
-        const notices = (ctx.getNotices?.() ?? [])
-            .filter((n) => !dismissed.has(n.id))
-            .map(({ prompt: _prompt, ...rest }) => rest);
-        sendJson(res, 200, { notices });
-        return true;
-    }
-
-    if (route === "/api/notices/check" && req.method === "POST") {
-        if (!ctx.checkForUpdatesNow) {
-            sendJson(res, 501, { error: "Update check is not available." });
-            return true;
-        }
-        if (!ctx.getConfig().checkForUpdates) {
-            sendJson(res, 409, { error: "Update checks are turned off." });
-            return true;
-        }
-        const result = await ctx.checkForUpdatesNow();
-        // A manual check brings back a notice the user dismissed earlier.
-        if (result.updateAvailable && result.latest) {
-            ctx.store.restoreNotice(`app-update:${result.latest}`);
-        }
-        sendJson(res, 200, result);
-        return true;
-    }
-
-    if (route === "/api/notices/act" && req.method === "POST") {
-        const body = (await readJsonBody(req)) as { id?: unknown };
-        const notice = (ctx.getNotices?.() ?? []).find((n) => n.id === body.id);
-        if (!notice?.prompt) {
-            sendJson(res, 404, { error: "no action for that notice" });
-            return true;
-        }
-        await ctx.dispatch(notice.prompt);
-        // The storage notice clears only after the user's choice is saved.
-        if (notice.kind !== "storage") ctx.store.dismissNotice(notice.id);
-        sendJson(res, 200, { ok: true });
-        return true;
-    }
-
-    if (route === "/api/skill/replace" && req.method === "POST") {
-        const notice = (ctx.getNotices?.() ?? []).find(
-            (n) => n.kind === "skill-update",
-        );
-        if (!ctx.useBundledSkill) {
-            sendJson(res, 501, {
-                error: "Replacing the skill needs the Copilot app.",
-            });
-            return true;
-        }
-        if (!notice) {
-            sendJson(res, 404, { error: "No skill update is pending." });
-            return true;
-        }
-        try {
-            const { backupPath } = ctx.useBundledSkill();
-            ctx.store.dismissNotice(notice.id);
-            sendJson(res, 200, { ok: true, backupPath });
-        } catch (err) {
-            sendJson(res, 500, { error: (err as Error).message });
-        }
-        return true;
-    }
-
-    if (route === "/api/update/apply" && req.method === "POST") {
-        const notice = (ctx.getNotices?.() ?? []).find(
-            (n) => n.kind === "app-update",
-        );
-        if (!ctx.applyUpdate) {
-            sendJson(res, 501, {
-                error: "Installing needs the Copilot app. Upgrade by hand with install.ps1 from the release ZIP.",
-            });
-            return true;
-        }
-        if (!notice) {
-            sendJson(res, 404, { error: "No update is available to install." });
-            return true;
-        }
-        const job = (ctx.updateJob ??= new UpdateJob());
-        const apply = ctx.applyUpdate;
-        const started = job.start(async (setPhase) => {
-            await apply(setPhase);
-            ctx.store.dismissNotice(notice.id);
-        });
-        if (!started) {
-            sendJson(res, 409, { error: "An update is already running." });
-            return true;
-        }
-        sendJson(res, 202, job.status());
-        return true;
-    }
-
-    if (route === "/api/update/status" && req.method === "GET") {
-        sendJson(res, 200, (ctx.updateJob ??= new UpdateJob()).status());
-        return true;
-    }
-
-    if (route === "/api/notices/dismiss" && req.method === "POST") {
-        const body = (await readJsonBody(req)) as { id?: unknown };
-        if (typeof body.id !== "string" || body.id.length === 0) {
-            sendJson(res, 400, { error: "id is required" });
-            return true;
-        }
-        ctx.store.dismissNotice(body.id);
-        sendJson(res, 200, { ok: true });
         return true;
     }
 
