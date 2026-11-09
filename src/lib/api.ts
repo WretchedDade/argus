@@ -1,6 +1,6 @@
 // Typed client for the /api routes served by extension.mjs.
 
-import { hc } from "hono/client";
+import { hc, type InferResponseType } from "hono/client";
 import type { AppType } from "../../server/app";
 import { SLOW_STALE_TIME_MS } from "./query-defaults";
 import { ApiError } from "./errors";
@@ -158,21 +158,8 @@ function readJson<T>(res: Response): Promise<T> {
     return res.json() as Promise<T>;
 }
 
-const authClient = hc<AppType>("/", { headers: JSON_HEADERS }).api.auth;
-const noticeClient = hc<AppType>("/", { headers: JSON_HEADERS }).api;
-
-async function noticeRead<T>(
-    res: { ok: boolean; status: number; json: () => Promise<T> },
-    path: string,
-): Promise<T> {
-    if (!res.ok) {
-        const body = (await res.json().catch(() => null)) as {
-            error?: string;
-        } | null;
-        throw new ApiError(path, res.status, body?.error ?? null);
-    }
-    return res.json();
-}
+const client = hc<AppType>("/", { headers: JSON_HEADERS }).api;
+const authClient = client.auth;
 
 async function authResult<T>(res: Response, fallback: string): Promise<T> {
     const body = (await res.json()) as T & { error?: string };
@@ -219,6 +206,10 @@ export interface ChangeFeed {
 
 async function getJson<T>(path: string): Promise<T> {
     const res = await fetch(path, { headers: { accept: "application/json" } });
+    return apiJson<T>(res, path);
+}
+
+async function apiJson<T>(res: Response, path: string): Promise<T> {
     if (!res.ok) {
         const body = (await res.json().catch(() => null)) as {
             error?: string;
@@ -385,17 +376,16 @@ export const api = {
     },
     changes: () => getJson<ChangeFeed>("/api/changes"),
     notices: async () => {
-        const res = await noticeClient.notices.$get();
-        return NoticesResponseSchema.parse(
-            await noticeRead(res, "/api/notices"),
-        ).notices;
+        const res = await client.notices.$get();
+        return NoticesResponseSchema.parse(await apiJson(res, "/api/notices"))
+            .notices;
     },
     actOnNotice: async (id: string): Promise<void> => {
-        const res = await noticeClient.notices.act.$post({ json: { id } });
+        const res = await client.notices.act.$post({ json: { id } });
         if (!res.ok) throw new Error(`notices/act -> ${res.status}`);
     },
     useBundledSkill: async (): Promise<{ backupPath: string }> => {
-        const res = await noticeClient.skill.replace.$post();
+        const res = await client.skill.replace.$post();
         if (!res.ok) {
             const body = (await res.json().catch(() => null)) as {
                 error?: string;
@@ -405,7 +395,7 @@ export const api = {
         return res.json();
     },
     applyUpdate: async (): Promise<void> => {
-        const res = await noticeClient.update.apply.$post();
+        const res = await client.update.apply.$post();
         if (!res.ok) {
             const body = (await res.json().catch(() => null)) as {
                 error?: string;
@@ -414,7 +404,7 @@ export const api = {
         }
     },
     updateStatus: async (): Promise<UpdateStatus> => {
-        const res = await noticeClient.update.status.$get();
+        const res = await client.update.status.$get();
         if (!res.ok) throw new Error(`update/status -> ${res.status}`);
         return res.json();
     },
@@ -431,27 +421,33 @@ export const api = {
         latest: string | null;
         updateAvailable: boolean;
     }> => {
-        const res = await noticeClient.notices.check.$post();
+        const res = await client.notices.check.$post();
         if (res.status === 409) throw new Error("off");
         if (!res.ok) throw new Error(`notices/check -> ${res.status}`);
         return res.json();
     },
     dismissNotice: async (id: string): Promise<void> => {
-        const res = await noticeClient.notices.dismiss.$post({ json: { id } });
+        const res = await client.notices.dismiss.$post({ json: { id } });
         if (!res.ok) throw new Error(`notices/dismiss -> ${res.status}`);
     },
-    insights: () =>
-        getJson<unknown>("/api/insights").then(
-            (r) => InsightsResponseSchema.parse(r).insights,
-        ),
-    weeklyReviewFacts: (startKey: string) =>
-        getJson<unknown>(
-            `/api/reviews/week?key=${encodeURIComponent(startKey)}`,
-        ).then((r) => WeeklyReviewFactsResponseSchema.parse(r).facts),
-    loadDetail: (key: string, granularity: "day" | "week") =>
-        getJson<unknown>(
-            `/api/load/detail?key=${key}&granularity=${granularity}`,
-        ).then((r) => LoadDetailResponseSchema.parse(r).detail),
+    insights: async () =>
+        InsightsResponseSchema.parse(
+            await apiJson(await client.insights.$get(), "/api/insights"),
+        ).insights,
+    weeklyReviewFacts: async (startKey: string) =>
+        WeeklyReviewFactsResponseSchema.parse(
+            await apiJson(
+                await client.reviews.week.$get({ query: { key: startKey } }),
+                `/api/reviews/week?key=${encodeURIComponent(startKey)}`,
+            ),
+        ).facts,
+    loadDetail: async (key: string, granularity: "day" | "week") =>
+        LoadDetailResponseSchema.parse(
+            await apiJson(
+                await client.load.detail.$get({ query: { key, granularity } }),
+                `/api/load/detail?key=${key}&granularity=${granularity}`,
+            ),
+        ).detail,
     markChangesRead: async (canonical: string): Promise<void> => {
         const res = await fetch("/api/changes/read", {
             method: "POST",
@@ -588,8 +584,13 @@ export const configApi = {
     teams: () =>
         getJson<{ teams: string[] }>("/api/teams").then((r) => r.teams),
     version: async () => {
-        const res = await noticeClient.version.$get();
-        return (await noticeRead(res, "/api/version")).version;
+        const res = await client.version.$get();
+        return (
+            await apiJson<InferResponseType<typeof client.version.$get>>(
+                res,
+                "/api/version",
+            )
+        ).version;
     },
     setup: async (
         overrides: Partial<ArgusConfig> & {
