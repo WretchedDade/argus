@@ -158,7 +158,8 @@ function readJson<T>(res: Response): Promise<T> {
     return res.json() as Promise<T>;
 }
 
-const authClient = hc<AppType>("/", { headers: JSON_HEADERS }).api.auth;
+const client = hc<AppType>("/", { headers: JSON_HEADERS }).api;
+const authClient = client.auth;
 
 async function authResult<T>(res: Response, fallback: string): Promise<T> {
     const body = (await res.json()) as T & { error?: string };
@@ -205,6 +206,10 @@ export interface ChangeFeed {
 
 async function getJson<T>(path: string): Promise<T> {
     const res = await fetch(path, { headers: { accept: "application/json" } });
+    return apiJson<T>(res, path);
+}
+
+async function apiJson<T>(res: Response, path: string): Promise<T> {
     if (!res.ok) {
         const body = (await res.json().catch(() => null)) as {
             error?: string;
@@ -441,18 +446,24 @@ export const api = {
         });
         if (!res.ok) throw new Error(`notices/dismiss -> ${res.status}`);
     },
-    insights: () =>
-        getJson<unknown>("/api/insights").then(
-            (r) => InsightsResponseSchema.parse(r).insights,
-        ),
-    weeklyReviewFacts: (startKey: string) =>
-        getJson<unknown>(
-            `/api/reviews/week?key=${encodeURIComponent(startKey)}`,
-        ).then((r) => WeeklyReviewFactsResponseSchema.parse(r).facts),
-    loadDetail: (key: string, granularity: "day" | "week") =>
-        getJson<unknown>(
-            `/api/load/detail?key=${key}&granularity=${granularity}`,
-        ).then((r) => LoadDetailResponseSchema.parse(r).detail),
+    insights: async () =>
+        InsightsResponseSchema.parse(
+            await apiJson(await client.insights.$get(), "/api/insights"),
+        ).insights,
+    weeklyReviewFacts: async (startKey: string) =>
+        WeeklyReviewFactsResponseSchema.parse(
+            await apiJson(
+                await client.reviews.week.$get({ query: { key: startKey } }),
+                `/api/reviews/week?key=${encodeURIComponent(startKey)}`,
+            ),
+        ).facts,
+    loadDetail: async (key: string, granularity: "day" | "week") =>
+        LoadDetailResponseSchema.parse(
+            await apiJson(
+                await client.load.detail.$get({ query: { key, granularity } }),
+                `/api/load/detail?key=${key}&granularity=${granularity}`,
+            ),
+        ).detail,
     markChangesRead: async (canonical: string): Promise<void> => {
         const res = await fetch("/api/changes/read", {
             method: "POST",
