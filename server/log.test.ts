@@ -143,3 +143,52 @@ test("session delivery failure keeps stderr available and warns once", async () 
         setSession(null);
     }
 });
+
+for (const level of ["error", "fatal"] as const) {
+    test(`session delivery warnings respect the ${level} level`, async () => {
+        const lines: string[] = [];
+        let deliveries = 0;
+        setSession({
+            log: async () => {
+                deliveries++;
+                throw new Error("private-delivery-error");
+            },
+        });
+        try {
+            const logger = createLogger(level, {
+                write: (line) => lines.push(line),
+            });
+            logger[level]("First");
+            await Promise.resolve();
+            logger[level]("Second");
+            await Promise.resolve();
+            assert.equal(deliveries, 1);
+            assert.equal(lines.length, 2);
+            assert.doesNotMatch(lines.join(""), /diagnostics remain on stderr/);
+        } finally {
+            setSession(null);
+        }
+    });
+}
+
+test("pending session delivery warnings respect a switch to silent", async () => {
+    const lines: string[] = [];
+    setSession({
+        log: async () => {
+            throw new Error("private-delivery-error");
+        },
+    });
+    try {
+        const logger = createLogger("info", {
+            write: (line) => lines.push(line),
+        });
+        logger.info("First");
+        logger.level = "silent";
+        await Promise.resolve();
+        logger.error("Hidden");
+        assert.equal(lines.length, 1);
+        assert.doesNotMatch(lines[0], /diagnostics remain on stderr/);
+    } finally {
+        setSession(null);
+    }
+});

@@ -66,13 +66,8 @@ export function createLogger(
             void target.log(line.trimEnd(), { level: hostLevel }).catch(() => {
                 if (session !== target || sessionFailed) return;
                 sessionFailed = true;
-                destination.write(
-                    JSON.stringify({
-                        level: 40,
-                        time: Date.now(),
-                        name: "argus",
-                        msg: "Copilot log delivery failed; diagnostics remain on stderr",
-                    }) + "\n",
+                result.warn(
+                    "Copilot log delivery failed; diagnostics remain on stderr",
                 );
             });
         },

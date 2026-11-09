@@ -3,8 +3,9 @@
 Use `logger` from `server/log.ts` for server diagnostics. It uses Pino to write
 one JSON record per line to stderr from startup. After the Copilot session
 connects, it also sends the same records to the session log. If session delivery
-fails, stderr stays available and gets one warning. Tests and build scripts
-can keep their own console output. ESLint rejects console calls in server code.
+fails, stderr stays available and gets one warning if the selected level allows it.
+Tests and build scripts can keep their own console output. ESLint rejects console
+calls in server code.
 
 The default level is `info`. Set `ARGUS_LOG_LEVEL` before starting Argus:
 
