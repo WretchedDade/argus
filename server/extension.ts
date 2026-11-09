@@ -46,7 +46,7 @@ import {
     getPollerStatus,
     type PollerContext,
 } from "./ado/poller.ts";
-import { setSession, log } from "./log.ts";
+import { setSession, logger } from "./log.ts";
 import {
     choiceFilePath,
     localDbPath,
@@ -62,6 +62,7 @@ import type { StorageInfo } from "./api.ts";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const DIST_DIR = path.join(__dirname, "dist");
 const BOOT_AT = new Date().toISOString();
+const log = logger.child({ component: "extension" });
 
 // Where the database lives: see server/storage.ts for the order of choice.
 const STORAGE_ENV = { env: process.env, extensionDir: __dirname };
@@ -71,9 +72,9 @@ const DB_FILE = resolvedStorage.file;
 // database and hide the history in the source file.
 try {
     const from = migrateToChoice(STORAGE_ENV, resolvedStorage);
-    if (from) log(`database copied from ${from} to ${DB_FILE}`);
+    if (from) log.info("Database copied to the selected location");
 } catch (err) {
-    log(`database copy failed: ${(err as Error).message}`);
+    log.error({ err }, "Database copy failed");
     throw err;
 }
 
@@ -125,8 +126,11 @@ async function countMyComments(canonical: string): Promise<void> {
         );
         const comments = countReviewComments(threads, cfg.me);
         store.setCommentCounts(canonical, comments.mine, comments.others);
-    } catch {
-        /* left null; the poller backfill retries */
+    } catch (err) {
+        log.debug(
+            { err },
+            "Review comment count unavailable; poller will retry",
+        );
     }
 }
 
@@ -177,6 +181,7 @@ function installBaselineSkill(): { installed: boolean; reason?: string } {
         installSkill(src, dest);
         return { installed: true };
     } catch (err) {
+        log.warn({ err }, "Baseline review skill installation failed");
         return { installed: false, reason: (err as Error).message };
     }
 }
@@ -205,9 +210,9 @@ let pendingSkillHash: string | null = null;
 try {
     const sync = syncSkill(BUNDLED_SKILL, INSTALLED_SKILL);
     if (sync.state === "pending") pendingSkillHash = sync.bundledHash;
-    if (sync.state === "updated") log("baseline pr-review skill updated");
+    if (sync.state === "updated") log.info("Baseline review skill updated");
 } catch (err) {
-    log(`skill sync failed: ${(err as Error).message}`);
+    log.warn({ err }, "Review skill sync failed");
 }
 
 async function checkForUpdate(): Promise<void> {
@@ -303,6 +308,7 @@ function setDbLocation(location: DbLocation): {
             restartRequired: path.resolve(target) !== path.resolve(DB_FILE),
         };
     } catch (err) {
+        log.warn({ err }, "Database location choice could not be saved");
         return {
             ok: false,
             restartRequired: false,
@@ -468,7 +474,7 @@ const session = await joinSession({
                 // canvas instance opens here.
                 if (!pollerRunning) {
                     pollerRunning = true;
-                    log("argus: canvas opened; starting poller in this host");
+                    log.debug("Canvas opened; starting poller in this host");
                     startPoller(pollerCtx);
                     startUpdateChecks();
                 }
@@ -483,8 +489,8 @@ const session = await joinSession({
                 // watching, and headless verdict ingest keeps working independently.
                 if (instances.size === 0 && pollerRunning) {
                     pollerRunning = false;
-                    log(
-                        "argus: last canvas closed; stopping poller in this host",
+                    log.debug(
+                        "Last canvas closed; stopping poller in this host",
                     );
                     stopPoller();
                     stopUpdateChecks();
@@ -506,14 +512,14 @@ const INGEST_PORT = Number(
 setIngestPort(INGEST_PORT);
 const ingestServer = startIngestServer(serverCtx(), INGEST_PORT);
 
-log(`argus loaded; store ${JSON.stringify(store.counts())}`);
+log.info({ version: APP_VERSION, counts: store.counts() }, "Argus loaded");
 
 // Release loopback ports and close the store cleanly on teardown.
 let shuttingDown = false;
 async function gracefulShutdown(signal: string): Promise<void> {
     if (shuttingDown) return;
     shuttingDown = true;
-    log(`argus shutting down on ${signal}`);
+    log.info({ signal }, "Argus shutting down");
     stopPoller();
     if (ingestServer) ingestServer.close();
     await Promise.race([

@@ -4,6 +4,7 @@
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { readFileSync } from "node:fs";
+import { logger } from "./log.ts";
 import { buildNotices } from "./notices.ts";
 import type { UpdateCheckResult } from "./api.ts";
 import {
@@ -146,14 +147,21 @@ await startServer(instance, ctx);
 const ingest = startIngestServer(ctx, INGEST_PORT);
 startPoller(pollerCtx);
 
-console.log(`Argus standalone: ${instance.url}`);
-console.log(`DB: ${DB_FILE}`);
-console.log(`Config: ${CONFIG_FILE}`);
+logger.info(
+    {
+        component: "standalone",
+        url: instance.url,
+        dbFile: DB_FILE,
+        configFile: CONFIG_FILE,
+    },
+    "Argus standalone started",
+);
 
 let shuttingDown = false;
 async function shutdown(): Promise<void> {
     if (shuttingDown) return;
     shuttingDown = true;
+    logger.info({ component: "standalone" }, "Argus standalone shutting down");
     stopPoller();
     if (ingest) ingest.close();
     await Promise.race([

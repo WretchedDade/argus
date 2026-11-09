@@ -13,6 +13,7 @@ import {
     parseConfigOverrides,
 } from "../config.ts";
 import { ArgusStore } from "../db.ts";
+import { logger } from "../log.ts";
 
 assert.equal(defaultConfig().vendorPattern, "\\(.+\\)");
 assert.equal(parseConfigOverrides({ vendorPattern: "" }).vendorPattern, "");
@@ -189,8 +190,10 @@ try {
     );
 
     const errors: string[] = [];
-    const originalError = console.error;
-    console.error = (message: string) => errors.push(message);
+    const originalWarn = logger.warn;
+    logger.warn = (...args: unknown[]) => {
+        errors.push(String(args[1]));
+    };
     try {
         for (const invalid of [
             { workDays: null },
@@ -218,7 +221,7 @@ try {
         writeFileSync(file, "{");
         assert.deepEqual(loadLocalConfig(file), {});
     } finally {
-        console.error = originalError;
+        logger.warn = originalWarn;
     }
 
     const overrides = {
@@ -369,7 +372,9 @@ try {
 
     // Saved settings that are unsafe are dropped when read back.
     const errorsBefore = errors.length;
-    console.error = (message: string) => errors.push(message);
+    logger.warn = (...args: unknown[]) => {
+        errors.push(String(args[1]));
+    };
     try {
         store.saveConfigOverrides({
             project: "x & calc",
@@ -385,7 +390,7 @@ try {
         assert.equal(fromEnv.project, "");
         assert.equal(fromEnv.recencyDays, 7);
     } finally {
-        console.error = originalError;
+        logger.warn = originalWarn;
         delete process.env.ARGUS_PROJECT;
         delete process.env.ARGUS_RECENCY_DAYS;
     }

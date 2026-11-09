@@ -1,6 +1,5 @@
 import type { DatabaseSync } from "node:sqlite";
 import type { ActivityEntry } from "../types.ts";
-import { log } from "../log.ts";
 import { prep } from "./prep.ts";
 
 export interface PollRun {
@@ -117,7 +116,7 @@ export function finishPollRun(
     );
 }
 
-// Append one trace line and mirror it to the extension log.
+// Keep UI activity independent of diagnostic log levels.
 export function recordActivity(
     db: DatabaseSync,
     level: string,
@@ -129,10 +128,6 @@ export function recordActivity(
         db,
         "INSERT INTO activity_log (ts, level, msg, data, run_id) VALUES (?, ?, ?, ?, ?)",
     ).run(now(), level, msg, data ? JSON.stringify(data) : null, runId ?? null);
-    log(
-        data ? `${msg} ${JSON.stringify(data)}` : msg,
-        level === "info" ? undefined : level,
-    );
 }
 
 export function listActivity(db: DatabaseSync, limit = 100): ActivityEntry[] {

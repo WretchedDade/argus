@@ -2,6 +2,8 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import { getRequestListener, type HttpBindings } from "@hono/node-server";
 import { Hono } from "hono";
 import { HTTPException } from "hono/http-exception";
+import { randomUUID } from "node:crypto";
+import { logger } from "./log.ts";
 import type { ApiContext } from "./api.ts";
 import { authRoutes } from "./routes/auth.ts";
 import { prRoutes } from "./routes/prs.ts";
@@ -18,6 +20,35 @@ export type AppEnv = { Bindings: HttpBindings };
 
 export function createApp(ctx: ApiContext) {
     return new Hono<AppEnv>()
+        .use("/api/*", async (c, next) => {
+            const started = performance.now();
+            const requestId = randomUUID();
+            // Do not materialize Hono's lazy response headers.
+            c.env.outgoing.setHeader("X-Request-Id", requestId);
+            let failure: unknown;
+            try {
+                await next();
+            } catch (error) {
+                failure = error;
+                throw error;
+            } finally {
+                const status = failure ? 500 : c.res.status;
+                const fields = {
+                    component: "http",
+                    requestId,
+                    method: c.req.method,
+                    route: c.req.routePath,
+                    status,
+                    durationMs: Math.round(performance.now() - started),
+                };
+                if (status >= 500)
+                    logger.error(
+                        { ...fields, err: failure ?? c.error },
+                        "HTTP request failed",
+                    );
+                else logger.debug(fields, "HTTP request completed");
+            }
+        })
         .use("/api/*", async (honoContext, next) => {
             try {
                 assertTrustedRequest(honoContext.env.incoming);
