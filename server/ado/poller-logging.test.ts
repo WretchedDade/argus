@@ -2,6 +2,57 @@ import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { test } from "node:test";
 
+test("lease recovery requires ownership and keeps failures deduplicated", async (t) => {
+    const { ArgusStore } = await import("../db.ts");
+    const { defaultConfig } = await import("../config.ts");
+    const { logger } = await import("../log.ts");
+    const { startPoller, stopPoller } = await import("./poller.ts");
+    const store = new ArgusStore(":memory:");
+    const lines: string[] = [];
+    let outcome: "error" | "other-owner" | "acquired" = "error";
+    t.mock.method(store, "acquirePollLease", () => {
+        if (outcome === "error") throw new Error("private-lease-error");
+        return outcome === "acquired";
+    });
+    t.mock.method(process.stderr, "write", (line: string) => {
+        lines.push(line);
+        return true;
+    });
+    t.mock.timers.enable({ apis: ["setInterval"] });
+    const previousLevel = logger.level;
+    logger.level = "info";
+    try {
+        startPoller({ store, getConfig: defaultConfig });
+        assert.equal(lines.length, 1);
+        assert.match(lines[0], /Poll lease renewal failed/);
+
+        outcome = "other-owner";
+        t.mock.timers.tick(30_000);
+        assert.equal(lines.length, 1);
+
+        outcome = "error";
+        t.mock.timers.tick(30_000);
+        assert.equal(lines.length, 1);
+
+        outcome = "acquired";
+        t.mock.timers.tick(30_000);
+        assert.equal(lines.length, 2);
+        assert.match(lines[1], /Poll lease renewal recovered/);
+        t.mock.timers.tick(30_000);
+        assert.equal(lines.length, 2);
+
+        outcome = "error";
+        t.mock.timers.tick(30_000);
+        assert.equal(lines.length, 3);
+        assert.match(lines[2], /Poll lease renewal failed/);
+        assert.doesNotMatch(lines.join(""), /private-/);
+    } finally {
+        stopPoller();
+        logger.level = previousLevel;
+        store.close();
+    }
+});
+
 for (const mode of [
     "success",
     "partial",

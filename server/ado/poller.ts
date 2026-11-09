@@ -97,7 +97,7 @@ export function reconcileOnce(
 // host polls until it closes. Other hosts wait and take over after it expires.
 function beatLease(ctx: PollerContext): void {
     try {
-        ctx.store.acquirePollLease(hostId, LEASE_TTL_MS);
+        if (!ctx.store.acquirePollLease(hostId, LEASE_TTL_MS)) return;
         if (leaseFailed) log.info("Poll lease renewal recovered");
         leaseFailed = false;
     } catch (err) {
