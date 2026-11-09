@@ -88,18 +88,6 @@ function honoHandler(ctx: ApiContext): ReturnType<typeof createHonoHandler> {
     return handler;
 }
 
-function isMondayKey(key: string | null): key is string {
-    if (!key || !/^\d{4}-\d{2}-\d{2}$/.test(key)) return false;
-    const [year, month, day] = key.split("-").map(Number);
-    const date = new Date(year, month - 1, day);
-    return (
-        date.getFullYear() === year &&
-        date.getMonth() === month - 1 &&
-        date.getDate() === day &&
-        date.getDay() === 1
-    );
-}
-
 // Handle an /api/* request. Returns false if the route isn't an API route, so
 // the caller can fall through to static serving. New endpoints live here.
 export async function handleApi(
@@ -222,48 +210,8 @@ export async function handleApi(
         return true;
     }
 
-    if (route === "/api/load/detail") {
-        const key = url.searchParams.get("key");
-        const granularity = url.searchParams.get("granularity");
-        if (!key || !/^\d{4}-\d{2}-\d{2}$/.test(key))
-            sendJson(res, 400, { error: "key (YYYY-MM-DD) required" });
-        else if (granularity !== "day" && granularity !== "week")
-            sendJson(res, 400, { error: "granularity (day or week) required" });
-        else {
-            const cfg = ctx.getConfig();
-            const work = { endHour: cfg.workEndHour, days: cfg.workDays };
-            const detail =
-                granularity === "week"
-                    ? ctx.store.loadWeekDetail(key, cfg.recencyDays, work)
-                    : ctx.store.loadDayDetail(key, cfg.recencyDays, work);
-            sendJson(res, 200, { detail });
-        }
-        return true;
-    }
-
     if (route === "/api/changes") {
         sendJson(res, 200, { changes: ctx.store.listUnreadChanges() });
-        return true;
-    }
-
-    if (route === "/api/insights") {
-        const cfg = ctx.getConfig();
-        sendJson(res, 200, {
-            insights: ctx.store.computeInsights(cfg.recencyDays, {
-                endHour: cfg.workEndHour,
-                days: cfg.workDays,
-            }),
-        });
-        return true;
-    }
-
-    if (route === "/api/reviews/week") {
-        const key = url.searchParams.get("key");
-        if (!isMondayKey(key))
-            sendJson(res, 400, {
-                error: "key must be a Monday in YYYY-MM-DD format",
-            });
-        else sendJson(res, 200, { facts: ctx.store.weeklyReviewFacts(key) });
         return true;
     }
 
