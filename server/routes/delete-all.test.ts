@@ -3,9 +3,10 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { createServer } from "node:http";
-import { handleApi, type ApiContext } from "./api.ts";
-import { defaultConfig } from "./config.ts";
-import { ArgusStore } from "./db.ts";
+import { type ApiContext } from "../api.ts";
+import { createHonoHandler } from "../app.ts";
+import { defaultConfig } from "../config.ts";
+import { ArgusStore } from "../db.ts";
 
 const dir = mkdtempSync(path.join(tmpdir(), "argus-delete-all-test-"));
 const store = new ArgusStore(path.join(dir, "argus.db"));
@@ -16,8 +17,9 @@ const context = {
     getConfig: () => defaultConfig(),
     deleteAllData: async () => store.deleteAllData(),
 } as unknown as ApiContext;
+const handler = createHonoHandler(context);
 const server = createServer((req, res) => {
-    void handleApi(req, res, context).catch(() => {
+    void handler(req, res).catch(() => {
         res.writeHead(500).end();
     });
 });

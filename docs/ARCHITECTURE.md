@@ -92,16 +92,16 @@ Queries that count or list the board must exclude archived PRs. The audited quer
 
 ## API
 
-`server/app.ts` builds the Hono app. `server/routes/auth.ts` serves sign-in routes. `server/routes/prs.ts` serves PR reads and actions, archive and scope routes, and the image proxy. Review and archive prompt builders live in `server/prompts.ts`.
+`server/app.ts` builds the Hono app. Routes live in `server/routes/`, one file per domain. The mounts in `server/app.ts` list the domains. Review and archive prompt builders live in `server/prompts.ts`.
 
-`server/api.ts` exports `handleApi`. It sends migrated routes to Hono and serves the remaining routes in the legacy handler. `server/server.ts` calls it first, and serves the static client (`static.ts`) when it returns `false`. Keep the legacy handler until all domains move to Hono.
+`server/api.ts` exports `handleApi`. This migration adapter sends registered paths to Hono and rejects other `/api/...` paths. `server/server.ts` calls it first, and serves the static client (`static.ts`) when it returns `false`. Keep the adapter until all domain changes are integrated.
 
 API rules:
 
 - Reads use `GET`. Actions that change data use `POST`.
 - Hono JSON responses use `c.json`. Legacy JSON responses use `sendJson`. The image proxy returns bytes with its content type and cache headers.
 - The client uses `hc<AppType>` from `hono/client` for migrated domain calls. Keep schema checks for shared response types.
-- The API reaches the host through `ApiContext` (store, `getConfig`, poller functions). It imports one function directly from the poller: `resetIdentity`, which it calls after a sign-in change.
+- The API reaches the host through `ApiContext` (store, `getConfig`, poller functions). The auth and config routes call `resetIdentity` after a sign-in provider change.
 
 ## Client
 
@@ -110,6 +110,7 @@ The client is a single-page app in `src/`:
 - `src/main.tsx` creates the TanStack Router and the TanStack Query client.
 - `src/routes/` holds one file per route. Vite generates `src/routeTree.gen.ts` from it. Do not edit or commit that file.
 - `src/lib/api.ts` holds the response types, the `api` fetch helpers, and the `queryOptions` for each endpoint.
+- API domain calls use `hono/client` with `AppType` from the server.
 - `src/components/` holds shared components. Charts are in `Charts.tsx`.
 
 There is no dev server. `npm run dev` runs a watch build, and you reload the canvas to see client changes. A server change needs a reload of extensions (or a restart of the Copilot app).
