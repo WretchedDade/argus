@@ -1,3 +1,7 @@
+<!-- Argus does not accept unsolicited pull requests. Only maintainers and
+contributors explicitly invited by a maintainer may submit a pull request.
+Public issues are not invitations to contribute. See CONTRIBUTING.md. -->
+
 ## Changes
 
 <!-- Explain what changes and why. Link related issues, if any. -->

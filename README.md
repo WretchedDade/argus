@@ -5,6 +5,12 @@ PRs that need your review, groups them by how much attention they need, and show
 insights about your review load over time. It runs as a Copilot canvas extension
 with its own Node process.
 
+## Contributions
+
+Argus does not accept unsolicited pull requests. Contributions are limited to
+maintainers and people explicitly invited by a maintainer. Public issues are not
+invitations to contribute. See [CONTRIBUTING.md](CONTRIBUTING.md).
+
 ## What it does
 
 - **Board** — the PRs on your plate, split into a full-review lane and a quick
