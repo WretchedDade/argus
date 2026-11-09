@@ -1,6 +1,6 @@
 // Typed client for the /api routes served by extension.mjs.
 
-import { hc } from "hono/client";
+import { hc, type InferResponseType } from "hono/client";
 import type { AppType } from "../../server/app";
 import { SLOW_STALE_TIME_MS } from "./query-defaults";
 import { ApiError } from "./errors";
@@ -161,17 +161,14 @@ function readJson<T>(res: Response): Promise<T> {
 const client = hc<AppType>("/", { headers: JSON_HEADERS }).api;
 const authClient = client.auth;
 
-async function apiJson<T>(
-    res: { ok: boolean; status: number; json: () => Promise<T> },
-    path: string,
-): Promise<T> {
+async function apiJson<T>(res: Response, path: string): Promise<T> {
     if (!res.ok) {
         const body = (await res.json().catch(() => null)) as {
             error?: string;
         } | null;
         throw new ApiError(path, res.status, body?.error ?? null);
     }
-    return res.json();
+    return (await res.json()) as T;
 }
 
 async function authResult<T>(res: Response, fallback: string): Promise<T> {
@@ -237,7 +234,11 @@ export const api = {
         getJson<unknown>("/api/prs").then(
             (r) => PrsResponseSchema.parse(r).prs,
         ),
-    health: async () => apiJson(await client.health.$get(), "/api/health"),
+    health: async () =>
+        apiJson<InferResponseType<typeof client.health.$get>>(
+            await client.health.$get(),
+            "/api/health",
+        ),
     authStatus: () => getJson<AuthStatus>("/api/auth/status"),
     authRegistration: () => getJson<AuthRegistration>("/api/auth/registration"),
     saveAuthRegistration: async (reg: AuthRegistration) =>
@@ -444,18 +445,24 @@ export const api = {
         });
         if (!res.ok) throw new Error(`notices/dismiss -> ${res.status}`);
     },
-    insights: () =>
-        getJson<unknown>("/api/insights").then(
-            (r) => InsightsResponseSchema.parse(r).insights,
-        ),
-    weeklyReviewFacts: (startKey: string) =>
-        getJson<unknown>(
-            `/api/reviews/week?key=${encodeURIComponent(startKey)}`,
-        ).then((r) => WeeklyReviewFactsResponseSchema.parse(r).facts),
-    loadDetail: (key: string, granularity: "day" | "week") =>
-        getJson<unknown>(
-            `/api/load/detail?key=${key}&granularity=${granularity}`,
-        ).then((r) => LoadDetailResponseSchema.parse(r).detail),
+    insights: async () =>
+        InsightsResponseSchema.parse(
+            await apiJson(await client.insights.$get(), "/api/insights"),
+        ).insights,
+    weeklyReviewFacts: async (startKey: string) =>
+        WeeklyReviewFactsResponseSchema.parse(
+            await apiJson(
+                await client.reviews.week.$get({ query: { key: startKey } }),
+                `/api/reviews/week?key=${encodeURIComponent(startKey)}`,
+            ),
+        ).facts,
+    loadDetail: async (key: string, granularity: "day" | "week") =>
+        LoadDetailResponseSchema.parse(
+            await apiJson(
+                await client.load.detail.$get({ query: { key, granularity } }),
+                `/api/load/detail?key=${key}&granularity=${granularity}`,
+            ),
+        ).detail,
     markChangesRead: async (canonical: string): Promise<void> => {
         const res = await fetch("/api/changes/read", {
             method: "POST",
@@ -587,7 +594,10 @@ export const configApi = {
         return body.config;
     },
     teams: async () =>
-        apiJson(await client.teams.$get(), "/api/teams").then((r) => r.teams),
+        apiJson<InferResponseType<typeof client.teams.$get>>(
+            await client.teams.$get(),
+            "/api/teams",
+        ).then((r) => r.teams),
     version: () =>
         getJson<{ version: string | null }>("/api/version").then(
             (r) => r.version,
