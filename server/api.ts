@@ -1,14 +1,7 @@
-import type { IncomingMessage, ServerResponse } from "node:http";
 import type { ArgusStore } from "./db.ts";
 import type { ArgusConfig, ConfigOverrides } from "./config.ts";
 import type { PollerStatus, ReconcileSummary } from "./ado/poller.ts";
 import type { UpdateJob, UpdatePhase } from "./update-job.ts";
-import { sendJson } from "./respond.ts";
-import { createHonoHandler, isHonoRoute } from "./app.ts";
-import {
-    assertTrustedRequest,
-    UntrustedRequestError,
-} from "./trusted-request.ts";
 import type { Notice } from "./notices.ts";
 import type { DbLocation } from "./storage.ts";
 
@@ -58,45 +51,4 @@ export interface UpdateCheckResult {
     ok: boolean;
     latest: string | null;
     updateAvailable: boolean;
-}
-
-const honoHandlers = new WeakMap<
-    ApiContext,
-    ReturnType<typeof createHonoHandler>
->();
-
-function honoHandler(ctx: ApiContext): ReturnType<typeof createHonoHandler> {
-    let handler = honoHandlers.get(ctx);
-    if (!handler) {
-        handler = createHonoHandler(ctx);
-        honoHandlers.set(ctx, handler);
-    }
-    return handler;
-}
-
-// Keep the migration adapter until the domain changes are integrated.
-export async function handleApi(
-    req: IncomingMessage,
-    res: ServerResponse,
-    ctx: ApiContext,
-): Promise<boolean> {
-    const url = new URL(req.url || "/", "http://127.0.0.1");
-    const route = url.pathname;
-    if (!route.startsWith("/api/")) return false;
-
-    if (isHonoRoute(route)) {
-        await honoHandler(ctx)(req, res);
-        return true;
-    }
-
-    try {
-        assertTrustedRequest(req);
-    } catch (error) {
-        if (!(error instanceof UntrustedRequestError)) throw error;
-        sendJson(res, error.status, { error: error.message });
-        return true;
-    }
-
-    sendJson(res, 404, { error: "not found" });
-    return true;
 }

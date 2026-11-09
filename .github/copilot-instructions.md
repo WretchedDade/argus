@@ -15,7 +15,7 @@ Read [CONTRIBUTING.md](../CONTRIBUTING.md) for setup, checks, and the PR process
 - Wire parts together in `server/extension.ts` and `server/standalone.ts`. Keep the two entry points consistent.
 - Read Azure DevOps only through `packages/ado-client` and the helpers in `server/ado/`.
 - Let the poller write PR data through `upsertPr`. Do not let it change user choices such as lane, scope, or dismissal.
-- Let the API reach the host through `ApiContext`. Do not import more poller functions into `server/api.ts`.
+- Let the API reach the host through `ApiContext` in `server/api.ts`.
 
 ## Database
 
@@ -28,10 +28,10 @@ Read [CONTRIBUTING.md](../CONTRIBUTING.md) for setup, checks, and the PR process
 
 ## API
 
-- Add routes as `/api/...` blocks in `handleApi` in `server/api.ts`.
+- Add routes in `server/routes/`, one file per domain. Mount domains in `server/app.ts`. Both HTTP servers send all `/api/...` requests to Hono.
 - Use `GET` for reads and `POST` for actions that change data.
-- Reply to JSON endpoints with `sendJson`. Do not write JSON to `res` directly. Binary endpoints such as `/api/img` write bytes and headers to `res`.
-- Add the response type and the `api` helper in `src/lib/api.ts` for each endpoint. Add a `queryOptions` for each read endpoint only.
+- Reply to JSON endpoints with Hono's `c.json`. Binary endpoints such as `/api/img` return bytes with their headers.
+- Use `hc<AppType>` from `hono/client` in `src/lib/api.ts`. Keep shared response schema checks. Add a `queryOptions` for each read endpoint only.
 
 ## Frontend
 

@@ -23,7 +23,7 @@ flowchart LR
         EXT["extension.ts or standalone.ts<br/>(startup, wiring)"]
         POLL["Poller<br/>server/ado/poller.ts"]
         STORE[("ArgusStore<br/>server/db.ts<br/>SQLite")]
-        API["API<br/>server/api.ts"]
+        API["Hono API<br/>server/app.ts + routes/"]
         HTTP["HTTP server<br/>server/server.ts<br/>+ static.ts"]
     end
     ADO["Azure DevOps"]
@@ -94,13 +94,13 @@ Queries that count or list the board must exclude archived PRs. The audited quer
 
 `server/app.ts` builds the Hono app. Routes live in `server/routes/`, one file per domain. The mounts in `server/app.ts` list the domains. Review and archive prompt builders live in `server/prompts.ts`.
 
-`server/api.ts` exports `handleApi`. This migration adapter sends registered paths to Hono and rejects other `/api/...` paths. `server/server.ts` calls it first, and serves the static client (`static.ts`) when it returns `false`. Keep the adapter until all domain changes are integrated.
+`server/server.ts` creates one Hono request handler per HTTP server. Both the canvas server and the ingest server send all `/api/...` requests to it. Hono checks trusted requests and returns JSON for unknown API paths. The canvas server serves other `GET` paths through `static.ts`. The ingest server does not serve static files. `server/api.ts` defines the shared `ApiContext` types.
 
 API rules:
 
 - Reads use `GET`. Actions that change data use `POST`.
-- Hono JSON responses use `c.json`. Legacy JSON responses use `sendJson`. The image proxy returns bytes with its content type and cache headers.
-- The client uses `hc<AppType>` from `hono/client` for migrated domain calls. Keep schema checks for shared response types.
+- JSON responses use `c.json`. The image proxy returns bytes with its content type and cache headers.
+- The client uses `hc<AppType>` from `hono/client`. Keep schema checks for shared response types.
 - The API reaches the host through `ApiContext` (store, `getConfig`, poller functions). The auth and config routes call `resetIdentity` after a sign-in provider change.
 
 ## Client

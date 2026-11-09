@@ -5,7 +5,7 @@ import path from "node:path";
 import { createServer, request as httpRequest } from "node:http";
 import { hc } from "hono/client";
 import { type ApiContext } from "../api.ts";
-import { createHonoHandler, isHonoRoute, type AppType } from "../app.ts";
+import { createHonoHandler, type AppType } from "../app.ts";
 import {
     defaultConfig,
     loadLocalConfig,
@@ -68,15 +68,6 @@ const server = createServer((req, res) => {
 });
 
 try {
-    for (const route of [
-        "/api/config",
-        "/api/setup",
-        "/api/health",
-        "/api/refresh",
-        "/api/teams",
-        "/api/data/delete-all",
-    ])
-        assert.equal(isHonoRoute(route), true, route);
     assert.deepEqual(loadLocalConfig(file), {});
     writeFileSync(file, JSON.stringify(configured));
     assert.deepEqual(loadLocalConfig(file), configured);

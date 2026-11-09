@@ -4,8 +4,8 @@ import { request, createServer } from "node:http";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { hc } from "hono/client";
-import { handleApi, type ApiContext } from "./api.ts";
-import { createApp, isHonoRoute, type AppType } from "./app.ts";
+import type { ApiContext } from "./api.ts";
+import { createApp, createHonoHandler, type AppType } from "./app.ts";
 import { defaultConfig } from "./config.ts";
 import { ArgusStore } from "./db.ts";
 
@@ -18,16 +18,15 @@ const context = {
     store,
     getConfig: () => defaultConfig(),
 } as unknown as ApiContext;
+const handler = createHonoHandler(context);
 const server = createServer((req, res) => {
-    void handleApi(req, res, context).catch(() => {
+    void handler(req, res).catch(() => {
         res.writeHead(500).end();
     });
 });
 
 try {
     assert.equal(typeof createApp, "function");
-    assert.equal(isHonoRoute("/api/auth/status"), true);
-    assert.equal(isHonoRoute("/api/prs"), true);
 
     await new Promise<void>((resolve) =>
         server.listen(0, "127.0.0.1", resolve),

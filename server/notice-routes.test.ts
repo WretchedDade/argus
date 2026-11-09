@@ -4,8 +4,8 @@ import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { hc } from "hono/client";
-import { handleApi, type ApiContext } from "./api.ts";
-import { isHonoRoute, type AppType } from "./app.ts";
+import type { ApiContext } from "./api.ts";
+import { createHonoHandler, type AppType } from "./app.ts";
 import { defaultConfig } from "./config.ts";
 import { ArgusStore } from "./db.ts";
 import type { Notice } from "./notices.ts";
@@ -39,23 +39,12 @@ const ctx = {
         dispatched.push(message);
     },
 } as unknown as ApiContext;
+const handler = createHonoHandler(ctx);
 const server = createServer((req, res) => {
-    void handleApi(req, res, ctx).catch(() => res.writeHead(500).end());
+    void handler(req, res).catch(() => res.writeHead(500).end());
 });
 
 try {
-    for (const route of [
-        "/api/notices",
-        "/api/notices/act",
-        "/api/notices/check",
-        "/api/notices/dismiss",
-        "/api/version",
-        "/api/skill/replace",
-        "/api/update/apply",
-        "/api/update/status",
-    ])
-        assert.equal(isHonoRoute(route), true, route);
-    assert.equal(isHonoRoute("/api/notices-other"), false);
     await new Promise<void>((resolve) =>
         server.listen(0, "127.0.0.1", resolve),
     );
@@ -78,6 +67,9 @@ try {
         assert.equal(response.status, status);
         assert.deepEqual(await response.json(), body);
     };
+    await expect(await send("/api/notices-other", "GET"), 404, {
+        error: "not found",
+    });
 
     for (const route of [
         "/api/version",

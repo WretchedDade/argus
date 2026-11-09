@@ -1,5 +1,6 @@
 import { createServer, type Server } from "node:http";
-import { handleApi, type ApiContext } from "./api.ts";
+import type { ApiContext } from "./api.ts";
+import { createHonoHandler } from "./app.ts";
 import { serveStatic } from "./static.ts";
 import { injectFault, parseFaults } from "./faults.ts";
 import { log } from "./log.ts";
@@ -30,13 +31,16 @@ export async function startServer(
     ctx: ServerContext,
 ): Promise<void> {
     const faults = parseFaults(process.env.ARGUS_FAKE_FAULT);
+    const handleRequest = createHonoHandler(ctx);
     const server = createServer(async (req, res) => {
         try {
             if (await injectFault(faults, req, res)) return;
-            if (await handleApi(req, res, ctx)) return;
+            const route = new URL(req.url || "/", "http://127.0.0.1").pathname;
+            if (route.startsWith("/api/")) {
+                await handleRequest(req, res);
+                return;
+            }
             if (req.method === "GET") {
-                const route = new URL(req.url || "/", "http://127.0.0.1")
-                    .pathname;
                 return await serveStatic(res, ctx.distDir, route);
             }
             res.statusCode = 404;
@@ -92,9 +96,14 @@ export function startIngestServer(
     ctx: ServerContext,
     port: number,
 ): IngestHandle {
+    const handleRequest = createHonoHandler(ctx);
     const server = createServer(async (req, res) => {
         try {
-            if (await handleApi(req, res, ctx)) return;
+            const route = new URL(req.url || "/", "http://127.0.0.1").pathname;
+            if (route.startsWith("/api/")) {
+                await handleRequest(req, res);
+                return;
+            }
             res.statusCode = 404;
             res.end();
         } catch (err) {
