@@ -376,36 +376,27 @@ export const api = {
         return readJson(res);
     },
     changes: () => getJson<ChangeFeed>("/api/changes"),
-    notices: () =>
-        getJson<unknown>("/api/notices").then(
-            (r) => NoticesResponseSchema.parse(r).notices,
-        ),
+    notices: async () => {
+        const res = await client.notices.$get();
+        return NoticesResponseSchema.parse(await apiJson(res, "/api/notices"))
+            .notices;
+    },
     actOnNotice: async (id: string): Promise<void> => {
-        const res = await fetch("/api/notices/act", {
-            method: "POST",
-            headers: { "content-type": "application/json" },
-            body: JSON.stringify({ id }),
-        });
+        const res = await client.notices.act.$post({ json: { id } });
         if (!res.ok) throw new Error(`notices/act -> ${res.status}`);
     },
     useBundledSkill: async (): Promise<{ backupPath: string }> => {
-        const res = await fetch("/api/skill/replace", {
-            method: "POST",
-            headers: JSON_HEADERS,
-        });
+        const res = await client.skill.replace.$post();
         if (!res.ok) {
             const body = (await res.json().catch(() => null)) as {
                 error?: string;
             } | null;
             throw new Error(body?.error ?? `skill/replace -> ${res.status}`);
         }
-        return readJson(res);
+        return res.json();
     },
     applyUpdate: async (): Promise<void> => {
-        const res = await fetch("/api/update/apply", {
-            method: "POST",
-            headers: JSON_HEADERS,
-        });
+        const res = await client.update.apply.$post();
         if (!res.ok) {
             const body = (await res.json().catch(() => null)) as {
                 error?: string;
@@ -414,9 +405,9 @@ export const api = {
         }
     },
     updateStatus: async (): Promise<UpdateStatus> => {
-        const res = await fetch("/api/update/status");
+        const res = await client.update.status.$get();
         if (!res.ok) throw new Error(`update/status -> ${res.status}`);
-        return readJson(res);
+        return res.json();
     },
     deleteAllData: async (): Promise<void> => {
         const res = await client.data["delete-all"].$post({
@@ -429,20 +420,13 @@ export const api = {
         latest: string | null;
         updateAvailable: boolean;
     }> => {
-        const res = await fetch("/api/notices/check", {
-            method: "POST",
-            headers: JSON_HEADERS,
-        });
+        const res = await client.notices.check.$post();
         if (res.status === 409) throw new Error("off");
         if (!res.ok) throw new Error(`notices/check -> ${res.status}`);
-        return readJson(res);
+        return res.json();
     },
     dismissNotice: async (id: string): Promise<void> => {
-        const res = await fetch("/api/notices/dismiss", {
-            method: "POST",
-            headers: { "content-type": "application/json" },
-            body: JSON.stringify({ id }),
-        });
+        const res = await client.notices.dismiss.$post({ json: { id } });
         if (!res.ok) throw new Error(`notices/dismiss -> ${res.status}`);
     },
     insights: async () =>
@@ -598,10 +582,15 @@ export const configApi = {
             await client.teams.$get(),
             "/api/teams",
         ).then((r) => r.teams),
-    version: () =>
-        getJson<{ version: string | null }>("/api/version").then(
-            (r) => r.version,
-        ),
+    version: async () => {
+        const res = await client.version.$get();
+        return (
+            await apiJson<InferResponseType<typeof client.version.$get>>(
+                res,
+                "/api/version",
+            )
+        ).version;
+    },
     setup: async (
         overrides: Partial<ArgusConfig> & {
             installPrReviewSkill?: boolean;
