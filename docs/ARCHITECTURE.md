@@ -92,13 +92,15 @@ Queries that count or list the board must exclude archived PRs. The audited quer
 
 ## API
 
-`server/api.ts` exports `handleApi`. It is one function that matches `url.pathname` against `/api/...` strings and returns `true` when it handled the request. `server/server.ts` calls it first, and serves the static client (`static.ts`) when it returns `false`.
+`server/app.ts` builds the Hono app. Routes live in `server/routes/`, one file per domain. The auth and config domains use Hono. The config domain includes setup, health, refresh, teams, and data deletion.
+
+During migration, `server/api.ts` exports `handleApi`. It sends migrated paths to Hono and handles the other `/api/...` paths. It returns `true` when it handles a request. `server/server.ts` serves the static client (`static.ts`) when it returns `false`.
 
 Rules in the file:
 
 - Reads use `GET`. Actions that change data use `POST`.
-- Responses use `sendJson`. Do not write to `res` directly.
-- The API reaches the host through `ApiContext` (store, `getConfig`, poller functions). It imports one function directly from the poller: `resetIdentity`, which it calls after a sign-in change.
+- Hono routes use `context.json`. Legacy routes use `sendJson`. Do not write JSON to `res` directly.
+- The API reaches the host through `ApiContext` (store, `getConfig`, poller functions). The auth and config routes call `resetIdentity` after a sign-in provider change.
 
 ## Client
 
@@ -107,6 +109,7 @@ The client is a single-page app in `src/`:
 - `src/main.tsx` creates the TanStack Router and the TanStack Query client.
 - `src/routes/` holds one file per route. Vite generates `src/routeTree.gen.ts` from it. Do not edit or commit that file.
 - `src/lib/api.ts` holds the response types, the `api` fetch helpers, and the `queryOptions` for each endpoint.
+- Auth actions and config domain calls use `hono/client` with `AppType` from the server.
 - `src/components/` holds shared components. Charts are in `Charts.tsx`.
 
 There is no dev server. `npm run dev` runs a watch build, and you reload the canvas to see client changes. A server change needs a reload of extensions (or a restart of the Copilot app).

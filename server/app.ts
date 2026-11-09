@@ -4,6 +4,7 @@ import { Hono } from "hono";
 import { HTTPException } from "hono/http-exception";
 import type { ApiContext } from "./api.ts";
 import { authRoutes } from "./routes/auth.ts";
+import { configRoutes } from "./routes/config.ts";
 import { activityRoutes } from "./routes/activity.ts";
 import { noticeRoutes } from "./routes/notices.ts";
 import { insightsRoutes } from "./routes/insights.ts";
@@ -26,6 +27,7 @@ export function createApp(ctx: ApiContext) {
             await next();
         })
         .route("/api/auth", authRoutes(ctx))
+        .route("/api", configRoutes(ctx))
         .route("/api", activityRoutes(ctx))
         .route("/api", noticeRoutes(ctx))
         .route("/api", insightsRoutes(ctx))
@@ -45,6 +47,14 @@ export type AppType = ReturnType<typeof createApp>;
 export function isHonoRoute(pathname: string): boolean {
     return (
         pathname.startsWith("/api/auth/") ||
+        [
+            "/api/config",
+            "/api/setup",
+            "/api/health",
+            "/api/refresh",
+            "/api/teams",
+            "/api/data/delete-all",
+        ].includes(pathname) ||
         pathname === "/api/notices" ||
         pathname.startsWith("/api/notices/") ||
         pathname === "/api/version" ||

@@ -3,14 +3,16 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { createServer, request as httpRequest } from "node:http";
-import { handleApi, type ApiContext } from "./api.ts";
+import { hc } from "hono/client";
+import { type ApiContext } from "../api.ts";
+import { createHonoHandler, isHonoRoute, type AppType } from "../app.ts";
 import {
     defaultConfig,
     loadLocalConfig,
     mergeConfig,
     parseConfigOverrides,
-} from "./config.ts";
-import { ArgusStore } from "./db.ts";
+} from "../config.ts";
+import { ArgusStore } from "../db.ts";
 
 assert.equal(defaultConfig().vendorPattern, "\\(.+\\)");
 assert.equal(parseConfigOverrides({ vendorPattern: "" }).vendorPattern, "");
@@ -57,14 +59,24 @@ const context: ApiContext = {
     markSetupComplete: () => store.markSetupComplete(),
     installBaselineSkill: () => ({ installed: false, reason: "skipped" }),
 };
+const handler = createHonoHandler(context);
 const server = createServer((req, res) => {
-    void handleApi(req, res, context).catch((err: unknown) => {
+    void handler(req, res).catch((err: unknown) => {
         console.error(err);
         res.writeHead(500).end();
     });
 });
 
 try {
+    for (const route of [
+        "/api/config",
+        "/api/setup",
+        "/api/health",
+        "/api/refresh",
+        "/api/teams",
+        "/api/data/delete-all",
+    ])
+        assert.equal(isHonoRoute(route), true, route);
     assert.deepEqual(loadLocalConfig(file), {});
     writeFileSync(file, JSON.stringify(configured));
     assert.deepEqual(loadLocalConfig(file), configured);
@@ -75,6 +87,9 @@ try {
     const address = server.address();
     assert.ok(address && typeof address !== "string");
     const base = `http://127.0.0.1:${address.port}`;
+    const client = hc<AppType>(base, {
+        headers: { "Content-Type": "application/json" },
+    }).api;
     const health = async () => {
         const response = await fetch(`${base}/api/health`);
         return (await response.json()) as { setup_complete: boolean };
@@ -127,7 +142,10 @@ try {
                     path: "/api/health",
                     agent: false,
                     method,
-                    headers,
+                    headers: {
+                        ...(method === "GET" ? {} : { "Content-Length": "2" }),
+                        ...headers,
+                    },
                 },
                 (response) => {
                     response.on("error", () => {});
@@ -281,6 +299,82 @@ try {
     assert.equal(config.project, "My Project 1");
     assert.equal(config.recencyDays, 14);
     assert.equal(Object.hasOwn(config, "unknownKey"), false);
+
+    const savedConfig = await client.config.$get();
+    assert.deepEqual(await savedConfig.json(), { config });
+    const emptyConfig = await fetch(`${base}/api/config`, {
+        method: "POST",
+        headers: json,
+        body: " \n ",
+    });
+    assert.equal(emptyConfig.status, 200);
+    assert.deepEqual(await emptyConfig.json(), { config });
+    store.addSeenTeams(["Example Team"]);
+    assert.deepEqual(await (await client.teams.$get()).json(), {
+        teams: ["Example Team"],
+    });
+    for (const route of ["/api/config", "/api/teams"])
+        assert.equal(
+            (await fetch(`${base}${route}`, { method: "PUT", headers: json }))
+                .status,
+            200,
+        );
+    for (const result of [
+        null,
+        "skipped",
+        {
+            mine: 1,
+            tracked: 2,
+            added: 3,
+            updated: 4,
+            events: 5,
+            closed: 6,
+        },
+    ] as const) {
+        context.reconcile = async () => result;
+        const response = await client.refresh.$post();
+        assert.equal(response.status, 200);
+        assert.deepEqual(await response.json(), {
+            summary: result === "skipped" ? null : result,
+            skipped: result === "skipped",
+        });
+    }
+    for (const route of ["/api/setup", "/api/refresh", "/api/data/delete-all"])
+        assert.equal((await fetch(`${base}${route}`)).status, 404);
+    assert.equal(
+        (await post("/api/setup", { dbLocation: "invalid" })).status,
+        400,
+    );
+    let installed = false;
+    context.installBaselineSkill = () => {
+        installed = true;
+        return { installed: true };
+    };
+    context.setDbLocation = () => ({
+        ok: false,
+        restartRequired: false,
+        reason: "unavailable",
+    });
+    const failedStorage = await post("/api/setup", { dbLocation: "onedrive" });
+    assert.equal(failedStorage.status, 400);
+    assert.deepEqual(await failedStorage.json(), { error: "unavailable" });
+    assert.equal(installed, false);
+    context.setDbLocation = (location) => {
+        assert.equal(location, "local");
+        return { ok: true, restartRequired: true };
+    };
+    const setupWithStorage = await post("/api/setup", {
+        dbLocation: "local",
+        installPrReviewSkill: true,
+    });
+    assert.equal(setupWithStorage.status, 200);
+    assert.deepEqual(await setupWithStorage.json(), {
+        config,
+        setup_complete: true,
+        skill: { installed: true },
+        storage: { ok: true, restartRequired: true },
+    });
+    assert.equal(installed, true);
 
     // Saved settings that are unsafe are dropped when read back.
     const errorsBefore = errors.length;
