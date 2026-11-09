@@ -1,6 +1,13 @@
 # Contributing to Argus
 
-Thank you for helping with Argus. This guide shows how to set up, run, test, and submit a change. For how the code fits together, read [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) first.
+Argus is maintained by a small team. Unsolicited pull requests are not accepted.
+Only maintainers and contributors explicitly invited by a maintainer may submit
+a pull request. Public issues track maintainer work; they are not invitations
+to contribute.
+
+This guide is for maintainers and invited contributors. It shows how to set up,
+run, test, and submit a change. For how the code fits together, read
+[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) first.
 
 ## Set up
 
