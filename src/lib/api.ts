@@ -182,46 +182,21 @@ async function authResult<T>(res: Response, fallback: string): Promise<T> {
     return body;
 }
 
-export interface PollRun {
-    id: number;
-    startedAt: string;
-    finishedAt: string | null;
-    ok: boolean;
-    mine: number | null;
-    tracked: number | null;
-    added: number | null;
-    updated: number | null;
-    events: number | null;
-    closed: number | null;
-    error: string | null;
-}
+export type PollRun = InferResponseType<
+    typeof client.runs.$get
+>["runs"][number];
 
 import { queryOptions } from "@tanstack/react-query";
 
-export interface RunEvent {
-    id: number;
-    canonical: string;
-    ts: string;
-    type: string;
-    payload: Record<string, unknown> | null;
-    repo: string;
-    number: number;
-    title: string;
-}
-
-export interface RunDetail {
-    run: PollRun | null;
-    entries: ActivityEntry[];
-    changes: RunEvent[];
-}
-
-export interface ChangeFeed {
-    changes: RunEvent[];
-}
+export type RunDetail = InferResponseType<typeof client.run.$get, 200>;
+export type RunEvent = RunDetail["changes"][number];
+export type ChangeFeed = InferResponseType<typeof client.changes.$get>;
 
 async function getJson<T>(path: string): Promise<T> {
-    const res = await fetch(path, { headers: { accept: "application/json" } });
-    return apiJson<T>(res, path);
+    return apiJson<T>(
+        await fetch(path, { headers: { accept: "application/json" } }),
+        path,
+    );
 }
 
 export const api = {
@@ -251,15 +226,21 @@ export const api = {
             await authClient["sign-out"].$post(),
             "sign-out",
         ),
-    activity: (limit = 100) =>
-        getJson<unknown>(`/api/activity?limit=${limit}`).then(
-            (r) => ActivityEntriesResponseSchema.parse(r).entries,
+    activity: async (limit = 100) =>
+        apiJson<unknown>(
+            await client.activity.$get({ query: { limit: String(limit) } }),
+            `/api/activity?limit=${limit}`,
+        ).then((r) => ActivityEntriesResponseSchema.parse(r).entries),
+    runs: async (limit = 50) =>
+        apiJson<{ runs: PollRun[] }>(
+            await client.runs.$get({ query: { limit: String(limit) } }),
+            `/api/runs?limit=${limit}`,
+        ).then((r) => r.runs),
+    run: async (id: number) =>
+        apiJson<RunDetail>(
+            await client.run.$get({ query: { id: String(id) } }),
+            `/api/run?id=${id}`,
         ),
-    runs: (limit = 50) =>
-        getJson<{ runs: PollRun[] }>(`/api/runs?limit=${limit}`).then(
-            (r) => r.runs,
-        ),
-    run: (id: number) => getJson<RunDetail>(`/api/run?id=${id}`),
     refresh: async () => {
         const res = await fetch("/api/refresh", {
             method: "POST",
@@ -371,7 +352,8 @@ export const api = {
         if (!res.ok) throw new Error(`archive -> ${res.status}`);
         return readJson(res);
     },
-    changes: () => getJson<ChangeFeed>("/api/changes"),
+    changes: async () =>
+        apiJson<ChangeFeed>(await client.changes.$get(), "/api/changes"),
     notices: async () => {
         const res = await client.notices.$get();
         return NoticesResponseSchema.parse(await apiJson(res, "/api/notices"))
@@ -446,18 +428,13 @@ export const api = {
             ),
         ).detail,
     markChangesRead: async (canonical: string): Promise<void> => {
-        const res = await fetch("/api/changes/read", {
-            method: "POST",
-            headers: { "content-type": "application/json" },
-            body: JSON.stringify({ canonical }),
+        const res = await client.changes.read.$post({
+            json: { canonical },
         });
         if (!res.ok) throw new Error(`changes/read -> ${res.status}`);
     },
     markAllChangesRead: async (): Promise<void> => {
-        const res = await fetch("/api/changes/read-all", {
-            method: "POST",
-            headers: JSON_HEADERS,
-        });
+        const res = await client.changes["read-all"].$post();
         if (!res.ok) throw new Error(`changes/read-all -> ${res.status}`);
     },
 };
