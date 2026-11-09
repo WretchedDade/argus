@@ -158,7 +158,21 @@ function readJson<T>(res: Response): Promise<T> {
     return res.json() as Promise<T>;
 }
 
-const authClient = hc<AppType>("/", { headers: JSON_HEADERS }).api.auth;
+const client = hc<AppType>("/", { headers: JSON_HEADERS }).api;
+const authClient = client.auth;
+
+async function apiJson<T>(
+    res: { ok: boolean; status: number; json: () => Promise<T> },
+    path: string,
+): Promise<T> {
+    if (!res.ok) {
+        const body = (await res.json().catch(() => null)) as {
+            error?: string;
+        } | null;
+        throw new ApiError(path, res.status, body?.error ?? null);
+    }
+    return res.json();
+}
 
 async function authResult<T>(res: Response, fallback: string): Promise<T> {
     const body = (await res.json()) as T & { error?: string };
@@ -205,13 +219,7 @@ export interface ChangeFeed {
 
 async function getJson<T>(path: string): Promise<T> {
     const res = await fetch(path, { headers: { accept: "application/json" } });
-    if (!res.ok) {
-        const body = (await res.json().catch(() => null)) as {
-            error?: string;
-        } | null;
-        throw new ApiError(path, res.status, body?.error ?? null);
-    }
-    return (await res.json()) as T;
+    return apiJson<T>(res, path);
 }
 
 async function postJson<T>(path: string, body: object): Promise<T> {
@@ -229,7 +237,7 @@ export const api = {
         getJson<unknown>("/api/prs").then(
             (r) => PrsResponseSchema.parse(r).prs,
         ),
-    health: () => getJson<Health>("/api/health"),
+    health: async () => apiJson(await client.health.$get(), "/api/health"),
     authStatus: () => getJson<AuthStatus>("/api/auth/status"),
     authRegistration: () => getJson<AuthRegistration>("/api/auth/registration"),
     saveAuthRegistration: async (reg: AuthRegistration) =>
@@ -261,12 +269,9 @@ export const api = {
         ),
     run: (id: number) => getJson<RunDetail>(`/api/run?id=${id}`),
     refresh: async () => {
-        const res = await fetch("/api/refresh", {
-            method: "POST",
-            headers: JSON_HEADERS,
-        });
+        const res = await client.refresh.$post();
         if (!res.ok) throw new Error(`refresh -> ${res.status}`);
-        return readJson<{ summary: object | null; skipped?: boolean }>(res);
+        return res.json();
     },
     setScope: async (canonical: string, outOfScope: boolean): Promise<void> => {
         const res = await fetch("/api/pr/scope", {
@@ -413,10 +418,8 @@ export const api = {
         return readJson(res);
     },
     deleteAllData: async (): Promise<void> => {
-        const res = await fetch("/api/data/delete-all", {
-            method: "POST",
-            headers: JSON_HEADERS,
-            body: JSON.stringify({ confirm: "delete" }),
+        const res = await client.data["delete-all"].$post({
+            json: { confirm: "delete" },
         });
         if (!res.ok) throw new Error(`data/delete-all -> ${res.status}`);
     },
@@ -568,26 +571,23 @@ export const prDetailQuery = (canonical: string) =>
     });
 
 export const configApi = {
-    get: () =>
-        getJson<unknown>("/api/config").then(
+    get: async () =>
+        apiJson(await client.config.$get(), "/api/config").then(
             (r) => ConfigResponseSchema.parse(r).config,
         ),
     save: async (overrides: Partial<ArgusConfig>): Promise<ArgusConfig> => {
-        const res = await fetch("/api/config", {
-            method: "POST",
-            headers: { "content-type": "application/json" },
-            body: JSON.stringify(overrides),
-        });
+        const res = await client.config.$post({ json: overrides });
         if (!res.ok) {
             const body = (await res.json().catch(() => null)) as {
                 error?: string;
             } | null;
             throw new Error(body?.error ?? `config -> ${res.status}`);
         }
-        return (await readJson<{ config: ArgusConfig }>(res)).config;
+        const body = await res.json();
+        return body.config;
     },
-    teams: () =>
-        getJson<{ teams: string[] }>("/api/teams").then((r) => r.teams),
+    teams: async () =>
+        apiJson(await client.teams.$get(), "/api/teams").then((r) => r.teams),
     version: () =>
         getJson<{ version: string | null }>("/api/version").then(
             (r) => r.version,
@@ -606,13 +606,9 @@ export const configApi = {
             reason?: string;
         } | null;
     }> => {
-        const res = await fetch("/api/setup", {
-            method: "POST",
-            headers: { "content-type": "application/json" },
-            body: JSON.stringify(overrides),
-        });
-        if (!res.ok) throw new Error(`setup -> ${res.status}`);
-        return readJson(res);
+        const res = await client.setup.$post({ json: overrides });
+        if (res.status !== 200) throw new Error(`setup -> ${res.status}`);
+        return res.json();
     },
 };
 

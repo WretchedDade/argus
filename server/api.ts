@@ -7,20 +7,12 @@ import type {
     ConfigOverrides,
     ReviewModelSetting,
 } from "./config.ts";
-import {
-    ConfigError,
-    hasRequiredSetup,
-    mergeConfig,
-    parseConfigOverrides,
-} from "./config.ts";
 import type { PollerStatus, ReconcileSummary } from "./ado/poller.ts";
-import { resetIdentity } from "./ado/poller.ts";
 import {
     fetchAdoImage,
     ImageProxyError,
     isAllowedImageHost,
 } from "./ado/images.ts";
-import { authStatus, setAuthProvider, useBroker } from "./ado/client.ts";
 import { ingestUrl } from "./ingest.ts";
 import { UpdateJob, type UpdatePhase } from "./update-job.ts";
 import { sendJson } from "./respond.ts";
@@ -231,23 +223,6 @@ export async function handleApi(
     } catch (error) {
         if (!(error instanceof UntrustedRequestError)) throw error;
         sendJson(res, error.status, { error: error.message });
-        return true;
-    }
-
-    if (route === "/api/health") setAuthProvider(ctx.getConfig().adoAuth); // another host may have saved a change
-
-    if (route === "/api/health") {
-        sendJson(res, 200, {
-            ok: true,
-            boot_at: ctx.bootAt,
-            store: ctx.store.counts(),
-            poller: ctx.pollerStatus(),
-            storage: ctx.storage?.() ?? null,
-            auth: useBroker() ? await authStatus() : null,
-            setup_complete:
-                ctx.store.isSetupComplete() &&
-                hasRequiredSetup(ctx.getConfig()),
-        });
         return true;
     }
 
@@ -553,87 +528,6 @@ export async function handleApi(
         return true;
     }
 
-    if (route === "/api/refresh" && req.method === "POST") {
-        const result = await ctx.reconcile();
-        const skipped = result === "skipped";
-        sendJson(res, 200, { summary: skipped ? null : result, skipped });
-        return true;
-    }
-
-    if (route === "/api/config") {
-        if (req.method === "POST") {
-            const before = ctx.getConfig().adoAuth;
-            let body: ConfigOverrides;
-            try {
-                body = parseConfigOverrides(await readJsonBody(req));
-            } catch (err) {
-                if (!(err instanceof ConfigError)) throw err;
-                sendJson(res, 400, { error: err.message });
-                return true;
-            }
-            const config = ctx.saveConfig({
-                ...ctx.store.getConfigOverrides(),
-                ...body,
-            });
-            setAuthProvider(config.adoAuth);
-            if (config.adoAuth !== before) resetIdentity(ctx.store);
-            sendJson(res, 200, { config });
-        } else sendJson(res, 200, { config: ctx.getConfig() });
-        return true;
-    }
-
-    // First-run setup: save the config the user entered and mark setup done, so the
-    // UI switches from the setup gate to the board. Optionally installs the bundled
-    // baseline pr-review skill. Body is config overrides plus installPrReviewSkill.
-    if (route === "/api/setup" && req.method === "POST") {
-        const body = await readJsonBody(req);
-        let overrides: ConfigOverrides;
-        try {
-            overrides = parseConfigOverrides(body);
-        } catch (err) {
-            if (!(err instanceof ConfigError)) throw err;
-            sendJson(res, 400, { error: err.message });
-            return true;
-        }
-        const installPrReviewSkill =
-            (body as Record<string, unknown>).installPrReviewSkill === true;
-        if (!hasRequiredSetup(mergeConfig(ctx.getConfig(), overrides))) {
-            sendJson(res, 400, {
-                error: "Valid org URL, org slug, and project required",
-            });
-            return true;
-        }
-        const dbLocation = (body as Record<string, unknown>).dbLocation;
-        if (
-            dbLocation !== undefined &&
-            dbLocation !== "local" &&
-            dbLocation !== "onedrive"
-        ) {
-            sendJson(res, 400, {
-                error: "dbLocation must be local or onedrive",
-            });
-            return true;
-        }
-        const storage =
-            dbLocation && ctx.setDbLocation
-                ? ctx.setDbLocation(dbLocation)
-                : null;
-        if (storage && !storage.ok) {
-            sendJson(res, 400, {
-                error: storage.reason ?? "Could not save the storage location",
-            });
-            return true;
-        }
-        const config = ctx.saveConfig(overrides);
-        setAuthProvider(config.adoAuth);
-        ctx.markSetupComplete();
-        const skill = installPrReviewSkill
-            ? ctx.installBaselineSkill()
-            : { installed: false, reason: "skipped" };
-        sendJson(res, 200, { config, setup_complete: true, skill, storage });
-        return true;
-    }
-
     if (route === "/api/load/detail") {
         const key = url.searchParams.get("key");
         const granularity = url.searchParams.get("granularity");
@@ -826,22 +720,6 @@ export async function handleApi(
             ctx.store.markReviewSessionsArchived(items.map((i) => i.sessionId));
         }
         sendJson(res, 200, { dispatched: items.length });
-        return true;
-    }
-
-    if (route === "/api/data/delete-all" && req.method === "POST") {
-        const body = (await readJsonBody(req)) as { confirm?: unknown } | null;
-        if (body?.confirm !== "delete") {
-            sendJson(res, 400, { error: 'confirm must be "delete"' });
-            return true;
-        }
-        await ctx.deleteAllData();
-        sendJson(res, 200, { ok: true });
-        return true;
-    }
-
-    if (route === "/api/teams") {
-        sendJson(res, 200, { teams: ctx.store.getSeenTeams() });
         return true;
     }
 
