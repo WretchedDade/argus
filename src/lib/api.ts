@@ -428,18 +428,24 @@ export const api = {
         });
         if (!res.ok) throw new Error(`notices/dismiss -> ${res.status}`);
     },
-    insights: () =>
-        getJson<unknown>("/api/insights").then(
-            (r) => InsightsResponseSchema.parse(r).insights,
-        ),
-    weeklyReviewFacts: (startKey: string) =>
-        getJson<unknown>(
-            `/api/reviews/week?key=${encodeURIComponent(startKey)}`,
-        ).then((r) => WeeklyReviewFactsResponseSchema.parse(r).facts),
-    loadDetail: (key: string, granularity: "day" | "week") =>
-        getJson<unknown>(
-            `/api/load/detail?key=${key}&granularity=${granularity}`,
-        ).then((r) => LoadDetailResponseSchema.parse(r).detail),
+    insights: async () =>
+        InsightsResponseSchema.parse(
+            await apiJson(await client.insights.$get(), "/api/insights"),
+        ).insights,
+    weeklyReviewFacts: async (startKey: string) =>
+        WeeklyReviewFactsResponseSchema.parse(
+            await apiJson(
+                await client.reviews.week.$get({ query: { key: startKey } }),
+                `/api/reviews/week?key=${encodeURIComponent(startKey)}`,
+            ),
+        ).facts,
+    loadDetail: async (key: string, granularity: "day" | "week") =>
+        LoadDetailResponseSchema.parse(
+            await apiJson(
+                await client.load.detail.$get({ query: { key, granularity } }),
+                `/api/load/detail?key=${key}&granularity=${granularity}`,
+            ),
+        ).detail,
     markChangesRead: async (canonical: string): Promise<void> => {
         const res = await client.changes.read.$post({
             json: { canonical },

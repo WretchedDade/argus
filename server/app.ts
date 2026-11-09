@@ -5,6 +5,7 @@ import { HTTPException } from "hono/http-exception";
 import type { ApiContext } from "./api.ts";
 import { authRoutes } from "./routes/auth.ts";
 import { activityRoutes } from "./routes/activity.ts";
+import { insightsRoutes } from "./routes/insights.ts";
 import {
     assertTrustedRequest,
     UntrustedRequestError,
@@ -25,6 +26,7 @@ export function createApp(ctx: ApiContext) {
         })
         .route("/api/auth", authRoutes(ctx))
         .route("/api", activityRoutes(ctx))
+        .route("/api", insightsRoutes(ctx))
         .notFound((honoContext) =>
             honoContext.json({ error: "not found" }, 404),
         )
@@ -41,6 +43,9 @@ export type AppType = ReturnType<typeof createApp>;
 export function isHonoRoute(pathname: string): boolean {
     return (
         pathname.startsWith("/api/auth/") ||
+        pathname === "/api/insights" ||
+        pathname === "/api/load/detail" ||
+        pathname === "/api/reviews/week" ||
         [
             "/api/activity",
             "/api/pr-activity",
