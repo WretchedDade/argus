@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { automaticReviewPrompt, reviewPrompt } from "./api.ts";
+import { automaticReviewPrompt, reviewPrompt } from "./prompts.ts";
 import { defaultConfig, parseConfigOverrides } from "./config.ts";
 import type { Pr } from "./types.ts";
 

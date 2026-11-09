@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { automaticReviewPrompt, reviewPrompt } from "./api.ts";
+import { automaticReviewPrompt, reviewPrompt } from "./prompts.ts";
 import { ingestUrl, setIngestPort } from "./ingest.ts";
 import { shouldShowAutomaticReview } from "../src/lib/triage.ts";
 import type { Pr } from "./types.ts";

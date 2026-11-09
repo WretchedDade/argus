@@ -27,7 +27,7 @@ const server = createServer((req, res) => {
 try {
     assert.equal(typeof createApp, "function");
     assert.equal(isHonoRoute("/api/auth/status"), true);
-    assert.equal(isHonoRoute("/api/prs"), false);
+    assert.equal(isHonoRoute("/api/prs"), true);
 
     await new Promise<void>((resolve) =>
         server.listen(0, "127.0.0.1", resolve),
@@ -119,7 +119,7 @@ try {
     assert.equal(registration.status, 200);
     assert.equal((await registration.json()).fromEnv, false);
 
-    // Routes that are not migrated still reach the old handler.
+    // PR routes use the same middleware.
     const prs = await send("GET", "/api/prs");
     assert.equal(prs.status, 200);
     assert.deepEqual(JSON.parse(prs.body), { prs: [] });

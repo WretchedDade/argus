@@ -92,14 +92,15 @@ Queries that count or list the board must exclude archived PRs. The audited quer
 
 ## API
 
-`server/app.ts` builds the Hono app. Routes live in `server/routes/`, one file per domain. The auth and config domains use Hono. The config domain includes setup, health, refresh, teams, and data deletion.
+`server/app.ts` builds the Hono app. Routes live in `server/routes/`, one file per domain. The mounts in `server/app.ts` list the domains. Review and archive prompt builders live in `server/prompts.ts`.
 
-During migration, `server/api.ts` exports `handleApi`. It sends migrated paths to Hono and handles the other `/api/...` paths. It returns `true` when it handles a request. `server/server.ts` serves the static client (`static.ts`) when it returns `false`.
+`server/api.ts` exports `handleApi`. This migration adapter sends registered paths to Hono and rejects other `/api/...` paths. `server/server.ts` calls it first, and serves the static client (`static.ts`) when it returns `false`. Keep the adapter until all domain changes are integrated.
 
-Rules in the file:
+API rules:
 
 - Reads use `GET`. Actions that change data use `POST`.
-- Hono routes use `context.json`. Legacy routes use `sendJson`. Do not write JSON to `res` directly.
+- Hono JSON responses use `c.json`. Legacy JSON responses use `sendJson`. The image proxy returns bytes with its content type and cache headers.
+- The client uses `hc<AppType>` from `hono/client` for migrated domain calls. Keep schema checks for shared response types.
 - The API reaches the host through `ApiContext` (store, `getConfig`, poller functions). The auth and config routes call `resetIdentity` after a sign-in provider change.
 
 ## Client
@@ -109,7 +110,7 @@ The client is a single-page app in `src/`:
 - `src/main.tsx` creates the TanStack Router and the TanStack Query client.
 - `src/routes/` holds one file per route. Vite generates `src/routeTree.gen.ts` from it. Do not edit or commit that file.
 - `src/lib/api.ts` holds the response types, the `api` fetch helpers, and the `queryOptions` for each endpoint.
-- Auth actions and config domain calls use `hono/client` with `AppType` from the server.
+- API domain calls use `hono/client` with `AppType` from the server.
 - `src/components/` holds shared components. Charts are in `Charts.tsx`.
 
 There is no dev server. `npm run dev` runs a watch build, and you reload the canvas to see client changes. A server change needs a reload of extensions (or a restart of the Copilot app).

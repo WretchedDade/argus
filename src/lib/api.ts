@@ -161,14 +161,19 @@ function readJson<T>(res: Response): Promise<T> {
 const client = hc<AppType>("/", { headers: JSON_HEADERS }).api;
 const authClient = client.auth;
 
-async function apiJson<T>(res: Response, path: string): Promise<T> {
-    if (!res.ok) {
-        const body = (await res.json().catch(() => null)) as {
+async function apiJson<T>(response: Response, path: string): Promise<T> {
+    if (!response.ok) {
+        const body = (await response.json().catch(() => null)) as {
             error?: string;
         } | null;
-        throw new ApiError(path, res.status, body?.error ?? null);
+        throw new ApiError(path, response.status, body?.error ?? null);
     }
-    return (await res.json()) as T;
+    return readJson<T>(response);
+}
+
+async function prAction<T>(response: Response, label: string): Promise<T> {
+    if (!response.ok) throw new Error(`${label} -> ${response.status}`);
+    return readJson<T>(response);
 }
 
 async function authResult<T>(res: Response, fallback: string): Promise<T> {
@@ -194,21 +199,11 @@ async function getJson<T>(path: string): Promise<T> {
     );
 }
 
-async function postJson<T>(path: string, body: object): Promise<T> {
-    const res = await fetch(path, {
-        method: "POST",
-        headers: JSON_HEADERS,
-        body: JSON.stringify(body),
-    });
-    if (!res.ok) throw new Error(`${path} -> ${res.status}`);
-    return (await res.json()) as T;
-}
-
 export const api = {
-    prs: () =>
-        getJson<unknown>("/api/prs").then(
-            (r) => PrsResponseSchema.parse(r).prs,
-        ),
+    prs: async () =>
+        PrsResponseSchema.parse(
+            await apiJson<unknown>(await client.prs.$get(), "/api/prs"),
+        ).prs,
     health: async () =>
         apiJson<InferResponseType<typeof client.health.$get>>(
             await client.health.$get(),
@@ -256,31 +251,23 @@ export const api = {
         return res.json();
     },
     setScope: async (canonical: string, outOfScope: boolean): Promise<void> => {
-        const res = await fetch("/api/pr/scope", {
-            method: "POST",
-            headers: { "content-type": "application/json" },
-            body: JSON.stringify({ canonical, outOfScope }),
+        const res = await client.pr.scope.$post({
+            json: { canonical, outOfScope },
         });
         if (!res.ok) throw new Error(`scope -> ${res.status}`);
     },
     setLane: async (canonical: string, lane: Lane): Promise<void> => {
-        const res = await fetch("/api/pr/lane", {
-            method: "POST",
-            headers: { "content-type": "application/json" },
-            body: JSON.stringify({ canonical, lane }),
-        });
+        const res = await client.pr.lane.$post({ json: { canonical, lane } });
         if (!res.ok) throw new Error(`lane -> ${res.status}`);
     },
     refreshPr: async (canonical: string): Promise<void> => {
-        const res = await fetch("/api/pr/refresh", {
-            method: "POST",
-            headers: { "content-type": "application/json" },
-            body: JSON.stringify({ canonical }),
-        });
+        const res = await client.pr.refresh.$post({ json: { canonical } });
         if (!res.ok) throw new Error(`refreshPr -> ${res.status}`);
     },
     findPr: async (number: number): Promise<string | null> => {
-        const res = await fetch(`/api/pr/find?number=${number}`);
+        const res = await client.pr.find.$get({
+            query: { number: String(number) },
+        });
         if (!res.ok) throw new Error(`findPr -> ${res.status}`);
         const body = await readJson<{ canonical?: string | null }>(res);
         return body.canonical ?? null;
@@ -288,11 +275,7 @@ export const api = {
     trackPr: async (
         number: number,
     ): Promise<{ ok: boolean; canonical?: string; reason?: string }> => {
-        const res = await fetch("/api/pr/track", {
-            method: "POST",
-            headers: { "content-type": "application/json" },
-            body: JSON.stringify({ number }),
-        });
+        const res = await client.pr.track.$post({ json: { number } });
         return readJson(res);
     },
     setSnooze: async (
@@ -300,14 +283,12 @@ export const api = {
         until: string | null,
         mode: "time" | "fte" | null = null,
     ): Promise<void> => {
-        const res = await fetch("/api/pr/snooze", {
-            method: "POST",
-            headers: { "content-type": "application/json" },
-            body: JSON.stringify({
+        const res = await client.pr.snooze.$post({
+            json: {
                 canonical,
                 until,
                 mode: mode ?? (until ? "time" : null),
-            }),
+            },
         });
         if (!res.ok) throw new Error(`snooze -> ${res.status}`);
     },
@@ -315,44 +296,60 @@ export const api = {
         canonical: string,
         automatic = false,
     ): Promise<{ reReview: boolean }> => {
-        const res = await fetch("/api/pr/review", {
-            method: "POST",
-            headers: { "content-type": "application/json" },
-            body: JSON.stringify({ canonical, automatic }),
+        const res = await client.pr.review.$post({
+            json: { canonical, automatic },
         });
         if (!res.ok) throw new Error(`review -> ${res.status}`);
         return readJson(res);
     },
-    archivedPrs: () =>
-        getJson<{ prs: Pr[] }>("/api/archived").then((r) => r.prs),
-    stalePreview: () => getJson<StalePreview>("/api/archive/preview"),
-    sweepStale: (canonicals: string[]) =>
-        postJson<{ archived: number }>("/api/archive/sweep", { canonicals }),
-    restorePr: (canonical: string) =>
-        postJson<{ restored: boolean }>("/api/pr/restore", { canonical }),
-    repoScopes: () =>
-        getJson<{ repos: RepoScopeRow[] }>("/api/repo-scopes").then(
-            (r) => r.repos,
+    archivedPrs: async () =>
+        (
+            await apiJson<{ prs: Pr[] }>(
+                await client.archived.$get(),
+                "/api/archived",
+            )
+        ).prs,
+    stalePreview: async () =>
+        apiJson<StalePreview>(
+            await client.archive.preview.$get(),
+            "/api/archive/preview",
         ),
-    setRepoScope: (repo: string, scope: "in" | "out" | null) =>
-        postJson<{
+    sweepStale: async (canonicals: string[]) =>
+        prAction<{ archived: number }>(
+            await client.archive.sweep.$post({ json: { canonicals } }),
+            "/api/archive/sweep",
+        ),
+    restorePr: async (canonical: string) =>
+        prAction<{ restored: boolean }>(
+            await client.pr.restore.$post({ json: { canonical } }),
+            "/api/pr/restore",
+        ),
+    repoScopes: async () =>
+        (
+            await apiJson<{ repos: RepoScopeRow[] }>(
+                await client["repo-scopes"].$get(),
+                "/api/repo-scopes",
+            )
+        ).repos,
+    setRepoScope: async (repo: string, scope: "in" | "out" | null) =>
+        prAction<{
             archived: number;
             revived: number;
             kept: number;
             repos: RepoScopeRow[];
-        }>("/api/repo-scopes", {
-            repo,
-            scope,
-        }),
-    archivable: () =>
-        getJson<{ archivable: ArchivableSession[] }>("/api/archivable").then(
-            (r) => r.archivable,
+        }>(
+            await client["repo-scopes"].$post({ json: { repo, scope } }),
+            "/api/repo-scopes",
         ),
+    archivable: async () =>
+        (
+            await apiJson<{ archivable: ArchivableSession[] }>(
+                await client.archivable.$get(),
+                "/api/archivable",
+            )
+        ).archivable,
     archive: async (): Promise<{ dispatched: number }> => {
-        const res = await fetch("/api/archive", {
-            method: "POST",
-            headers: JSON_HEADERS,
-        });
+        const res = await client.archive.$post();
         if (!res.ok) throw new Error(`archive -> ${res.status}`);
         return readJson(res);
     },
@@ -532,9 +529,14 @@ export const prDetailQuery = (canonical: string) =>
     queryOptions({
         queryKey: ["pr", canonical],
         queryFn: () =>
-            getJson<PrDetail>(
-                `/api/pr?canonical=${encodeURIComponent(canonical)}`,
-            ),
+            client.pr
+                .$get({ query: { canonical } })
+                .then((res) =>
+                    apiJson<PrDetail>(
+                        res,
+                        `/api/pr?canonical=${encodeURIComponent(canonical)}`,
+                    ),
+                ),
         refetchInterval: 10_000,
     });
 
