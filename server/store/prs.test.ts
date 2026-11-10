@@ -8,6 +8,7 @@ import type { PrUpsert } from "../types.ts";
 import { reconcile } from "../ado/reconcile.ts";
 import { normalizePr } from "../ado/normalize.ts";
 import { fetchAuthorMeta } from "../ado/authorMeta.ts";
+import { listPrPolicies, setAuthProvider, useBroker } from "../ado/client.ts";
 
 function open(): DatabaseSync {
     const db = new DatabaseSync(":memory:");
@@ -361,6 +362,42 @@ test("author fetches preserve failed fields and refresh successful fields indepe
         ...legacy,
         lastSuccessfulAt: { policies: null, comments: null },
     });
+    const { AdoRestClient } = await import("@devstart/ado-client");
+    const previousProvider = useBroker() ? "broker" : "az";
+    t.after(() => setAuthProvider(previousProvider));
+    setAuthProvider("broker");
+    let response: unknown;
+    t.mock.method(AdoRestClient.prototype, "request", async () =>
+        Response.json(response),
+    );
+    for (const [payload, valid] of [
+        [null, false],
+        [{}, false],
+        [{ value: null }, false],
+        [{ value: {} }, false],
+        [{ value: [] }, true],
+    ] as const) {
+        response = payload;
+        seed(previous);
+        const update = await fetchAuthorMeta(
+            current,
+            "https://dev.azure.com/o",
+            () => {},
+            { listPrPolicies, fetchPrThreads: () => Promise.resolve([]) },
+        );
+        assert.equal(update.policies.ok, valid);
+        assert.equal(update.comments.ok, true);
+        prs.setAuthorMeta(db, "c", update);
+        const saved = prs.getPr(db, "c")?.authorMeta;
+        assert.deepEqual(saved?.blockers, valid ? [] : previous.blockers);
+        assert.equal(saved?.completable, valid);
+        assert.equal(
+            saved?.lastSuccessfulAt?.policies,
+            update.policies.ok
+                ? update.policies.lastSuccessfulAt
+                : previous.lastSuccessfulAt.policies,
+        );
+    }
 });
 
 test("removePr deletes the row and its events", () => {

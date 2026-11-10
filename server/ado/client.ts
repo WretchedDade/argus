@@ -421,9 +421,13 @@ export function listPrPolicies(
         if (!projectId)
             throw new AdoError("PR has no project id for policy lookup.");
         const artifactId = `vstfs:///CodeReview/CodeReviewId/${projectId}/${id}`;
-        return restJson<{ value?: PolicyEval[] }>(
+        return restJson<{ value?: PolicyEval[] } | null>(
             `${orgRoot(org)}/${enc(projectId)}/_apis/policy/evaluations?artifactId=${enc(artifactId)}&api-version=7.1-preview.1`,
-        ).then((j) => j.value ?? []);
+        ).then((response) => {
+            if (!Array.isArray(response?.value))
+                throw new AdoError("Policy lookup returned no data.");
+            return response.value;
+        });
     }
     return azJson<PolicyEval[]>([
         "repos",
