@@ -1,6 +1,6 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { getRequestListener, type HttpBindings } from "@hono/node-server";
-import { Hono } from "hono";
+import { Hono, type ErrorHandler } from "hono";
 import { HTTPException } from "hono/http-exception";
 import { randomUUID } from "node:crypto";
 import { logger } from "./log.ts";
@@ -15,8 +15,23 @@ import {
     assertTrustedRequest,
     UntrustedRequestError,
 } from "./trusted-request.ts";
+import { faultMiddleware } from "./faults.ts";
+import { staticRoutes } from "./static.ts";
 
 export type AppEnv = { Bindings: HttpBindings };
+
+const handleError: ErrorHandler<AppEnv> = (error, c) => {
+    // API failures are logged once by the request diagnostics middleware.
+    if (!c.req.path.startsWith("/api/"))
+        logger.error(
+            { component: "http", err: error, method: c.req.method },
+            "HTTP request failed",
+        );
+    if (error instanceof HTTPException) {
+        return c.json({ error: error.message }, error.status);
+    }
+    return c.json({ error: "Internal server error." }, 500);
+};
 
 export function createApp(ctx: ApiContext) {
     return new Hono<AppEnv>()
@@ -50,6 +65,7 @@ export function createApp(ctx: ApiContext) {
             }
         })
         .use("/api/*", async (honoContext, next) => {
+            if (honoContext.req.path === "/api") return next();
             try {
                 assertTrustedRequest(honoContext.env.incoming);
             } catch (error) {
@@ -64,20 +80,38 @@ export function createApp(ctx: ApiContext) {
         .route("/api", activityRoutes(ctx))
         .route("/api", noticeRoutes(ctx))
         .route("/api", insightsRoutes(ctx))
+        .all("/api/*", (c, next) =>
+            c.req.path === "/api"
+                ? next()
+                : c.json({ error: "not found" }, 404),
+        )
         .notFound((honoContext) =>
             honoContext.json({ error: "not found" }, 404),
         )
-        .onError((error, honoContext) => {
-            if (error instanceof HTTPException)
-                return honoContext.json({ error: error.message }, error.status);
-            throw error;
-        });
+        .onError(handleError);
 }
 
 export type AppType = ReturnType<typeof createApp>;
 
 export function createHonoHandler(
     ctx: ApiContext,
+    options: { distDir?: string; faults?: Set<string> } = {},
 ): (req: IncomingMessage, res: ServerResponse) => Promise<void> {
-    return getRequestListener(createApp(ctx).fetch);
+    const app = new Hono<AppEnv>();
+    if (options.faults) app.use("*", faultMiddleware(options.faults));
+    app.route("/", createApp(ctx));
+    if (options.distDir) app.route("/", staticRoutes(options.distDir));
+    app.notFound((c) => c.body(null, 404)).onError(handleError);
+    return getRequestListener(app.fetch, {
+        errorHandler: (error) => {
+            logger.error(
+                { component: "http", err: error },
+                "HTTP transport failed",
+            );
+            return Response.json(
+                { error: "Internal server error." },
+                { status: 500 },
+            );
+        },
+    });
 }

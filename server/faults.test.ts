@@ -2,7 +2,9 @@ import assert from "node:assert/strict";
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import test from "node:test";
-import { injectFault, parseFaults } from "./faults.ts";
+import { Hono } from "hono";
+import { getRequestListener } from "@hono/node-server";
+import { faultMiddleware, parseFaults } from "./faults.ts";
 
 test("parseFaults splits and trims the list", () => {
     assert.deepEqual([...parseFaults(" prs, setup ,")], ["prs", "setup"]);
@@ -11,11 +13,10 @@ test("parseFaults splits and trims the list", () => {
 
 async function get(faults: string, path: string) {
     const set = parseFaults(faults);
-    const server = createServer((req, res) => {
-        void injectFault(set, req, res).then((done) => {
-            if (!done) res.end(JSON.stringify({ setup_complete: true }));
-        });
-    });
+    const app = new Hono()
+        .use("*", faultMiddleware(set))
+        .get("*", (c) => c.json({ setup_complete: true }));
+    const server = createServer(getRequestListener(app.fetch));
     await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
     const { port } = server.address() as AddressInfo;
     const r = await fetch(`http://127.0.0.1:${port}${path}`);

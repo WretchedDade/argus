@@ -100,7 +100,9 @@ Queries that count or list the board must exclude archived PRs. The audited quer
 
 `server/app.ts` builds the Hono app. Routes live in `server/routes/`, one file per domain. The mounts in `server/app.ts` list the domains. Review and archive prompt builders live in `server/prompts.ts`.
 
-`server/server.ts` creates one Hono request handler per HTTP server. Both the canvas server and the ingest server send all `/api/...` requests to it. Hono checks trusted requests and returns JSON for unknown API paths. The canvas server serves other `GET` paths through `static.ts`. The ingest server does not serve static files. `server/api.ts` defines the shared `ApiContext` types.
+`server/server.ts` creates one Hono request handler per HTTP server. Hono routes all requests. Both servers mount the same API. The canvas server also mounts the static routes in `server/static.ts`. These routes use `@hono/node-server/serve-static` for file paths, content types, and streaming. An unknown non-API `GET` path falls back to `index.html` for client routing. The ingest server does not serve static files. The bare `/api` path remains a client route on the canvas server.
+
+Hono checks trusted API requests and returns JSON for unknown API paths. `server/validation.ts` uses Zod validators for request bodies and query parameters. The compatibility middleware treats empty action bodies as `{}` and reads the first value of a repeated query parameter. Invalid inputs return 400 before an action runs. Unexpected application errors are logged and return 500 with `{ "error": "Internal server error." }`. Domain routes can keep specific error responses, such as sign-in failures. The Node adapter handles transport errors. `server/api.ts` defines the shared `ApiContext` types.
 
 API rules:
 

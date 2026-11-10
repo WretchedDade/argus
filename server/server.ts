@@ -1,8 +1,7 @@
 import { createServer, type Server } from "node:http";
 import type { ApiContext } from "./api.ts";
 import { createHonoHandler } from "./app.ts";
-import { serveStatic } from "./static.ts";
-import { injectFault, parseFaults } from "./faults.ts";
+import { parseFaults } from "./faults.ts";
 import { logger } from "./log.ts";
 
 const log = logger.child({ component: "http" });
@@ -33,29 +32,9 @@ export async function startServer(
     ctx: ServerContext,
 ): Promise<void> {
     const faults = parseFaults(process.env.ARGUS_FAKE_FAULT);
-    const handleRequest = createHonoHandler(ctx);
-    const server = createServer(async (req, res) => {
-        let apiRequest = false;
-        try {
-            if (await injectFault(faults, req, res)) return;
-            const route = new URL(req.url || "/", "http://127.0.0.1").pathname;
-            if (route.startsWith("/api/")) {
-                apiRequest = true;
-                await handleRequest(req, res);
-                return;
-            }
-            if (req.method === "GET") {
-                return await serveStatic(res, ctx.distDir, route);
-            }
-            res.statusCode = 404;
-            res.end();
-        } catch (err) {
-            if (!apiRequest)
-                log.error({ err, method: req.method }, "Static request failed");
-            res.statusCode = 500;
-            res.end();
-        }
-    });
+    const server = createServer(
+        createHonoHandler(ctx, { distDir: ctx.distDir, faults }),
+    );
 
     // Prefer the stable port; fall back to an ephemeral one if it's taken.
     const port = stablePort(instance.instanceId);
@@ -113,24 +92,7 @@ export function startIngestServer(
     ctx: ServerContext,
     port: number,
 ): IngestHandle {
-    const handleRequest = createHonoHandler(ctx);
-    const server = createServer(async (req, res) => {
-        let apiRequest = false;
-        try {
-            const route = new URL(req.url || "/", "http://127.0.0.1").pathname;
-            if (route.startsWith("/api/")) {
-                apiRequest = true;
-                await handleRequest(req, res);
-                return;
-            }
-            res.statusCode = 404;
-            res.end();
-        } catch (err) {
-            if (!apiRequest) log.error({ err }, "Ingest request failed");
-            res.statusCode = 500;
-            res.end();
-        }
-    });
+    const server = createServer(createHonoHandler(ctx));
 
     let bound = false;
     let bindErrorCode: string | null = null;
