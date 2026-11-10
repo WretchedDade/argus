@@ -125,8 +125,10 @@ Then choose one outcome:
   regardless of merge validation state. After the vote succeeds, record Argus
   verdict `approved`.
 - **Any finding:** **post no ADO comments** and **cast no ADO vote**. Record a
-  provisional `waiting` verdict in Argus with the head `sha` and token. This is
-  not an ADO vote. Show all findings and offer to continue as **Review for me**
+  provisional `waiting` result in Argus with `"provisional":true`, the head
+  `sha`, and token. Use the kickoff's provisional-result command and replace
+  the head SHA placeholder. This is not an ADO vote or a completed review.
+  Show all findings and offer to continue as **Review for me**
   in the same chat. Keep the worktree and findings while the reviewer decides.
   If they continue, merge their findings into the same comment set and use
   Phase 1 for comment and vote approval.
@@ -233,8 +235,9 @@ error no longer fails the whole job. Linked work item: #3310.
 
 Record the verdict that was actually cast in ADO. If the reviewer cast no vote,
 or the PR was already completed, record nothing. The only exception is
-Delegate's provisional `waiting` result for findings. Never record that result
-for an already completed PR.
+Delegate's provisional `waiting` result for findings. Send `"provisional":true`
+for that result. It leaves the current vote state and completed-review metrics
+unchanged. Never record that result for an already completed PR.
 
 Send an HTTP POST to the exact ingest URL from the kickoff prompt. Do not assume a
 port.

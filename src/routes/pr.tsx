@@ -50,6 +50,8 @@ function eventLabel(e: PrEvent): string {
             return `State changed to ${String(p.state ?? "")}`;
         case "reviewed":
             return "Reviewed";
+        case "review_provisional":
+            return "Delegate found issues; no vote cast";
         case "vote_changed": {
             const who = p.name ? String(p.name) : "A reviewer";
             return `${who} ${voteLabel(Number(p.vote ?? 0))}`;

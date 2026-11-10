@@ -141,13 +141,20 @@ export function prRoutes(ctx: ApiContext) {
         .post(
             "/pr/record-review",
             ...jsonBody(
-                canonicalBody.extend({
-                    verdict: z.string().optional(),
-                    sha: z.string().optional(),
-                    sessionId: z.string().optional(),
-                    token: z.string().optional(),
-                    release: z.boolean().optional(),
-                }),
+                canonicalBody
+                    .extend({
+                        verdict: z.string().optional(),
+                        sha: z.string().optional(),
+                        sessionId: z.string().optional(),
+                        token: z.string().optional(),
+                        release: z.boolean().optional(),
+                        provisional: z.boolean().optional(),
+                    })
+                    .refine(
+                        (body) =>
+                            !body.provisional || body.verdict === "waiting",
+                        { error: "provisional requires waiting verdict" },
+                    ),
             ),
             (c) => {
                 const body = c.req.valid("json");
@@ -175,6 +182,7 @@ export function prRoutes(ctx: ApiContext) {
                         verdict: body.verdict,
                         sha: body.sha,
                         sessionId: body.sessionId,
+                        provisional: body.provisional,
                     });
                 }
                 return c.json({ ok: true });

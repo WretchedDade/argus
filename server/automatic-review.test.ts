@@ -16,6 +16,7 @@ const prompt = automaticReviewPrompt(
     "tok-123",
 );
 assert.match(prompt, /"token":"tok-123"/);
+assert.match(prompt, /provisional-result command[^]*"provisional":true/);
 assert.match(
     prompt,
     /kickoff prompt must include[^]*"release":true[^]*\(the skill reads/,
@@ -91,6 +92,7 @@ for (const path of ["../skills/pr-review/SKILL.md"]) {
         assert.ok(skill.includes(`Review mode: ${mode}`));
     }
     assert.match(skill, /provisional `waiting`/);
+    assert.match(skill, /"provisional":true/);
     assert.match(skill, /continue as \*\*Review for me\*\* in the same chat/);
     assert.match(skill, /Merge both sets into one comment set/);
     assert.match(skill, /Do not cap the number of findings/);

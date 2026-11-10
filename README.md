@@ -336,6 +336,7 @@ them. Merge validations and policies do not affect the review verdict.
 Delegate posts no comments and votes only to approve with zero findings.
 When it finds issues, it records a provisional `waiting` result in Argus
 (not an ADO vote) and offers to continue as Review for me in the same chat.
+That result does not change the current vote state or completed-review metrics.
 
 A baseline skill ships in `skills/pr-review/` in this folder. It carries the parts
 Argus depends on plus a neutral review philosophy. To use it, copy it into your

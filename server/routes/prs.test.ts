@@ -23,7 +23,10 @@ const context: ApiContext = {
     deleteAllData: async () => {},
     refreshPr: async () => {},
     trackPr: async () => ({ ok: false }),
-    recordReview: (_canonical, opts) => recorded.push(opts.verdict),
+    recordReview: (canonical, opts) => {
+        recorded.push(opts.verdict);
+        store.recordReview(canonical, opts);
+    },
     dispatch: async (message) => {
         if (failDispatch) throw new Error("dispatch failed");
         prompts.push(message);
@@ -289,6 +292,52 @@ try {
         ).status,
         403,
     );
+
+    for (const body of [
+        { verdict: "approved", provisional: true },
+        { verdict: "rejected", provisional: true },
+        { provisional: true },
+        { verdict: "waiting", provisional: "true" },
+    ])
+        assert.equal(
+            (await post("/api/pr/record-review", { canonical, ...body }))
+                .status,
+            400,
+        );
+    assert.equal(recorded.length, 0);
+    const pending = store.getPr(canonical);
+    const provisionalToken = store.issueAutomaticReviewToken(canonical);
+    const otherToken = store.issueAutomaticReviewToken(canonical);
+    assert.equal(
+        (
+            await client.pr["record-review"].$post({
+                json: {
+                    canonical,
+                    verdict: "waiting",
+                    provisional: true,
+                    sha: "sha-1",
+                    token: provisionalToken,
+                },
+            })
+        ).status,
+        200,
+    );
+    assert.deepEqual(store.getPr(canonical), pending);
+    assert.equal(
+        store.listEvents(canonical).at(-1)?.type,
+        "review_provisional",
+    );
+    assert.equal(
+        store.checkVerdictAllowed(canonical, "approved", provisionalToken),
+        false,
+        "A provisional result consumes its own token.",
+    );
+    assert.equal(
+        store.checkVerdictAllowed(canonical, "approved", otherToken),
+        true,
+        "A provisional result preserves other reviews' tokens.",
+    );
+    recorded.length = 0;
 
     // Without an automatic review, tokenless approvals work.
     assert.equal((await verdict("approved")).status, 200);

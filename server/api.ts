@@ -17,7 +17,12 @@ export interface ApiContext {
     ) => Promise<{ ok: boolean; canonical?: string; reason?: string }>;
     recordReview: (
         canonical: string,
-        opts: { verdict?: string; sha?: string; sessionId?: string },
+        opts: {
+            verdict?: string;
+            sha?: string;
+            sessionId?: string;
+            provisional?: boolean;
+        },
     ) => void;
     dispatch: (message: string) => Promise<void>;
     pollerStatus: () => PollerStatus;

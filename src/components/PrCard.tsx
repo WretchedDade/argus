@@ -673,6 +673,7 @@ export function PrCard({
                         )}
                         <SizeChip files={pr.changedFiles} />
                     </div>
+                    <StatePill pr={pr} />
                 </div>
 
                 <h3 className="text-fg line-clamp-2 text-[15px] font-semibold leading-tight">
