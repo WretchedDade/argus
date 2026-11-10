@@ -1,5 +1,7 @@
 import assert from "node:assert/strict";
 import { UpdateJob } from "./update-job.ts";
+import { mock, test } from "node:test";
+import { logger } from "./log.ts";
 
 const tick = () => new Promise((r) => setImmediate(r));
 
@@ -40,3 +42,38 @@ assert.equal(
 );
 await tick();
 assert.equal(job.status().phase, "done");
+
+test("background update failures emit one safe diagnostic", async () => {
+    const lines: string[] = [];
+    const output = mock.method(process.stderr, "write", (line: string) => {
+        lines.push(line);
+        return true;
+    });
+    const previousLevel = logger.level;
+    logger.level = "info";
+    try {
+        const update = new UpdateJob();
+        update.start(async (setPhase) => {
+            setPhase("verifying");
+            throw new Error("private-upstream-text");
+        });
+        await tick();
+        assert.deepEqual(update.status(), {
+            phase: "error",
+            error: "private-upstream-text",
+        });
+        assert.equal(lines.length, 1);
+        const record = JSON.parse(lines[0]) as {
+            level: number;
+            phase: string;
+            durationMs: number;
+        };
+        assert.equal(record.level, 50);
+        assert.equal(record.phase, "verifying");
+        assert.ok(record.durationMs >= 0);
+        assert.doesNotMatch(lines[0], /private-/);
+    } finally {
+        logger.level = previousLevel;
+        output.mock.restore();
+    }
+});

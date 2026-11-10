@@ -1,5 +1,6 @@
 import { existsSync, readFileSync } from "node:fs";
 import { z } from "zod";
+import { logger } from "./log.ts";
 import type {
     ArgusConfig,
     Period,
@@ -37,7 +38,10 @@ export function loadLocalConfig(file: string): ConfigOverrides {
     try {
         return parseConfigOverrides(JSON.parse(readFileSync(file, "utf-8")));
     } catch (err) {
-        console.error(`argus: cannot read ${file}: ${(err as Error).message}`);
+        logger.warn(
+            { component: "config", err },
+            "Local config could not be read",
+        );
         return {};
     }
 }
@@ -141,7 +145,11 @@ export function salvageConfigOverrides(input: unknown): ConfigOverrides {
         const value = (input as Record<string, unknown>)[key];
         const result = ConfigSchema.shape[key].safeParse(value);
         if (result.success) out[key] = result.data;
-        else console.error(`argus: ignoring invalid saved setting: ${key}`);
+        else
+            logger.warn(
+                { component: "config", field: key },
+                "Invalid saved setting ignored",
+            );
     }
     return out;
 }
@@ -202,8 +210,9 @@ export function defaultConfig(): ArgusConfig {
     ) as (keyof ArgusConfig)[]) {
         const result = ConfigSchema.shape[key].safeParse(raw[key]);
         if (result.success) continue;
-        console.error(
-            `argus: ignoring invalid environment value for ${key}: ${result.error.issues[0]?.message}`,
+        logger.warn(
+            { component: "config", field: key },
+            "Invalid environment value ignored",
         );
         out[key] = SAFE_DEFAULTS[key];
     }

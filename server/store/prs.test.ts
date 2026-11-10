@@ -250,9 +250,13 @@ test("author fetches preserve failed fields and refresh successful fields indepe
     for (const policiesFail of [false, true]) {
         for (const commentsFail of [false, true]) {
             seed(previous);
+            const failures: string[] = [];
             const update = await fetchAuthorMeta(
                 current,
                 "https://dev.azure.com/o",
+                (operation) => {
+                    failures.push(operation);
+                },
                 {
                     listPrPolicies: policiesFail
                         ? fail
@@ -264,6 +268,10 @@ test("author fetches preserve failed fields and refresh successful fields indepe
             );
             assert.equal(update.policies.ok, !policiesFail);
             assert.equal(update.comments.ok, !commentsFail);
+            assert.deepEqual(failures, [
+                ...(policiesFail ? ["policies"] : []),
+                ...(commentsFail ? ["authorComments"] : []),
+            ]);
             for (const result of [update.policies, update.comments]) {
                 if (result.ok)
                     assert.ok(
@@ -294,6 +302,7 @@ test("author fetches preserve failed fields and refresh successful fields indepe
     const failed = await fetchAuthorMeta(
         { ...current, repoId: "" },
         "https://dev.azure.com/o",
+        () => {},
         {
             listPrPolicies: () => Promise.resolve(null),
             fetchPrThreads: () => {

@@ -18,6 +18,9 @@ import { normalizePr } from "./normalize.ts";
 import { fetchAuthorMeta } from "./authorMeta.ts";
 import { reconcile } from "./reconcile.ts";
 import type { CurrentPr } from "./types.ts";
+import { logger } from "../log.ts";
+
+const log = logger.child({ component: "poller" });
 
 export interface PollerContext {
     store: ArgusStore;
@@ -55,6 +58,7 @@ let lastError: string | null = null;
 let timer: NodeJS.Timeout | null = null;
 let leaseTimer: NodeJS.Timeout | null = null;
 let leaseStore: ArgusStore | null = null;
+let leaseFailed = false;
 
 const hostId = randomUUID(); // names this process in the poll lease
 const LEASE_TTL_MS = 120_000;
@@ -80,6 +84,7 @@ export function reconcileOnce(
 ): Promise<ReconcileSummary | null | "skipped"> {
     if (inFlight) return inFlight;
     if (!ctx.store.acquirePollLease(hostId, LEASE_TTL_MS)) {
+        log.debug("Poll skipped; another host holds the lease");
         return Promise.resolve("skipped");
     }
     inFlight = runReconcile(ctx).finally(() => {
@@ -92,9 +97,16 @@ export function reconcileOnce(
 // host polls until it closes. Other hosts wait and take over after it expires.
 function beatLease(ctx: PollerContext): void {
     try {
-        ctx.store.acquirePollLease(hostId, LEASE_TTL_MS);
-    } catch {
-        // The next beat retries.
+        if (!ctx.store.acquirePollLease(hostId, LEASE_TTL_MS)) return;
+        if (leaseFailed) log.info("Poll lease renewal recovered");
+        leaseFailed = false;
+    } catch (err) {
+        if (!leaseFailed)
+            log.warn(
+                { err },
+                "Poll lease renewal failed; next heartbeat will retry",
+            );
+        leaseFailed = true;
     }
 }
 
@@ -125,9 +137,11 @@ async function fillCommitTimes(
     ctx: PollerContext,
     limit = 50,
     canonical?: string,
-): Promise<number> {
+    runId?: number,
+): Promise<{ filled: number; failed: number }> {
     const cfg = ctx.getConfig();
     let filled = 0;
+    let failed = 0;
     // A failed lookup waits one hour, so it cannot block later PRs in the batch.
     const candidates = ctx.store
         .prsMissingCommitAt(Number.MAX_SAFE_INTEGER, canonical)
@@ -154,12 +168,18 @@ async function fillCommitTimes(
                 filled++;
             } else {
                 commitLookupFailures.set(failKey, Date.now());
+                failed++;
             }
-        } catch {
+        } catch (err) {
             commitLookupFailures.set(failKey, Date.now());
+            failed++;
+            log.debug(
+                { err, runId, operation: "commitTime" },
+                "PR enrichment failed",
+            );
         }
     }
-    return filled;
+    return { filled, failed };
 }
 
 async function runReconcile(
@@ -167,11 +187,21 @@ async function runReconcile(
 ): Promise<ReconcileSummary | null> {
     const cfg = ctx.getConfig();
     const runId = ctx.store.startPollRun();
+    const started = performance.now();
+    const runLog = log.child({ runId });
+    const failures = {
+        commitTime: 0,
+        policies: 0,
+        authorComments: 0,
+        reviewComments: 0,
+        changedFiles: 0,
+    };
     currentRunId = runId;
     const note = (level: string, msg: string, data?: Record<string, unknown>) =>
         ctx.store.recordActivity(level, msg, data, runId);
     try {
         setAuthProvider(cfg.adoAuth);
+        runLog.debug("Poll started");
         note("info", "reconcile started");
         let identity = cfg.me;
         if (!identity) {
@@ -191,6 +221,7 @@ async function runReconcile(
         note("info", `identity: ${identity}`);
 
         note("info", `listing active PRs in ${cfg.project}…`);
+        runLog.debug({ phase: "discovery" }, "Poll progress");
         const raw = await listActivePrs(cfg.orgUrl, cfg.project);
         authOk = true;
         note("info", `found ${raw?.length ?? 0} active PRs in ${cfg.project}`);
@@ -244,9 +275,10 @@ async function runReconcile(
         if (s.newRecent) note("info", `adding ${s.newRecent} new PR(s)`);
 
         const applied = ctx.store.applyPlan(plan, runId);
-        const commitTimes = await fillCommitTimes(ctx);
-        if (commitTimes)
-            note("info", `read commit time for ${commitTimes} PR(s)`);
+        const commitTimes = await fillCommitTimes(ctx, 50, undefined, runId);
+        failures.commitTime = commitTimes.failed;
+        if (commitTimes.filled)
+            note("info", `read commit time for ${commitTimes.filled} PR(s)`);
         for (const m of mine)
             ctx.store.setOwnership(
                 m.canonical,
@@ -271,13 +303,27 @@ async function runReconcile(
 
         // Enrich my authored PRs with ADO's completability signal + comment counts.
         const authored = mine.filter((m) => m.role === "author");
+        runLog.debug(
+            { phase: "enrichment", authored: authored.length },
+            "Poll progress",
+        );
         if (authored.length) {
             note(
                 "info",
                 `enriching ${authored.length} authored PR(s) with policy + comments`,
             );
             for (const m of authored) {
-                const meta = await fetchAuthorMeta(m, cfg.orgUrl);
+                const meta = await fetchAuthorMeta(
+                    m,
+                    cfg.orgUrl,
+                    (operation, err) => {
+                        failures[operation]++;
+                        runLog.debug(
+                            { err, operation },
+                            "PR enrichment failed",
+                        );
+                    },
+                );
                 for (const field of ["policies", "comments"] as const) {
                     const result = meta[field];
                     if (!result.ok)
@@ -337,8 +383,12 @@ async function runReconcile(
                         comments.mine,
                         comments.others,
                     );
-                } catch {
-                    /* retry next cycle */
+                } catch (err) {
+                    failures.reviewComments++;
+                    runLog.debug(
+                        { err, operation: "reviewComments" },
+                        "PR enrichment failed",
+                    );
                 }
             }
         }
@@ -364,13 +414,19 @@ async function runReconcile(
                     );
                     if (count !== null)
                         ctx.store.setChangedFiles(p.canonical, count, p.sha);
-                } catch {
-                    /* retry next cycle */
+                    else failures.changedFiles++;
+                } catch (err) {
+                    failures.changedFiles++;
+                    runLog.debug(
+                        { err, operation: "changedFiles" },
+                        "PR enrichment failed",
+                    );
                 }
             }
         }
 
         note("info", "checking for merged/abandoned PRs…");
+        runLog.debug({ phase: "departed" }, "Poll progress");
         const { closed } = await closeDeparted(
             ctx.store,
             cfg,
@@ -395,6 +451,18 @@ async function runReconcile(
         ctx.store.finishPollRun(runId, { ok: true, ...lastSummary });
         note("info", "reconcile done", { ...lastSummary });
         ctx.store.pruneLogs(cfg.retentionDays);
+        if (Object.values(failures).some((count) => count > 0))
+            runLog.warn(
+                { failures },
+                "Poll enrichment incomplete; later runs will retry",
+            );
+        runLog.info(
+            {
+                ...lastSummary,
+                durationMs: Math.round(performance.now() - started),
+            },
+            "Poll completed",
+        );
         return lastSummary;
     } catch (err) {
         lastError = (err as Error).message;
@@ -404,6 +472,10 @@ async function runReconcile(
         }
         ctx.store.finishPollRun(runId, { ok: false, error: lastError });
         note("error", `reconcile failed: ${lastError}`);
+        runLog.error(
+            { err, durationMs: Math.round(performance.now() - started) },
+            "Poll failed",
+        );
         return null; // never throw out of a cycle
     } finally {
         currentRunId = null;
@@ -611,7 +683,9 @@ async function refreshPrInner(
     ctx.store.setDescription(canonical, norm.description);
     ctx.store.applyScopePolicy();
     ctx.store.setChangedFiles(canonical, changedFiles, norm.sha);
-    await fillCommitTimes(ctx, 1, canonical);
+    const commitTimes = await fillCommitTimes(ctx, 1, canonical);
+    if (commitTimes.failed)
+        log.debug("PR refresh completed without a commit time");
 }
 
 // Manually track a PR by number — the escape hatch for PRs the auto-discovery
@@ -687,7 +761,9 @@ async function trackByNumberInner(
     ctx.store.restorePr(norm.canonical);
     if (!existed)
         ctx.store.appendEvent(norm.canonical, "added", { source: "manual" });
-    await fillCommitTimes(ctx, 1, norm.canonical);
+    const commitTimes = await fillCommitTimes(ctx, 1, norm.canonical);
+    if (commitTimes.failed)
+        log.debug("PR tracking completed without a commit time");
     return { ok: true, canonical: norm.canonical };
 }
 
@@ -714,8 +790,8 @@ export function stopPoller(): void {
         if (leaseTimer) return; // a restarted poller owns the lease now
         try {
             store?.releasePollLease(hostId);
-        } catch {
-            // The lease expires by itself.
+        } catch (err) {
+            log.debug({ err }, "Poll lease release failed; lease will expire");
         }
     };
     if (inFlight) inFlight.then(release, release);
@@ -731,6 +807,7 @@ function scheduleNext(ctx: PollerContext): void {
             // A poll cycle must never crash the process: a fatal here deregisters the
             // canvas. Record it and keep the schedule alive.
             lastError = err instanceof Error ? err.message : String(err);
+            log.error({ err }, "Scheduled poll failed before completion");
         } finally {
             scheduleNext(ctx);
         }

@@ -1,6 +1,7 @@
 import { fetchPrThreads, listPrPolicies } from "./client.ts";
 import type { AuthorMetaUpdate } from "../types.ts";
 import type { CurrentPr } from "./types.ts";
+import { logger } from "../log.ts";
 
 const RESOLVED_THREAD = new Set(["fixed", "wontfix", "closed", "bydesign"]);
 
@@ -8,6 +9,14 @@ const RESOLVED_THREAD = new Set(["fixed", "wontfix", "closed", "bydesign"]);
 export async function fetchAuthorMeta(
     pr: CurrentPr,
     orgUrl: string,
+    onFailure: (
+        operation: "policies" | "authorComments",
+        error: unknown,
+    ) => void = (operation, err) =>
+        logger.debug(
+            { component: "poller", operation, err },
+            "PR enrichment failed",
+        ),
     client = { listPrPolicies, fetchPrThreads },
 ): Promise<AuthorMetaUpdate> {
     const meta: AuthorMetaUpdate = {
@@ -51,6 +60,7 @@ export async function fetchAuthorMeta(
         };
     } catch (error) {
         meta.policies = { ok: false, error: String(error) };
+        onFailure("policies", error);
     }
 
     try {
@@ -80,6 +90,7 @@ export async function fetchAuthorMeta(
         }
     } catch (error) {
         meta.comments = { ok: false, error: String(error) };
+        onFailure("authorComments", error);
     }
 
     return meta;
