@@ -1,3 +1,4 @@
+import { Button, TextInput, UnstyledButton } from "@mantine/core";
 import { useMemo, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -138,7 +139,7 @@ function TrackedGroup({
             className="border-line overflow-hidden rounded-xl border"
             style={{ background: "var(--card-bg)" }}
         >
-            <button
+            <UnstyledButton
                 type="button"
                 onClick={() => setOpen((v) => !v)}
                 className="hover:bg-surface flex w-full items-center gap-2 px-4 py-2.5 text-left"
@@ -150,7 +151,7 @@ function TrackedGroup({
                 )}
                 <span className="text-fg text-sm font-semibold">{name}</span>
                 <span className="text-muted text-xs">{prs.length}</span>
-            </button>
+            </UnstyledButton>
             {open &&
                 (subgroups ? (
                     <div className="border-line flex flex-col border-t">
@@ -202,13 +203,9 @@ function ArchivedRow({ pr, onRestore }: { pr: Pr; onRestore: () => void }) {
                     {`${shortRepo(pr.repo)} #${pr.number} · ${reason}, archived ${when}`}
                 </div>
             </div>
-            <button
-                type="button"
-                onClick={onRestore}
-                className="border-line text-muted hover:text-fg rounded-md border px-2 py-0.5 text-xs"
-            >
+            <Button variant="default" type="button" onClick={onRestore}>
                 Restore
-            </button>
+            </Button>
         </div>
     );
 }
@@ -243,16 +240,17 @@ function StaleSweepBanner() {
                     </li>
                 ))}
             </ul>
-            <button
+            <Button
+                variant="default"
                 type="button"
                 disabled={sweep.isPending}
                 onClick={() =>
                     sweep.mutate(preview.candidates.map((c) => c.canonical))
                 }
-                className="border-line text-fg hover:bg-surface mt-3 rounded-md border px-3 py-1 text-xs disabled:opacity-60"
+                className="mt-3"
             >
                 Archive these and approve auto-archive
-            </button>
+            </Button>
         </section>
     );
 }
@@ -322,15 +320,14 @@ function TrackedPage() {
                         {q.trim() ? " (filtered)" : ""}
                     </p>
                 </div>
-                <div className="border-line flex items-center gap-1.5 rounded-md border px-2.5 py-1.5">
-                    <Search size={14} className="text-muted" />
-                    <input
-                        className="w-44 bg-transparent text-sm outline-none"
-                        placeholder="Filter by title, repo, author…"
-                        value={q}
-                        onChange={(e) => setQ(e.target.value)}
-                    />
-                </div>
+                <TextInput
+                    leftSection={<Search size={14} />}
+                    aria-label="Filter tracked pull requests"
+                    className="w-44"
+                    placeholder="Filter by title, repo, author…"
+                    value={q}
+                    onChange={(e) => setQ(e.target.value)}
+                />
             </div>
 
             {prsQ.isError && (
@@ -400,10 +397,10 @@ function TrackedPage() {
             )}
 
             <div className="border-line border-t pt-3">
-                <button
+                <Button
+                    variant="default"
                     type="button"
                     onClick={() => setShowArchived((v) => !v)}
-                    className="text-muted hover:text-fg flex items-center gap-1.5 text-xs"
                 >
                     {showArchived ? (
                         <ChevronDown size={14} />
@@ -412,7 +409,7 @@ function TrackedPage() {
                     )}
                     Archived
                     <span className="opacity-70">{archived.length}</span>
-                </button>
+                </Button>
                 {showArchived && (
                     <section
                         className="border-line mt-2 overflow-hidden rounded-xl border"

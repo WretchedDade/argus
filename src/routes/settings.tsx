@@ -1,8 +1,16 @@
+import { NativeSelect } from "@mantine/core";
 import { createFileRoute, useRouter } from "@tanstack/react-router";
 import { useState } from "react";
 import { flushSync } from "react-dom";
 import { useForm } from "@tanstack/react-form";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+    Button,
+    Checkbox,
+    Group as ControlGroup,
+    NavLink,
+    TextInput,
+} from "@mantine/core";
 import {
     api,
     configApi,
@@ -21,6 +29,7 @@ import { SegToggle } from "../components/SegToggle";
 import { TeamMultiSelect } from "../components/TeamMultiSelect";
 import { TeamLabelEditor } from "../components/TeamLabelEditor";
 import { pushToast } from "../lib/toast";
+import { AppearanceSettings } from "../components/AppearanceSettings";
 
 export const Route = createFileRoute("/settings")({
     loader: ({ context }) =>
@@ -97,9 +106,9 @@ function RepoScopePanel() {
                                     {r.hidden}
                                 </td>
                                 <td className="py-1.5 text-right">
-                                    <select
+                                    <NativeSelect
                                         aria-label={`Scope for ${r.repo}`}
-                                        className="border-line bg-canvas rounded-md border px-2 py-1 text-xs"
+
                                         value={r.scope ?? "default"}
                                         onChange={(e) =>
                                             void change(r.repo, e.target.value)
@@ -111,7 +120,7 @@ function RepoScopePanel() {
                                         <option value="out">
                                             Out of scope
                                         </option>
-                                    </select>
+                                    </NativeSelect>
                                 </td>
                             </tr>
                         ))}
@@ -126,22 +135,23 @@ function Row({
     label,
     hint,
     children,
+    group = false,
 }: {
     label: string;
     hint?: string;
     children: React.ReactNode;
+    group?: boolean;
 }) {
+    const Wrapper = group ? "fieldset" : "label";
+    const Heading = group ? "legend" : "span";
     return (
-        <label className="block">
-            <div className="text-fg text-sm font-medium">{label}</div>
+        <Wrapper className="block min-w-0">
+            <Heading className="text-fg text-sm font-medium">{label}</Heading>
             {children}
             {hint && <div className="text-muted mt-1 text-xs">{hint}</div>}
-        </label>
+        </Wrapper>
     );
 }
-
-const inputCls =
-    "border-line bg-canvas mt-1 w-full rounded-md border px-2.5 py-1.5 text-sm";
 
 const trimModel = (m: { model: string; reasoningEffort: string }) => ({
     model: m.model.trim(),
@@ -156,6 +166,7 @@ const REVIEW_MODES = [
 
 const GROUPS = [
     { id: "general", label: "General" },
+    { id: "appearance", label: "Appearance" },
     { id: "review", label: "Review" },
     { id: "account", label: "Account" },
     { id: "ado", label: "Azure DevOps" },
@@ -249,8 +260,8 @@ function Settings() {
             },
             recencyDays: cfg.recencyDays,
             retentionDays: cfg.retentionDays,
-            workStartHour: cfg.workStartHour,
-            workEndHour: cfg.workEndHour,
+            workStartHour: String(cfg.workStartHour),
+            workEndHour: String(cfg.workEndHour),
             workDays: cfg.workDays,
             checkForUpdates: cfg.checkForUpdates ?? true,
             vendorPattern: cfg.vendorPattern ?? "\\(.+\\)",
@@ -313,25 +324,26 @@ function Settings() {
             }}
             className="mx-auto flex max-w-3xl flex-col gap-5 pb-24"
         >
-            <div className="flex gap-8">
-                <nav className="flex w-36 shrink-0 flex-col gap-1">
+            <div className="flex flex-col gap-6 sm:flex-row sm:gap-8">
+                <nav className="flex shrink-0 gap-1 overflow-x-auto sm:w-36 sm:flex-col">
                     {GROUPS.map((g) => (
-                        <button
+                        <NavLink
                             key={g.id}
+                            component="button"
                             type="button"
+                            label={g.label}
+                            w={{ base: "auto", sm: "100%" }}
+                            active={tab === g.id}
                             aria-current={tab === g.id ? "true" : undefined}
                             onClick={() => setTab(g.id)}
-                            className={`rounded-md px-3 py-1.5 text-left text-sm ${
-                                tab === g.id
-                                    ? "text-fg bg-surface font-medium"
-                                    : "text-muted hover:text-fg"
-                            }`}
-                        >
-                            {g.label}
-                        </button>
+                            className="shrink-0 whitespace-nowrap rounded-md"
+                        />
                     ))}
                 </nav>
                 <div className="min-w-0 flex-1">
+                    <Group id="appearance" active={tab}>
+                        <AppearanceSettings />
+                    </Group>
                     <Group id="account" active={tab}>
                         <section className="flex flex-col gap-3">
                             <h2 className="text-muted text-xs font-medium uppercase tracking-wide">
@@ -378,8 +390,7 @@ function Settings() {
                                         label="Me"
                                         hint="Your ADO account email. Leave blank to use the signed-in account."
                                     >
-                                        <input
-                                            className={inputCls}
+                                        <TextInput
                                             placeholder="auto-detect"
                                             value={field.state.value}
                                             onChange={(e) =>
@@ -397,8 +408,7 @@ function Settings() {
                                         label="Avatar image"
                                         hint="Optional image URL shown for your own PRs (e.g. a photo). Falls back to initials."
                                     >
-                                        <input
-                                            className={inputCls}
+                                        <TextInput
                                             placeholder="https://…/me.jpg"
                                             value={field.state.value}
                                             onChange={(e) =>
@@ -421,8 +431,7 @@ function Settings() {
                             <form.Field name="project">
                                 {(field) => (
                                     <Row label="Project">
-                                        <input
-                                            className={inputCls}
+                                        <TextInput
                                             value={field.state.value}
                                             onChange={(e) =>
                                                 field.handleChange(
@@ -436,8 +445,7 @@ function Settings() {
                             <form.Field name="orgSlug">
                                 {(field) => (
                                     <Row label="Org slug">
-                                        <input
-                                            className={inputCls}
+                                        <TextInput
                                             value={field.state.value}
                                             onChange={(e) =>
                                                 field.handleChange(
@@ -451,8 +459,7 @@ function Settings() {
                             <form.Field name="orgUrl">
                                 {(field) => (
                                     <Row label="Org URL">
-                                        <input
-                                            className={inputCls}
+                                        <TextInput
                                             value={field.state.value}
                                             onChange={(e) =>
                                                 field.handleChange(
@@ -470,24 +477,19 @@ function Settings() {
                             </h2>
                             <form.Field name="teamPatterns">
                                 {(field) => (
-                                    <Row
-                                        label="Team reviewer patterns"
-                                        hint="Pick teams seen on your PRs, or type a custom *glob*."
-                                    >
-                                        <TeamMultiSelect
-                                            value={field.state.value}
-                                            options={teamOptions}
-                                            onChange={(v) =>
-                                                field.handleChange(v)
-                                            }
-                                        />
-                                    </Row>
+                                    <TeamMultiSelect
+                                        value={field.state.value}
+                                        options={teamOptions}
+                                        onChange={field.handleChange}
+                                        onBlur={field.handleBlur}
+                                    />
                                 )}
                             </form.Field>
                             <form.Field name="teamLabels">
                                 {(field) => (
                                     <Row
                                         label="Team labels"
+                                        group
                                         hint="Friendly names for team chips. Independent of tracking above."
                                     >
                                         <TeamLabelEditor
@@ -515,8 +517,7 @@ function Settings() {
                                         label="Review skill"
                                         hint="The skill the Review buttons tell the agent to run. Default: pr-review."
                                     >
-                                        <input
-                                            className={inputCls}
+                                        <TextInput
                                             placeholder="pr-review"
                                             value={field.state.value}
                                             onChange={(e) =>
@@ -539,8 +540,7 @@ function Settings() {
                                             hint="Both optional. Leave a field empty to use the default."
                                         >
                                             <div className="flex gap-2">
-                                                <input
-                                                    className={inputCls}
+                                                <TextInput
                                                     aria-label={`${mode.label} model ID`}
                                                     placeholder="Model ID"
                                                     value={
@@ -555,8 +555,7 @@ function Settings() {
                                                         })
                                                     }
                                                 />
-                                                <input
-                                                    className={inputCls}
+                                                <TextInput
                                                     aria-label={`${mode.label} reasoning effort`}
                                                     placeholder="Effort (low, medium, high)"
                                                     value={
@@ -587,21 +586,18 @@ function Settings() {
                             </h2>
                             <form.Field name="vendorPattern">
                                 {(field) => (
-                                    <Row
+                                    <TextInput
                                         label="Vendor name pattern"
-                                        hint="A regular expression. A display name that matches counts as a vendor. Default: \(.+\) (a name with parentheses). Leave empty to turn the rule off."
-                                    >
-                                        <input
-                                            className={inputCls}
-                                            placeholder="\(.+\)"
-                                            value={field.state.value}
-                                            onChange={(e) =>
-                                                field.handleChange(
-                                                    e.target.value,
-                                                )
-                                            }
-                                        />
-                                    </Row>
+                                        description="A regular expression. A matching display name counts as a vendor. Leave empty to turn the rule off."
+                                        placeholder="\(.+\)"
+                                        value={field.state.value}
+                                        onBlur={field.handleBlur}
+                                        onChange={(e) =>
+                                            field.handleChange(
+                                                e.currentTarget.value,
+                                            )
+                                        }
+                                    />
                                 )}
                             </form.Field>
                         </section>
@@ -612,86 +608,65 @@ function Settings() {
                             <div className="grid grid-cols-2 gap-3">
                                 <form.Field name="workStartHour">
                                     {(field) => (
-                                        <Row label="Work start (hour)">
-                                            <input
-                                                type="number"
-                                                min={0}
-                                                max={23}
-                                                className={inputCls}
-                                                value={field.state.value}
-                                                onChange={(e) =>
-                                                    field.handleChange(
-                                                        Number(e.target.value),
-                                                    )
-                                                }
-                                            />
-                                        </Row>
+                                        <TextInput
+                                            label="Work start (hour)"
+                                            type="number"
+                                            min={0}
+                                            max={23}
+                                            required
+                                            value={field.state.value}
+                                            onBlur={field.handleBlur}
+                                            onChange={(e) =>
+                                                field.handleChange(
+                                                    e.currentTarget.value,
+                                                )
+                                            }
+                                        />
                                     )}
                                 </form.Field>
                                 <form.Field name="workEndHour">
                                     {(field) => (
-                                        <Row label="Work end (hour)">
-                                            <input
-                                                type="number"
-                                                min={0}
-                                                max={23}
-                                                className={inputCls}
-                                                value={field.state.value}
-                                                onChange={(e) =>
-                                                    field.handleChange(
-                                                        Number(e.target.value),
-                                                    )
-                                                }
-                                            />
-                                        </Row>
+                                        <TextInput
+                                            label="Work end (hour)"
+                                            type="number"
+                                            min={0}
+                                            max={23}
+                                            required
+                                            value={field.state.value}
+                                            onBlur={field.handleBlur}
+                                            onChange={(e) =>
+                                                field.handleChange(
+                                                    e.currentTarget.value,
+                                                )
+                                            }
+                                        />
                                     )}
                                 </form.Field>
                             </div>
                             <form.Field name="workDays">
                                 {(field) => (
-                                    <Row label="Work days">
-                                        <div className="mt-1 flex gap-1">
-                                            {DAYS.map((d, i) => {
-                                                const on =
-                                                    field.state.value.includes(
-                                                        i,
-                                                    );
-                                                return (
-                                                    <button
-                                                        key={d}
-                                                        type="button"
-                                                        onClick={() =>
-                                                            field.handleChange(
-                                                                on
-                                                                    ? field.state.value.filter(
-                                                                          (x) =>
-                                                                              x !==
-                                                                              i,
-                                                                      )
-                                                                    : [
-                                                                          ...field
-                                                                              .state
-                                                                              .value,
-                                                                          i,
-                                                                      ].sort(),
-                                                            )
-                                                        }
-                                                        className="rounded-md border px-2 py-1 text-xs"
-                                                        style={{
-                                                            borderColor: on
-                                                                ? "var(--peacock-teal)"
-                                                                : "var(--color-line)",
-                                                            background: on
-                                                                ? "color-mix(in srgb, var(--peacock-teal) 16%, transparent)"
-                                                                : "transparent",
-                                                        }}
-                                                    >
-                                                        {d}
-                                                    </button>
-                                                );
-                                            })}
-                                        </div>
-                                    </Row>
+                                    <Checkbox.Group
+                                        label="Work days"
+                                        value={field.state.value.map(String)}
+                                        onChange={(values) =>
+                                            field.handleChange(
+                                                values
+                                                    .map(Number)
+                                                    .sort((a, b) => a - b),
+                                            )
+                                        }
+                                    >
+                                        <ControlGroup mt="xs" gap="sm">
+                                            {DAYS.map((day, index) => (
+                                                <Checkbox
+                                                    key={day}
+                                                    value={String(index)}
+                                                    label={day}
+                                                    onBlur={field.handleBlur}
+                                                />
+                                            ))}
+                                        </ControlGroup>
+                                    </Checkbox.Group>
                                 )}
                             </form.Field>
                         </section>
@@ -704,6 +679,7 @@ function Settings() {
                                 {(field) => (
                                     <Row
                                         label="Named periods"
+                                        group
                                         hint="Shaded bands on the Load & capacity chart, e.g. Hackathon, Team week, PTO."
                                     >
                                         <div className="mt-1 flex flex-col gap-2">
@@ -712,8 +688,8 @@ function Settings() {
                                                     key={i}
                                                     className="flex items-center gap-2"
                                                 >
-                                                    <input
-                                                        className="border-line bg-canvas w-full rounded-md border px-2.5 py-1.5 text-sm"
+                                                    <TextInput
+                                                        className="w-full"
                                                         placeholder="Label"
                                                         value={p.label}
                                                         onChange={(e) => {
@@ -729,9 +705,9 @@ function Settings() {
                                                             );
                                                         }}
                                                     />
-                                                    <input
+                                                    <TextInput
                                                         type="date"
-                                                        className="border-line bg-canvas shrink-0 rounded-md border px-2 py-1.5 text-sm"
+                                                        className="shrink-0"
                                                         value={p.start}
                                                         onChange={(e) => {
                                                             const next =
@@ -749,9 +725,9 @@ function Settings() {
                                                     <span className="text-muted text-xs">
                                                         →
                                                     </span>
-                                                    <input
+                                                    <TextInput
                                                         type="date"
-                                                        className="border-line bg-canvas shrink-0 rounded-md border px-2 py-1.5 text-sm"
+                                                        className="shrink-0"
                                                         value={p.end}
                                                         onChange={(e) => {
                                                             const next =
@@ -766,7 +742,8 @@ function Settings() {
                                                             );
                                                         }}
                                                     />
-                                                    <button
+                                                    <Button
+                                                        variant="default"
                                                         type="button"
                                                         onClick={() =>
                                                             field.handleChange(
@@ -776,14 +753,15 @@ function Settings() {
                                                                 ),
                                                             )
                                                         }
-                                                        className="text-muted hover:text-fg shrink-0 rounded-md border border-line px-2 py-1.5 text-xs"
+                                                        className="shrink-0"
                                                         aria-label="Remove period"
                                                     >
                                                         ✕
-                                                    </button>
+                                                    </Button>
                                                 </div>
                                             ))}
-                                            <button
+                                            <Button
+                                                variant="default"
                                                 type="button"
                                                 onClick={() =>
                                                     field.handleChange([
@@ -795,10 +773,10 @@ function Settings() {
                                                         },
                                                     ])
                                                 }
-                                                className="text-muted hover:text-fg w-fit rounded-md border border-line px-2.5 py-1 text-xs"
+                                                className="w-fit"
                                             >
                                                 + Add period
-                                            </button>
+                                            </Button>
                                         </div>
                                     </Row>
                                 )}
@@ -814,7 +792,8 @@ function Settings() {
                             {version && (
                                 <div className="text-muted flex items-center gap-3 text-xs">
                                     <span>Argus v{version}</span>
-                                    <button
+                                    <Button
+                                        variant="default"
                                         type="button"
                                         disabled={
                                             checking || !cfg.checkForUpdates
@@ -825,12 +804,11 @@ function Settings() {
                                                 : "Turn on update checks to use this"
                                         }
                                         onClick={() => void checkNow()}
-                                        className="border-line text-muted hover:text-fg rounded-md border px-2 py-0.5 disabled:opacity-60"
                                     >
                                         {checking
                                             ? "Checking…"
                                             : "Check for updates"}
-                                    </button>
+                                    </Button>
                                 </div>
                             )}
                             <form.Field name="checkForUpdates">
@@ -840,8 +818,7 @@ function Settings() {
                                         hint="Once a day, Argus asks GitHub for the latest release and shows a notice in the bell. It sends no data about you."
                                     >
                                         <label className="mt-1 flex items-center gap-2 text-sm">
-                                            <input
-                                                type="checkbox"
+                                            <Checkbox
                                                 checked={field.state.value}
                                                 onChange={(e) =>
                                                     field.handleChange(
@@ -866,10 +843,10 @@ function Settings() {
                                         label="Recency (days)"
                                         hint="Auto-add untracked PRs newer than this."
                                     >
-                                        <input
+                                        <TextInput
                                             type="number"
                                             min={1}
-                                            className={inputCls}
+
                                             value={field.state.value}
                                             onChange={(e) =>
                                                 field.handleChange(
@@ -883,10 +860,10 @@ function Settings() {
                             <form.Field name="retentionDays">
                                 {(field) => (
                                     <Row label="Log retention (days)">
-                                        <input
+                                        <TextInput
                                             type="number"
                                             min={1}
-                                            className={inputCls}
+
                                             value={field.state.value}
                                             onChange={(e) =>
                                                 field.handleChange(
@@ -913,35 +890,37 @@ function Settings() {
                             <div className="flex items-center gap-2">
                                 {confirmDelete ? (
                                     <>
-                                        <button
+                                        <Button
+                                            variant="filled"
+                                            color="red"
                                             type="button"
                                             disabled={deleting}
                                             onClick={() => void deleteAll()}
-                                            className="rounded-md bg-red-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-red-700 disabled:opacity-60"
                                         >
                                             {deleting
                                                 ? "Deleting…"
                                                 : "Yes, delete everything"}
-                                        </button>
-                                        <button
+                                        </Button>
+                                        <Button
+                                            variant="default"
                                             type="button"
                                             disabled={deleting}
                                             onClick={() =>
                                                 setConfirmDelete(false)
                                             }
-                                            className="border-line text-muted hover:text-fg rounded-md border px-3 py-1.5 text-sm"
                                         >
                                             Cancel
-                                        </button>
+                                        </Button>
                                     </>
                                 ) : (
-                                    <button
+                                    <Button
+                                        variant="light"
+                                        color="red"
                                         type="button"
                                         onClick={() => setConfirmDelete(true)}
-                                        className="rounded-md border border-red-500/60 bg-red-500/10 px-3 py-1.5 text-sm font-medium text-red-600 hover:bg-red-500/20"
                                     >
                                         Delete all data
-                                    </button>
+                                    </Button>
                                 )}
                             </div>
                         </section>
@@ -963,7 +942,7 @@ function Settings() {
                                 background:
                                     "color-mix(in srgb, var(--color-surface) 92%, transparent)",
                                 borderColor:
-                                    "color-mix(in srgb, var(--peacock-gold) 45%, var(--color-line))",
+                                    "color-mix(in srgb, var(--mantine-color-orange-6) 45%, var(--color-line))",
                             }}
                         >
                             <div className="mx-auto flex max-w-3xl items-center gap-3">
@@ -971,25 +950,21 @@ function Settings() {
                                     Unsaved changes
                                 </span>
                                 <div className="ml-auto flex items-center gap-2">
-                                    <button
+                                    <Button
                                         type="button"
                                         onClick={() => form.reset()}
-                                        className="border-line text-muted hover:text-fg rounded-md border px-3 py-1.5 text-sm"
+                                        variant="default"
                                     >
                                         Reset
-                                    </button>
-                                    <button
+                                    </Button>
+                                    <Button
                                         type="submit"
-                                        disabled={isSubmitting}
-                                        className="rounded-md px-3 py-1.5 text-sm font-semibold text-white disabled:opacity-60"
-                                        style={{
-                                            background: "var(--peacock-teal)",
-                                        }}
+                                        loading={isSubmitting}
                                     >
                                         {isSubmitting
                                             ? "Saving…"
                                             : "Save settings"}
-                                    </button>
+                                    </Button>
                                 </div>
                             </div>
                         </div>

@@ -38,6 +38,8 @@ Read [CONTRIBUTING.md](../CONTRIBUTING.md) for setup, checks, and the PR process
 - Add one file in `src/routes/` for each route. Do not edit or commit `src/routeTree.gen.ts`.
 - Fetch data with TanStack Query and the `queryOptions` from `src/lib/api.ts`. Call actions with `useMutation`, not `queryOptions`.
 - Put shared components in `src/components/` and charts in `Charts.tsx` (Recharts).
+- Prefer Mantine components and their documented composition patterns over custom UI primitives. Check examples against the installed version.
+- Keep shared component defaults and CSS variable overrides in `src/theme.ts`. Do not preserve a custom visual only to match the old design.
 
 ## Testing
 

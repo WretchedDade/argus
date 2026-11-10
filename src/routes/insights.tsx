@@ -1,5 +1,6 @@
+import { Drawer, Tabs, TextInput, UnstyledButton } from "@mantine/core";
 import { createFileRoute } from "@tanstack/react-router";
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
     CheckCircle2,
@@ -8,7 +9,6 @@ import {
     Inbox,
     Search,
     Timer,
-    X,
 } from "lucide-react";
 import {
     api,
@@ -25,6 +25,7 @@ import {
     Donut,
     HBars,
     LatencyScatter,
+    LOAD_COLORS,
     LoadChart,
     RepoScatter,
     ReviewCalendar,
@@ -207,7 +208,7 @@ function LoadPrCard({ p }: { p: LoadDayPr }) {
                         style={{
                             background: `color-mix(in srgb, var(${meta.anchor}) 14%, transparent)`,
                             borderColor: `color-mix(in srgb, var(${meta.anchor}) 40%, var(--color-line))`,
-                            color: `color-mix(in srgb, var(${meta.anchor}) 60%, var(--color-fg))`,
+                            color: `color-mix(in srgb, var(${meta.anchor}) 20%, var(--argus-tag-text))`,
                         }}
                     >
                         {meta.label}
@@ -262,19 +263,19 @@ function LoadDrawer({
         {
             id: "arrived",
             title: "New PRs",
-            color: "#0072B2",
+            color: LOAD_COLORS.inflow,
             prs: d?.arrived ?? [],
         },
         {
             id: "reviewed",
             title: "Reviewed",
-            color: "#009E73",
+            color: LOAD_COLORS.reviewed,
             prs: d?.reviewed ?? [],
         },
         {
             id: "onPlate",
             title: "On your plate",
-            color: "#E69F00",
+            color: LOAD_COLORS.backlog,
             prs: d?.onPlate ?? [],
         },
     ];
@@ -300,13 +301,13 @@ function LoadDrawer({
         {
             key: "new",
             title: "New PRs",
-            color: "#0072B2",
+            color: LOAD_COLORS.inflow,
             prs: (d?.onPlate ?? []).filter((p) => arrivedSet.has(p.canonical)),
         },
         {
             key: "reviewed",
             title: "Reviewed",
-            color: "#009E73",
+            color: LOAD_COLORS.reviewed,
             prs: (d?.onPlate ?? []).filter(
                 (p) =>
                     !arrivedSet.has(p.canonical) &&
@@ -363,207 +364,182 @@ function LoadDrawer({
               ? onPlateGroups
               : [];
 
-    // Lock the underlying page scroll while the panel is open so we don't get two
-    // side-by-side scrollbars (page + panel).
-    useEffect(() => {
-        const prev = document.body.style.overflow;
-        document.body.style.overflow = "hidden";
-        return () => {
-            document.body.style.overflow = prev;
-        };
-    }, []);
-    useEffect(() => {
-        const closeOnEscape = (event: KeyboardEvent) => {
-            if (event.key === "Escape") onClose();
-        };
-        document.addEventListener("keydown", closeOnEscape);
-        return () => document.removeEventListener("keydown", closeOnEscape);
-    }, [onClose]);
-
     return (
-        <>
-            <div
-                className="fixed inset-0 z-40 bg-black/20"
-                onClick={onClose}
-                aria-hidden="true"
-            />
-            <div
-                className="border-line fixed inset-y-0 right-0 z-50 flex w-full flex-col border-l shadow-2xl"
-                style={{ background: "var(--card-bg)" }}
-                role="dialog"
-                aria-modal="true"
-                aria-labelledby="load-detail-title"
-            >
-                <div className="border-line flex items-center justify-between border-b px-5 py-3">
-                    <div className="flex flex-col">
-                        <span
-                            id="load-detail-title"
-                            className="text-fg text-sm font-semibold"
-                        >
-                            {label}
-                        </span>
-                        <span className="text-muted text-[11px]">
-                            {granularity === "week" && d
-                                ? `Week breakdown · On your plate is the ${loadDateLabel(d.peakDayKey)} peak snapshot`
-                                : "Day load breakdown"}
-                        </span>
-                    </div>
-                    <button
-                        type="button"
-                        onClick={onClose}
-                        aria-label="Close"
-                        className="text-muted hover:text-fg rounded-md p-1"
-                    >
-                        <X size={16} />
-                    </button>
+        <Drawer
+            opened
+            onClose={onClose}
+            position="right"
+            size="xl"
+            title={
+                <div className="flex flex-col">
+                    <span className="text-fg text-sm font-semibold">
+                        {label}
+                    </span>
+                    <span className="text-muted text-[11px]">
+                        {granularity === "week" && d
+                            ? `Week breakdown · On your plate is the ${loadDateLabel(d.peakDayKey)} peak snapshot`
+                            : "Day load breakdown"}
+                    </span>
                 </div>
-
-                <div
-                    className="border-line flex border-b"
-                    role="tablist"
-                    aria-label="Load detail"
-                >
+            }
+            styles={{
+                content: { display: "flex", flexDirection: "column" },
+                body: {
+                    padding: 0,
+                    display: "flex",
+                    flexDirection: "column",
+                    flex: 1,
+                    minHeight: 0,
+                },
+            }}
+        >
+            <Tabs
+                className="flex min-h-0 flex-1 flex-col"
+                value={tab}
+                onChange={(value) => {
+                    if (
+                        value === "arrived" ||
+                        value === "reviewed" ||
+                        value === "onPlate"
+                    )
+                        setTab(value);
+                }}
+            >
+                <Tabs.List grow aria-label="Load detail">
                     {tabs.map((t) => (
-                        <button
+                        <Tabs.Tab
                             key={t.id}
-                            type="button"
-                            onClick={() => setTab(t.id)}
-                            role="tab"
-                            aria-selected={tab === t.id}
-                            className="relative flex flex-1 items-center justify-center gap-1.5 py-2.5 text-xs font-medium"
-                            style={{
-                                color:
-                                    tab === t.id
-                                        ? "var(--color-fg)"
-                                        : "var(--color-muted)",
-                            }}
-                        >
-                            <span
-                                className="h-2 w-2 shrink-0 rounded-full"
-                                style={{ background: t.color }}
-                            />
-                            {t.title}
-                            <span className="text-muted">{t.prs.length}</span>
-                            {tab === t.id && (
+                            value={t.id}
+                            leftSection={
                                 <span
-                                    className="absolute inset-x-0 bottom-0 h-0.5"
+                                    className="block h-2 w-2 shrink-0 rounded-full"
                                     style={{ background: t.color }}
                                 />
-                            )}
-                        </button>
+                            }
+                            rightSection={
+                                <span className="text-muted">
+                                    {t.prs.length}
+                                </span>
+                            }
+                        >
+                            {t.title}
+                        </Tabs.Tab>
                     ))}
-                </div>
-
-                <div className="border-line border-b px-3 py-2">
-                    <label
-                        className="border-line flex items-center gap-2 rounded-md border px-2.5 py-1.5 focus-within:outline focus-within:outline-2 focus-within:outline-offset-2"
-                        style={{ background: "var(--color-bg)" }}
-                    >
-                        <Search size={14} className="text-muted shrink-0" />
-                        <span className="sr-only">Search pull requests</span>
-                        <input
+                </Tabs.List>
+                <Tabs.Panel
+                    value={tab}
+                    className="flex min-h-0 flex-1 flex-col"
+                >
+                    <div className="border-line border-b px-3 py-2">
+                        <TextInput
                             autoFocus
+                            data-autofocus
+                            aria-label="Search pull requests"
+                            leftSection={<Search size={14} />}
+                            rightSection={
+                                <span
+                                    className="text-muted text-[11px]"
+                                    aria-live="polite"
+                                >
+                                    {filtered.length}/{active.prs.length}
+                                </span>
+                            }
+                            rightSectionWidth={64}
                             type="search"
                             value={search}
                             onChange={(event) => setSearch(event.target.value)}
                             placeholder="Search title, repo, or PR number"
-                            className="text-fg placeholder:text-muted min-w-0 flex-1 bg-transparent text-xs outline-none"
+                            className="min-w-0 flex-1"
                         />
-                        <span
-                            className="text-muted shrink-0 text-[11px]"
-                            aria-live="polite"
-                        >
-                            {filtered.length}/{active.prs.length}
-                        </span>
-                    </label>
-                </div>
+                    </div>
 
-                <div
-                    className="pretty-scroll flex-1 overflow-y-auto px-3 pb-3"
-                    role="tabpanel"
-                >
-                    {q.isError ? (
-                        <div className="text-muted py-8 text-center text-sm">
-                            Could not load this breakdown. Close the drawer and
-                            try again.
-                        </div>
-                    ) : !d ? (
-                        <div className="text-muted py-8 text-center text-sm">
-                            Loading…
-                        </div>
-                    ) : filtered.length === 0 ? (
-                        <div className="text-muted py-8 text-center text-sm">
-                            None
-                        </div>
-                    ) : groups.length > 0 ? (
-                        <div className="flex flex-col gap-4">
-                            {groups.map((g) => {
-                                const isCollapsed = collapsed[g.key];
-                                return (
-                                    <div
-                                        key={g.key}
-                                        className="flex flex-col gap-1.5"
-                                    >
-                                        <button
-                                            type="button"
-                                            onClick={() =>
-                                                setCollapsed((c) => ({
-                                                    ...c,
-                                                    [g.key]: !c[g.key],
-                                                }))
-                                            }
-                                            aria-expanded={!isCollapsed}
-                                            className="sticky top-0 z-10 -mx-3 flex items-center gap-1.5 border-b px-3 py-2"
-                                            style={{
-                                                background: "var(--card-bg)",
-                                                borderColor:
-                                                    "var(--color-line)",
-                                            }}
+                    <div className="pretty-scroll flex-1 overflow-y-auto px-3 pb-3">
+                        {q.isError ? (
+                            <div className="text-muted py-8 text-center text-sm">
+                                Could not load this breakdown. Close the drawer
+                                and try again.
+                            </div>
+                        ) : !d ? (
+                            <div className="text-muted py-8 text-center text-sm">
+                                Loading…
+                            </div>
+                        ) : filtered.length === 0 ? (
+                            <div className="text-muted py-8 text-center text-sm">
+                                None
+                            </div>
+                        ) : groups.length > 0 ? (
+                            <div className="flex flex-col gap-4">
+                                {groups.map((g) => {
+                                    const isCollapsed = collapsed[g.key];
+                                    return (
+                                        <div
+                                            key={g.key}
+                                            className="flex flex-col gap-1.5"
                                         >
-                                            <ChevronRight
-                                                size={13}
-                                                className="text-muted shrink-0 transition-transform"
+                                            <UnstyledButton
+                                                type="button"
+                                                onClick={() =>
+                                                    setCollapsed((c) => ({
+                                                        ...c,
+                                                        [g.key]: !c[g.key],
+                                                    }))
+                                                }
+                                                aria-expanded={!isCollapsed}
+                                                className="sticky top-0 z-10 -mx-3 flex items-center gap-1.5 border-b px-3 py-2"
                                                 style={{
-                                                    transform: isCollapsed
-                                                        ? "none"
-                                                        : "rotate(90deg)",
+                                                    background:
+                                                        "var(--card-bg)",
+                                                    borderColor:
+                                                        "var(--color-line)",
                                                 }}
-                                            />
-                                            <span
-                                                className="h-2 w-2 shrink-0 rounded-full"
-                                                style={{ background: g.color }}
-                                            />
-                                            <span className="text-fg text-xs font-semibold">
-                                                {g.title}
-                                            </span>
-                                            <span className="text-muted text-[11px]">
-                                                {g.prs.length}
-                                            </span>
-                                        </button>
-                                        {!isCollapsed &&
-                                            g.prs.map((p, i) => (
-                                                <LoadPrCard
-                                                    key={`${p.canonical}:${p.dayKey}:${i}`}
-                                                    p={p}
+                                            >
+                                                <ChevronRight
+                                                    size={13}
+                                                    className="text-muted shrink-0 transition-transform"
+                                                    style={{
+                                                        transform: isCollapsed
+                                                            ? "none"
+                                                            : "rotate(90deg)",
+                                                    }}
                                                 />
-                                            ))}
-                                    </div>
-                                );
-                            })}
-                        </div>
-                    ) : (
-                        <div className="flex flex-col gap-1.5 pt-3">
-                            {filtered.map((p, i) => (
-                                <LoadPrCard
-                                    key={`${p.canonical}:${p.dayKey}:${i}`}
-                                    p={p}
-                                />
-                            ))}
-                        </div>
-                    )}
-                </div>
-            </div>
-        </>
+                                                <span
+                                                    className="h-2 w-2 shrink-0 rounded-full"
+                                                    style={{
+                                                        background: g.color,
+                                                    }}
+                                                />
+                                                <span className="text-fg text-xs font-semibold">
+                                                    {g.title}
+                                                </span>
+                                                <span className="text-muted text-[11px]">
+                                                    {g.prs.length}
+                                                </span>
+                                            </UnstyledButton>
+                                            {!isCollapsed &&
+                                                g.prs.map((p, i) => (
+                                                    <LoadPrCard
+                                                        key={`${p.canonical}:${p.dayKey}:${i}`}
+                                                        p={p}
+                                                    />
+                                                ))}
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        ) : (
+                            <div className="flex flex-col gap-1.5 pt-3">
+                                {filtered.map((p, i) => (
+                                    <LoadPrCard
+                                        key={`${p.canonical}:${p.dayKey}:${i}`}
+                                        p={p}
+                                    />
+                                ))}
+                            </div>
+                        )}
+                    </div>
+                </Tabs.Panel>
+            </Tabs>
+        </Drawer>
     );
 }
 
@@ -796,17 +772,17 @@ function InsightsPage() {
                         />
                         <div className="border-line mt-3 grid gap-2 border-t pt-3 sm:grid-cols-3">
                             <LegendKey
-                                color="#0072B2"
+                                color={LOAD_COLORS.inflow}
                                 term="New PRs"
                                 desc="landed on your plate"
                             />
                             <LegendKey
-                                color="#009E73"
+                                color={LOAD_COLORS.reviewed}
                                 term="Reviewed"
                                 desc="unique PRs you reviewed"
                             />
                             <LegendKey
-                                color="#E69F00"
+                                color={LOAD_COLORS.backlog}
                                 term="On your plate"
                                 desc={
                                     gran === "week"

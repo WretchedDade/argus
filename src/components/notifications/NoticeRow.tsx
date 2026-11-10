@@ -1,33 +1,18 @@
+import { Button } from "@mantine/core";
 import type { ButtonHTMLAttributes, ReactNode } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { api, type Notice } from "../../lib/api";
 import { pushToast } from "../../lib/toast";
 import { IconBadge } from "./IconBadge";
 
-export function PrimaryButton({
-    className = "",
-    ...props
-}: ButtonHTMLAttributes<HTMLButtonElement>) {
-    return (
-        <button
-            type="button"
-            {...props}
-            className={`rounded-md px-2.5 py-1 font-semibold text-white disabled:opacity-60 ${className}`}
-            style={{ background: "var(--peacock-teal)" }}
-        />
-    );
+export function PrimaryButton(props: ButtonHTMLAttributes<HTMLButtonElement>) {
+    return <Button variant="filled" type="button" {...props} />;
 }
 
 export function SecondaryButton(
     props: ButtonHTMLAttributes<HTMLButtonElement>,
 ) {
-    return (
-        <button
-            type="button"
-            {...props}
-            className="border-line text-muted hover:text-fg rounded-md border px-2.5 py-1 font-medium disabled:opacity-60"
-        />
-    );
+    return <Button variant="default" type="button" {...props} />;
 }
 
 // Shared shell for a notice: icon, text, the kind's own actions, and Dismiss.

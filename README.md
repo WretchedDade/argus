@@ -31,6 +31,29 @@ invitations to contribute. See [CONTRIBUTING.md](CONTRIBUTING.md).
 Argus stores no secret and no password. With `az`, it gets a token from
 `az account get-access-token` at runtime.
 
+### Appearance
+
+Open **Settings > Appearance** to select a color mode and an accent.
+Changes apply at once. **Auto** selects light or dark from the
+Copilot canvas background when that token is present. In a normal browser, it
+uses the system preference. An explicit Light or Dark choice overrides both.
+This follows the host mode, not its full color palette.
+
+Appearance choices are saved in browser storage for the current origin. They
+are separate from **Save settings** and are not stored in the Argus database.
+Different browsers or canvas ports can have different choices.
+
+Controls, menus, filters, notifications, and the load drawer use Mantine.
+Throughput, load, horizontal bars, verdict mixes, and donuts use Mantine Charts.
+The streamgraph, labeled scatter plots, bubble grid, and treemap keep their
+custom Recharts layouts. Chart text, grids, and surfaces follow the selected mode.
+Verdict and category colors stay distinct from the accent.
+The radar stays in the header and uses the selected accent. Its sweep speeds
+up while a poll runs. The header uses a neutral surface in both modes.
+The sweep stops when your system requests reduced motion. Turn on
+**Settings > Appearance > Always animate the radar** to override this for the
+radar only. This choice is saved with the other appearance settings.
+
 ### Sign-in method
 
 Choose the method under **Settings > Sign-in method**. The change applies without a
@@ -458,7 +481,7 @@ parts connect and where the data lives.
 ## Stack
 
 - React 18 + TanStack Router + TanStack Query
-- Headless UI for the board filter popover and comboboxes
+- Mantine for controls, menus, filters, and notifications
 - Tailwind v4 (follows the app light/dark theme)
 - Recharts for the insights charts
 - Vite (client) and esbuild (server bundle)

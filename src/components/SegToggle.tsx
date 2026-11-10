@@ -1,34 +1,29 @@
-// Small segmented control (a horizontal row of mutually-exclusive options).
-// Shared by the insights views and the tracked-PRs view.
+import { SegmentedControl } from "@mantine/core";
+
 export function SegToggle<T extends string | number>({
     value,
     onChange,
     options,
 }: {
     value: T;
-    onChange: (v: T) => void;
+    onChange: (value: T) => void;
     options: { v: T; label: string }[];
 }) {
     return (
-        <div className="border-line inline-flex overflow-hidden rounded-md border text-xs">
-            {options.map((o) => (
-                <button
-                    key={o.v}
-                    type="button"
-                    onClick={() => onChange(o.v)}
-                    className={`px-2 py-0.5 ${value === o.v ? "text-fg" : "text-muted"}`}
-                    style={
-                        value === o.v
-                            ? {
-                                  background:
-                                      "color-mix(in srgb, var(--color-fg) 10%, transparent)",
-                              }
-                            : undefined
-                    }
-                >
-                    {o.label}
-                </button>
-            ))}
-        </div>
+        <SegmentedControl
+            size="xs"
+            value={String(value)}
+            data={options.map((option) => ({
+                value: String(option.v),
+                label: option.label,
+            }))}
+            onChange={(selected) => {
+                const option = options.find(
+                    (item) => String(item.v) === selected,
+                );
+                if (!option) throw new Error(`Unknown option: ${selected}`);
+                onChange(option.v);
+            }}
+        />
     );
 }

@@ -1,3 +1,4 @@
+import { Button, Radio, TextInput } from "@mantine/core";
 import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Loader2 } from "lucide-react";
@@ -12,9 +13,6 @@ import { SegToggle } from "./SegToggle";
 import { pushToast } from "../lib/toast";
 import { setupFormReady } from "../lib/errors";
 import { LoadErrorPage, PendingPage } from "./ErrorBanner";
-
-const inputCls =
-    "border-line bg-canvas mt-1 w-full rounded-md border px-2.5 py-1.5 text-sm";
 
 // First-run gate. The shipped config defaults are one team's, so ownership
 // classification is wrong until a new user sets their own org/project/team
@@ -182,8 +180,7 @@ function SetupForm({ cfg }: { cfg: ArgusConfig }) {
                         <div className="text-fg text-sm font-medium">
                             Identity
                         </div>
-                        <input
-                            className={inputCls}
+                        <TextInput
                             placeholder={
                                 detected
                                     ? `auto: ${detected}`
@@ -204,8 +201,7 @@ function SetupForm({ cfg }: { cfg: ArgusConfig }) {
                             <div className="text-fg text-sm font-medium">
                                 Org URL
                             </div>
-                            <input
-                                className={inputCls}
+                            <TextInput
                                 placeholder="https://dev.azure.com/your-org"
                                 value={orgUrl}
                                 onChange={(e) => setOrgUrl(e.target.value)}
@@ -215,8 +211,7 @@ function SetupForm({ cfg }: { cfg: ArgusConfig }) {
                             <div className="text-fg text-sm font-medium">
                                 Org slug
                             </div>
-                            <input
-                                className={inputCls}
+                            <TextInput
                                 placeholder="your-org"
                                 value={orgSlug}
                                 onChange={(e) => setOrgSlug(e.target.value)}
@@ -228,8 +223,7 @@ function SetupForm({ cfg }: { cfg: ArgusConfig }) {
                         <div className="text-fg text-sm font-medium">
                             Project
                         </div>
-                        <input
-                            className={inputCls}
+                        <TextInput
                             placeholder="YourProject"
                             value={project}
                             onChange={(e) => setProject(e.target.value)}
@@ -243,8 +237,7 @@ function SetupForm({ cfg }: { cfg: ArgusConfig }) {
                                 (optional)
                             </span>
                         </div>
-                        <input
-                            className={inputCls}
+                        <TextInput
                             placeholder="*Content Lifecycle Engg*, *ASN UI stewards*"
                             value={teams}
                             onChange={(e) => setTeams(e.target.value)}
@@ -273,8 +266,7 @@ function SetupForm({ cfg }: { cfg: ArgusConfig }) {
                             baseline, or bring your own.
                         </div>
                         <label className="mt-1 flex items-start gap-2">
-                            <input
-                                type="radio"
+                            <Radio
                                 className="mt-0.5"
                                 checked={installSkill}
                                 onChange={() => setInstallSkill(true)}
@@ -291,8 +283,7 @@ function SetupForm({ cfg }: { cfg: ArgusConfig }) {
                             </span>
                         </label>
                         <label className="flex items-start gap-2">
-                            <input
-                                type="radio"
+                            <Radio
                                 className="mt-0.5"
                                 checked={!installSkill}
                                 onChange={() => setInstallSkill(false)}
@@ -311,8 +302,7 @@ function SetupForm({ cfg }: { cfg: ArgusConfig }) {
                                 <div className="text-fg text-sm font-medium">
                                     Skill name
                                 </div>
-                                <input
-                                    className={inputCls}
+                                <TextInput
                                     placeholder="pr-review"
                                     value={skillName}
                                     onChange={(e) =>
@@ -329,15 +319,16 @@ function SetupForm({ cfg }: { cfg: ArgusConfig }) {
                     </div>
                 </div>
 
-                <button
+                <Button
+                    variant="filled"
                     type="button"
                     disabled={!canSave}
                     onClick={() => void submit()}
-                    className="app-header mt-6 inline-flex w-full items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50"
+                    className="mt-6 w-full"
                 >
                     {saving && <Loader2 size={15} className="animate-spin" />}
                     Start watching
-                </button>
+                </Button>
             </div>
         </div>
     );

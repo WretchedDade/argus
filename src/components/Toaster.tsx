@@ -1,50 +1,38 @@
 import { useSyncExternalStore } from "react";
-import { Check, Loader2, X } from "lucide-react";
+import { Notification, Stack } from "@mantine/core";
+import { Check, X } from "lucide-react";
 import { dismissToast, getToasts, subscribeToasts } from "../lib/toast";
-
-const TONE = {
-    success: "var(--peacock-teal)",
-    progress: "var(--peacock-teal)",
-    error: "#d64545",
-};
 
 export function Toaster() {
     const toasts = useSyncExternalStore(subscribeToasts, getToasts, getToasts);
     if (toasts.length === 0) return null;
-
     return (
-        <div className="pointer-events-none fixed bottom-4 left-1/2 z-50 flex -translate-x-1/2 flex-col items-center gap-2">
-            {toasts.map((t) => (
-                <div
-                    key={t.id}
-                    className="toast-in border-line bg-surface pointer-events-auto flex items-center gap-2 rounded-lg border px-3 py-2 text-sm shadow-lg"
-                    style={{
-                        borderColor: `color-mix(in srgb, ${TONE[t.kind]} 55%, var(--color-line))`,
-                    }}
+        <Stack
+            gap="xs"
+            className="pointer-events-none fixed bottom-4 left-1/2 z-[400] w-[min(28rem,calc(100vw-2rem))] -translate-x-1/2"
+            aria-live="polite"
+            aria-label="Status messages"
+        >
+            {toasts.map((toast) => (
+                <Notification
+                    key={toast.id}
+                    className="pointer-events-auto"
+                    color={toast.kind === "error" ? "red" : undefined}
+                    loading={toast.kind === "progress"}
+                    icon={
+                        toast.kind === "error" ? (
+                            <X size={16} />
+                        ) : (
+                            <Check size={16} />
+                        )
+                    }
+                    withCloseButton={toast.kind !== "progress"}
+                    onClose={() => dismissToast(toast.id)}
+                    withBorder
                 >
-                    <span
-                        className="flex h-4 w-4 items-center justify-center rounded-full text-white"
-                        style={{ background: TONE[t.kind] }}
-                    >
-                        {t.kind === "success" && <Check size={12} />}
-                        {t.kind === "error" && <X size={12} />}
-                        {t.kind === "progress" && (
-                            <Loader2 size={12} className="animate-spin" />
-                        )}
-                    </span>
-                    <span className="text-fg">{t.message}</span>
-                    {t.kind !== "progress" && (
-                        <button
-                            type="button"
-                            onClick={() => dismissToast(t.id)}
-                            className="text-muted hover:text-fg ml-1"
-                            aria-label="Dismiss"
-                        >
-                            <X size={13} />
-                        </button>
-                    )}
-                </div>
+                    {toast.message}
+                </Notification>
             ))}
-        </div>
+        </Stack>
     );
 }

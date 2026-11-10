@@ -1,3 +1,4 @@
+import { Badge, Button, Text } from "@mantine/core";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { LogIn } from "lucide-react";
 import { api, healthQuery } from "../lib/api";
@@ -21,12 +22,9 @@ export function AuthControl() {
     if (!auth) return null;
     if (!auth.configured || !auth.supported) {
         return (
-            <span
-                className="rounded-full border border-red-300/60 bg-red-400/20 px-2 py-0.5 text-xs text-red-100"
-                title={auth.error ?? undefined}
-            >
+            <Badge color="red" variant="light" title={auth.error ?? undefined}>
                 Auth not configured
-            </span>
+            </Badge>
         );
     }
 
@@ -35,11 +33,12 @@ export function AuthControl() {
 
     return (
         <span className="flex items-center gap-2">
-            <button
+            <Button
+                variant="default"
                 type="button"
                 onClick={() => action.mutate()}
                 disabled={action.isPending}
-                className="flex items-center gap-1.5 rounded-full border border-amber-300/60 bg-amber-400/20 px-2 py-0.5 text-xs text-amber-100 disabled:opacity-60"
+
                 title={
                     action.error instanceof Error
                         ? action.error.message
@@ -48,14 +47,11 @@ export function AuthControl() {
             >
                 <LogIn size={13} />
                 {action.isPending ? "Signing in…" : "Sign in"}
-            </button>
+            </Button>
             {action.error instanceof Error ? (
-                <span
-                    className="max-w-72 text-xs text-red-200"
-                    title={action.error.message}
-                >
+                <Text size="xs" c="red" maw={288} title={action.error.message}>
                     {action.error.message}
-                </span>
+                </Text>
             ) : null}
         </span>
     );

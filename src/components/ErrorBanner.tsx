@@ -1,3 +1,4 @@
+import { Button } from "@mantine/core";
 import { AlertTriangle, Loader2, RefreshCw } from "lucide-react";
 import { Link } from "@tanstack/react-router";
 import { describeLoadFailure, errorMessage } from "../lib/errors";
@@ -28,13 +29,9 @@ export function ErrorBanner({
                 )}
             </div>
             {onRetry && (
-                <button
-                    type="button"
-                    onClick={onRetry}
-                    className="border-line rounded-md border px-2.5 py-1 text-xs font-semibold"
-                >
+                <Button variant="default" type="button" onClick={onRetry}>
                     Retry
-                </button>
+                </Button>
             )}
         </div>
     );
@@ -90,14 +87,10 @@ export function LoadErrorPage({
                 {f.technical}
             </div>
             <div className="flex items-center gap-3">
-                <button
-                    type="button"
-                    onClick={onRetry}
-                    className="app-header inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold text-white"
-                >
+                <Button variant="filled" type="button" onClick={onRetry}>
                     <RefreshCw size={14} />
                     Retry
-                </button>
+                </Button>
                 {showActivityLink && (
                     <Link
                         to="/activity"

@@ -17,7 +17,7 @@ function RunRow({ run }: { run: PollRun }) {
         <Link
             to="/activity/$runId"
             params={{ runId: String(run.id) }}
-            className="flex items-center gap-3 px-3 py-2 transition-colors hover:bg-[color-mix(in_srgb,var(--peacock-teal)_9%,transparent)]"
+            className="flex items-center gap-3 px-3 py-2 transition-colors hover:bg-[color-mix(in_srgb,var(--mantine-primary-color-filled)_9%,transparent)]"
         >
             <span
                 className={`inline-block h-2 w-2 shrink-0 rounded-full ${running ? "watch-pulse" : ""}`}
@@ -34,7 +34,7 @@ function RunRow({ run }: { run: PollRun }) {
                 ) : running ? (
                     <span
                         className="text-sm"
-                        style={{ color: "var(--peacock-teal)" }}
+                        style={{ color: "var(--mantine-primary-color-filled)" }}
                     >
                         watching…
                     </span>
@@ -43,22 +43,22 @@ function RunRow({ run }: { run: PollRun }) {
                         <StatChip
                             label="added"
                             value={run.added ?? 0}
-                            color="var(--peacock-gold)"
+                            color="var(--mantine-color-orange-6)"
                         />
                         <StatChip
                             label="updated"
                             value={run.updated ?? 0}
-                            color="var(--peacock-teal)"
+                            color="var(--mantine-primary-color-filled)"
                         />
                         <StatChip
                             label="events"
                             value={run.events ?? 0}
-                            color="var(--peacock-emerald)"
+                            color="var(--mantine-color-green-6)"
                         />
                         <StatChip
                             label="closed"
                             value={run.closed ?? 0}
-                            color="var(--peacock-blue)"
+                            color="var(--mantine-color-blue-6)"
                         />
                     </>
                 )}
@@ -86,11 +86,14 @@ function RunsList() {
                         to="/activity/$runId"
                         params={{ runId: String(active.id) }}
                         className="flex items-center gap-1.5 text-xs"
-                        style={{ color: "var(--peacock-teal)" }}
+                        style={{ color: "var(--mantine-primary-color-filled)" }}
                     >
                         <span
                             className="watch-pulse inline-block h-2 w-2 rounded-full"
-                            style={{ background: "var(--peacock-teal)" }}
+                            style={{
+                                background:
+                                    "var(--mantine-primary-color-filled)",
+                            }}
                         />
                         watching now
                     </Link>

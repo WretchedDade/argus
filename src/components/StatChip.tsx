@@ -1,5 +1,4 @@
-// A small tinted stat pill (e.g. "3 added"). Text mixes toward the theme
-// foreground so it stays legible in light and dark. Renders nothing for 0.
+// A tinted stat pill with muted theme text. Renders nothing for 0.
 export function StatChip({
     label,
     value,
@@ -11,14 +10,16 @@ export function StatChip({
 }) {
     if (!value) return null;
     return (
-        <span
-            className="rounded px-1.5 py-0.5 text-xs font-medium tabular-nums"
-            style={{
-                color: `color-mix(in srgb, ${color} 60%, var(--color-fg))`,
-                background: `color-mix(in srgb, ${color} 14%, transparent)`,
-            }}
+        <Badge
+            component="span"
+            variant="light"
+            color={color}
+            radius="sm"
+            size="sm"
+            className="tabular-nums"
         >
             {value} {label}
-        </span>
+        </Badge>
     );
 }
+import { Badge } from "@mantine/core";

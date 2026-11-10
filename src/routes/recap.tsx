@@ -1,3 +1,4 @@
+import { Button } from "@mantine/core";
 import { useMemo, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
@@ -11,6 +12,7 @@ import {
 } from "../lib/api";
 import { shortRepo } from "../lib/format";
 import { pushToast } from "../lib/toast";
+import { SegToggle } from "../components/SegToggle";
 
 function weekRange(offset: number): {
     start: number;
@@ -86,37 +88,42 @@ const EFFORT_META: {
         key: "size",
         label: "Change size",
         desc: "Files changed",
-        color: "var(--peacock-blue)",
+        color: "var(--mantine-color-blue-6)",
     },
     {
         key: "updates",
         label: "Update churn",
         desc: "PR revisions",
-        color: "var(--peacock-indigo)",
+        color: "var(--mantine-color-violet-6)",
     },
     {
         key: "depth",
         label: "Review depth",
         desc: "Last review mode and your comments",
-        color: "var(--peacock-teal)",
+        color: "var(--mantine-primary-color-filled)",
     },
     {
         key: "discussion",
         label: "Discussion",
         desc: "Comments from others",
-        color: "var(--peacock-emerald)",
+        color: "var(--mantine-color-green-6)",
     },
     {
         key: "revisits",
         label: "Revisits",
         desc: "Additional review actions",
-        color: "var(--peacock-gold)",
+        color: "var(--mantine-color-orange-6)",
     },
 ];
 const SCORE_BANDS = [
-    { label: "Light", min: 1, max: 3, color: "var(--peacock-blue)" },
-    { label: "Moderate", min: 4, max: 6, color: "var(--peacock-teal)" },
-    { label: "Heavy", min: 7, max: 9, color: "var(--peacock-gold)" },
+    { label: "Light", min: 1, max: 3, color: "var(--mantine-color-blue-6)" },
+    {
+        label: "Moderate",
+        min: 4,
+        max: 6,
+        color: "var(--mantine-primary-color-filled)",
+    },
+    { label: "Heavy", min: 7, max: 9, color: "var(--mantine-color-orange-6)" },
     { label: "Intense", min: 10, max: 14, color: "#c75b5b" },
 ];
 
@@ -219,7 +226,7 @@ function ScorePill({ score }: { score: number }) {
         <span
             className="inline-flex h-9 min-w-9 shrink-0 items-center justify-center rounded-lg px-2 text-sm font-semibold tabular-nums"
             style={{
-                color: `color-mix(in srgb, ${band.color} 72%, var(--color-fg))`,
+                color: `color-mix(in srgb, ${band.color} 20%, var(--argus-tag-text))`,
                 background: `color-mix(in srgb, ${band.color} 15%, transparent)`,
             }}
             aria-label={`Effort score ${score} of 14`}
@@ -237,7 +244,7 @@ function ComponentChips({ effort }: { effort: WeeklyReviewEffort }) {
                     key={item.key}
                     className="rounded px-1.5 py-0.5 text-[10px] font-medium tabular-nums"
                     style={{
-                        color: `color-mix(in srgb, ${item.color} 65%, var(--color-fg))`,
+                        color: `color-mix(in srgb, ${item.color} 20%, var(--argus-tag-text))`,
                         background: `color-mix(in srgb, ${item.color} 12%, transparent)`,
                     }}
                 >
@@ -255,7 +262,7 @@ function RankedReview({ pr }: { pr: WeeklyReviewPr }) {
             href={pr.canonical}
             target="_blank"
             rel="noreferrer"
-            className="border-line group flex items-start gap-3 border-t px-4 py-3 transition-colors first:border-t-0 hover:bg-[color-mix(in_srgb,var(--peacock-teal)_8%,transparent)] focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-[var(--peacock-teal)]"
+            className="border-line group flex items-start gap-3 border-t px-4 py-3 transition-colors first:border-t-0 hover:bg-[color-mix(in_srgb,var(--mantine-primary-color-filled)_8%,transparent)] focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-[var(--mantine-primary-color-filled)]"
         >
             <ScorePill score={pr.effort.score} />
             <div className="min-w-0 flex-1">
@@ -305,7 +312,7 @@ function ContextList({
                         </div>
                         <div className="mt-1 h-1 overflow-hidden rounded-full bg-[color-mix(in_srgb,var(--color-fg)_8%,transparent)]">
                             <div
-                                className="h-full rounded-full bg-[var(--peacock-teal)]"
+                                className="h-full rounded-full bg-[var(--mantine-primary-color-filled)]"
                                 style={{
                                     width: `${Math.max(3, (item.effort / maxEffort) * 100)}%`,
                                 }}
@@ -442,38 +449,22 @@ function RecapPage() {
                     </p>
                 </div>
                 <div className="flex items-center gap-2 self-start sm:self-auto">
-                    <div className="border-line inline-flex overflow-hidden rounded-md border text-xs">
-                        {[
-                            { value: 0, label: "This week" },
-                            { value: -1, label: "Last week" },
-                        ].map((option) => (
-                            <button
-                                key={option.value}
-                                type="button"
-                                onClick={() => setOffset(option.value)}
-                                className={`px-2.5 py-1.5 focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-[var(--peacock-teal)] ${offset === option.value ? "text-fg" : "text-muted hover:text-fg"}`}
-                                style={
-                                    offset === option.value
-                                        ? {
-                                              background:
-                                                  "color-mix(in srgb, var(--color-fg) 10%, transparent)",
-                                          }
-                                        : undefined
-                                }
-                            >
-                                {option.label}
-                            </button>
-                        ))}
-                    </div>
-                    <button
+                    <SegToggle
+                        value={offset}
+                        onChange={setOffset}
+                        options={[
+                            { v: 0, label: "This week" },
+                            { v: -1, label: "Last week" },
+                        ]}
+                    />
+                    <Button
+                        variant="filled"
                         type="button"
                         onClick={copy}
                         disabled={!facts || !rhythm}
-                        className="inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-semibold text-white transition-opacity hover:opacity-90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--peacock-teal)] disabled:cursor-not-allowed disabled:opacity-50"
-                        style={{ background: "var(--peacock-teal)" }}
                     >
                         <Copy size={14} /> Copy
-                    </button>
+                    </Button>
                 </div>
             </div>
 

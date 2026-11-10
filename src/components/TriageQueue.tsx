@@ -1,3 +1,4 @@
+import { ActionIcon, Collapse, Tooltip, UnstyledButton } from "@mantine/core";
 import { useState } from "react";
 import { ErrorBanner, LoadErrorPage } from "./ErrorBanner";
 import {
@@ -50,9 +51,10 @@ function CollapsedSection({
     return (
         <section id={id} className="scroll-mt-20 flex flex-col gap-2">
             {collapsible ? (
-                <button
+                <UnstyledButton
                     type="button"
                     onClick={() => setOpen((v) => !v)}
+                    aria-expanded={open}
                     className="text-muted hover:text-fg flex w-full items-center gap-2 py-1 text-left transition-colors"
                 >
                     {open ? (
@@ -67,7 +69,7 @@ function CollapsedSection({
                     {hint && (
                         <span className="text-xs opacity-60">· {hint}</span>
                     )}
-                </button>
+                </UnstyledButton>
             ) : (
                 <div className="flex items-baseline gap-2">
                     <h2 className="text-fg text-sm font-semibold">{label}</h2>
@@ -79,7 +81,7 @@ function CollapsedSection({
                     )}
                 </div>
             )}
-            {shown && (
+            <Collapse in={shown}>
                 <div
                     className={
                         collapsible
@@ -101,7 +103,7 @@ function CollapsedSection({
                         />
                     ))}
                 </div>
-            )}
+            </Collapse>
         </section>
     );
 }
@@ -121,21 +123,17 @@ function SectionRail({ entries }: { entries: RailEntry[] }) {
     return (
         <nav className="fixed left-3 top-1/2 z-40 flex -translate-y-1/2 flex-col gap-1.5">
             {entries.map((e) => (
-                <button
-                    key={e.id}
-                    type="button"
-                    aria-label={e.label}
-                    onClick={() => jump(e.id)}
-                    className="group pr-card border-line text-muted hover:text-fg relative rounded-full border p-2 shadow-sm transition-colors"
-                >
-                    <e.Icon size={16} />
-                    <span
-                        role="tooltip"
-                        className="pr-card border-line text-fg pointer-events-none absolute left-full top-1/2 z-50 ml-2 -translate-y-1/2 whitespace-nowrap rounded-md border px-2 py-1 text-xs opacity-0 shadow-md transition-opacity duration-100 group-hover:opacity-100"
+                <Tooltip key={e.id} label={e.label} position="right" withArrow>
+                    <ActionIcon
+                        variant="subtle"
+                        type="button"
+                        aria-label={e.label}
+                        onClick={() => jump(e.id)}
+                        className="relative"
                     >
-                        {e.label}
-                    </span>
-                </button>
+                        <e.Icon size={16} />
+                    </ActionIcon>
+                </Tooltip>
             ))}
         </nav>
     );
@@ -324,7 +322,12 @@ export function TriageQueue({
                     className="flex scroll-mt-20 flex-col gap-3"
                 >
                     {[...active].sort(byQueuePriority).map((pr) => (
-                        <PrCard key={pr.canonical} pr={pr} labels={labels} />
+                        <PrCard
+                            key={pr.canonical}
+                            pr={pr}
+                            labels={labels}
+                            variant={needsAction(pr) ? "full" : "compact"}
+                        />
                     ))}
                 </section>
             )}

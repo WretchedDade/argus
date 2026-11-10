@@ -1,3 +1,4 @@
+import { Button, TextInput } from "@mantine/core";
 import { useId, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, healthQuery, type AuthRegistration } from "../lib/api";
@@ -31,9 +32,10 @@ export function RegistrationShare() {
             <pre className="border-line mt-2 overflow-x-auto rounded-md border p-2 text-xs">
                 {asJson(reg)}
             </pre>
-            <button
+            <Button
+                variant="default"
                 type="button"
-                className="border-line mt-2 rounded-md border px-3 py-1 text-xs"
+                className="mt-2"
                 onClick={() =>
                     void navigator.clipboard
                         .writeText(asJson(reg))
@@ -41,7 +43,7 @@ export function RegistrationShare() {
                 }
             >
                 Copy
-            </button>
+            </Button>
         </div>
     );
 }
@@ -123,13 +125,13 @@ export function RegistrationImport() {
             {registration.isError && (
                 <p role="alert" className="text-xs text-red-500">
                     Could not load setup.{" "}
-                    <button
+                    <Button
+                        variant="default"
                         type="button"
                         onClick={() => void registration.refetch()}
-                        className="underline"
                     >
                         Try again
-                    </button>
+                    </Button>
                 </p>
             )}
             {registration.data?.fromEnv && (
@@ -150,7 +152,7 @@ export function RegistrationImport() {
                     <label htmlFor={`${id}-${key}`} className="text-sm">
                         {label} (required)
                     </label>
-                    <input
+                    <TextInput
                         ref={ref}
                         id={`${id}-${key}`}
                         type="text"
@@ -177,7 +179,7 @@ export function RegistrationImport() {
                             setRefreshError(false);
                             save.reset();
                         }}
-                        className="border-line mt-1 w-full rounded-md border bg-transparent p-2 font-mono text-xs"
+                        className="mt-1 w-full"
                     />
                     {errors[key] && (
                         <p
@@ -195,15 +197,16 @@ export function RegistrationImport() {
                     {save.error.message}
                 </p>
             )}
-            <button
+            <Button
+                variant="default"
                 type="button"
                 disabled={!registration.data}
                 aria-disabled={save.isPending}
                 onClick={submit}
-                className="border-line self-start rounded-md border px-3 py-1 text-xs disabled:opacity-50"
+                className="self-start"
             >
                 {save.isPending ? "Saving…" : "Save setup"}
-            </button>
+            </Button>
             {save.isSuccess && (
                 <p role="status" className="text-muted text-xs">
                     Setup saved. Environment overrides, if present, still apply.
@@ -229,8 +232,6 @@ export function AccountPanel() {
         onSettled: () => qc.invalidateQueries(),
     });
     if (!auth?.configured) return null;
-    const btn =
-        "border-line rounded-md border px-3 py-1 text-xs disabled:opacity-50";
     return (
         <div>
             <div className="text-fg text-sm font-medium">Account</div>
@@ -241,22 +242,24 @@ export function AccountPanel() {
             </div>
             {auth.account && (
                 <div className="mt-2 flex gap-2">
-                    <button
+                    <Button
+                        variant="default"
                         type="button"
-                        className={btn}
+
                         disabled={act.isPending}
                         onClick={() => act.mutate("switch")}
                     >
                         Switch account
-                    </button>
-                    <button
+                    </Button>
+                    <Button
+                        variant="default"
                         type="button"
-                        className={btn}
+
                         disabled={act.isPending}
                         onClick={() => act.mutate("out")}
                     >
                         Sign out
-                    </button>
+                    </Button>
                 </div>
             )}
             {act.error && (

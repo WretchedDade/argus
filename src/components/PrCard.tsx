@@ -1,6 +1,5 @@
-import { useId, useRef, useState } from "react";
-import { createPortal } from "react-dom";
-import { Button } from "@headlessui/react";
+import { useState } from "react";
+import { ActionIcon, Badge, Button, Card, Menu, Tooltip } from "@mantine/core";
 import { Link } from "@tanstack/react-router";
 import {
     AlarmClock,
@@ -23,32 +22,31 @@ import {
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { api, type Pr, type ReviewActionMode } from "../lib/api";
 import { resolveTeamLabel, shortAge, timeUntil } from "../lib/format";
-import { teamBadgeStyle } from "../lib/teamColor";
+import { teamAnchor } from "../lib/teamColor";
 import { isSnoozed, REVIEW_STATE_META } from "../lib/triage";
 import { pushToast } from "../lib/toast";
 import { usePending } from "../lib/usePending";
 import { MarkdownPreview } from "./MarkdownPreview";
 
-// The accent hue for a row: its review state, or teal ("your move") when unset.
+// Unreviewed PRs use the selected accent.
 function accentVar(pr: Pr): string {
     return pr.reviewState
         ? REVIEW_STATE_META[pr.reviewState].anchor
-        : "--color-teal-500";
+        : "--mantine-primary-color-filled";
 }
 
 function StatePill({ pr, small = false }: { pr: Pr; small?: boolean }) {
     if (!pr.reviewState) return null;
     const meta = REVIEW_STATE_META[pr.reviewState];
     return (
-        <span
-            className={`shrink-0 rounded-full font-medium ${small ? "px-1.5 py-0 text-[10px]" : "px-2 py-0.5 text-[11px]"}`}
-            style={{
-                background: `color-mix(in srgb, var(${meta.anchor}) 16%, transparent)`,
-                color: `color-mix(in srgb, var(${meta.anchor}) 62%, var(--color-fg))`,
-            }}
+        <Badge
+            className="shrink-0"
+            size={small ? "xs" : "sm"}
+            variant="light"
+            color={`var(${meta.anchor})`}
         >
             {meta.label}
-        </span>
+        </Badge>
     );
 }
 
@@ -66,16 +64,17 @@ function SizeChip({ files }: { files: number | null }) {
     if (files == null) return null;
     const b = SIZE_BUCKETS.find((x) => files <= x.max)!;
     return (
-        <span
-            className="ml-1 inline-flex shrink-0 items-center gap-1 rounded border px-1.5 py-0 text-[10px] font-medium"
-            style={{
-                borderColor: `color-mix(in srgb, var(${b.anchor}) 40%, var(--color-line))`,
-                color: `color-mix(in srgb, var(${b.anchor}) 60%, var(--color-fg))`,
-            }}
+        <Badge
+            component="span"
+            className="ml-1 shrink-0"
+            size="xs"
+            radius="sm"
+            variant="light"
+            color={`var(${b.anchor})`}
             title={`${files} file${files === 1 ? "" : "s"} changed`}
         >
             {b.label} · {files}f
-        </span>
+        </Badge>
     );
 }
 
@@ -89,49 +88,49 @@ function TeamDots({
     return (
         <>
             {teams.map((t) => (
-                <span
+                <Badge
+                    component="span"
                     key={t}
-                    className="shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium"
-                    style={teamBadgeStyle(t)}
+                    className="shrink-0"
+                    size="xs"
+                    radius="sm"
+                    variant="light"
+                    color={teamAnchor(t)}
                 >
                     {resolveTeamLabel(t, labels)}
-                </span>
+                </Badge>
             ))}
         </>
     );
 }
 
-// Visual-only actions swallow the click so they don't trigger the card's
-// stretched navigation link. (Wiring for most is still deferred.)
+// Keep action clicks separate from PR navigation.
 const swallow = (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
 };
 
-// A small hover tooltip. Uses a named group so it only reacts to its own button,
-// not the card's `group` (which would fire every tooltip at once).
 function Tip({
     label,
     children,
-    id,
     wide = false,
 }: {
     label: string;
-    children: React.ReactNode;
-    id?: string;
+    children: React.ReactElement;
     wide?: boolean;
 }) {
     return (
-        <span className={`group/tip inline-flex ${wide ? "" : "relative"}`}>
+        <Tooltip
+            label={label}
+            withArrow
+            openDelay={250}
+            events={{ hover: true, focus: true, touch: false }}
+            multiline={wide}
+            w={wide ? 288 : undefined}
+            maw="calc(100vw - 2rem)"
+        >
             {children}
-            <span
-                id={id}
-                role="tooltip"
-                className={`pr-card border-line text-fg pointer-events-none absolute bottom-full z-50 mb-1.5 rounded-md border px-2 py-1 text-xs opacity-0 shadow-md transition-opacity duration-100 group-hover/tip:opacity-100 group-focus-within/tip:opacity-100 ${wide ? "left-0 w-72 max-w-full whitespace-normal" : "left-1/2 -translate-x-1/2 whitespace-nowrap"}`}
-            >
-                {label}
-            </span>
-        </span>
+        </Tooltip>
     );
 }
 
@@ -148,7 +147,9 @@ function ActionBtn({
 }) {
     return (
         <Tip label={label}>
-            <button
+            <ActionIcon
+                variant="subtle"
+                color="gray"
                 type="button"
                 aria-label={label}
                 disabled={spinning}
@@ -156,13 +157,12 @@ function ActionBtn({
                     swallow(e);
                     onClick?.();
                 }}
-                className="text-muted hover:text-fg rounded-md p-1.5 transition-colors hover:bg-[color-mix(in_srgb,var(--color-fg)_8%,transparent)]"
             >
                 <Icon
                     size={14}
                     className={spinning ? "animate-spin" : undefined}
                 />
-            </button>
+            </ActionIcon>
         </Tip>
     );
 }
@@ -188,22 +188,7 @@ const SNOOZE_OPTIONS: [Parameters<typeof snoozeUntil>[0], string][] = [
 function SnoozeMenu({ pr }: { pr: Pr }) {
     const qc = useQueryClient();
     const [open, setOpen] = useState(false);
-    const [pos, setPos] = useState<{ bottom: number; right: number } | null>(
-        null,
-    );
-    const btnRef = useRef<HTMLButtonElement>(null);
     const wake = usePending();
-
-    const toggle = () => {
-        if (!open && btnRef.current) {
-            const r = btnRef.current.getBoundingClientRect();
-            setPos({
-                bottom: window.innerHeight - r.top + 6,
-                right: window.innerWidth - r.right,
-            });
-        }
-        setOpen((o) => !o);
-    };
 
     const snooze = async (kind: Parameters<typeof snoozeUntil>[0]) => {
         setOpen(false);
@@ -241,14 +226,13 @@ function SnoozeMenu({ pr }: { pr: Pr }) {
             }
         });
 
-    const itemCls =
-        "text-fg block w-full px-3 py-1.5 text-left hover:bg-[color-mix(in_srgb,var(--color-fg)_8%,transparent)]";
-
     // Already snoozed: the snooze action is meaningless, so offer a wake instead.
     if (isSnoozed(pr)) {
         return (
             <Tip label="Wake now">
-                <button
+                <ActionIcon
+                    variant="subtle"
+                    color="gray"
                     type="button"
                     aria-label="Wake now"
                     disabled={wake.pending}
@@ -256,90 +240,53 @@ function SnoozeMenu({ pr }: { pr: Pr }) {
                         swallow(e);
                         clearSnooze();
                     }}
-                    className="text-muted hover:text-fg inline-flex items-center rounded-md p-1.5 transition-colors hover:bg-[color-mix(in_srgb,var(--color-fg)_8%,transparent)] disabled:opacity-60"
                 >
                     {wake.pending ? (
                         <Loader2 size={14} className="animate-spin" />
                     ) : (
                         <AlarmClockOff size={14} />
                     )}
-                </button>
+                </ActionIcon>
             </Tip>
         );
     }
 
     return (
-        <>
-            <Tip label="Snooze">
-                <button
-                    ref={btnRef}
-                    type="button"
+        <Menu
+            opened={open}
+            onChange={setOpen}
+            position="top-end"
+            withinPortal
+            shadow="md"
+        >
+            <Menu.Target>
+                <ActionIcon
+                    variant="subtle"
+                    color="gray"
                     aria-label="Snooze"
-                    onClick={(e) => {
-                        swallow(e);
-                        toggle();
-                    }}
-                    className="text-muted hover:text-fg inline-flex items-center rounded-md p-1.5 transition-colors hover:bg-[color-mix(in_srgb,var(--color-fg)_8%,transparent)]"
+                    onClick={(event) => event.stopPropagation()}
                 >
                     <AlarmClock size={14} />
-                    <ChevronDown size={11} className="-ml-0.5" />
-                </button>
-            </Tip>
-            {open &&
-                pos &&
-                createPortal(
-                    <>
-                        <div
-                            className="fixed inset-0 z-50"
-                            onClick={(e) => {
-                                e.preventDefault();
-                                e.stopPropagation();
-                                setOpen(false);
-                            }}
-                        />
-                        <div
-                            className="border-line fixed z-50 w-44 overflow-hidden rounded-md border py-1 text-xs shadow-md"
-                            style={{
-                                bottom: pos.bottom,
-                                right: pos.right,
-                                background: "var(--card-bg)",
-                            }}
-                        >
-                            {SNOOZE_OPTIONS.map(([k, label]) => (
-                                <button
-                                    key={k}
-                                    type="button"
-                                    onClick={(e) => {
-                                        swallow(e);
-                                        void snooze(k);
-                                    }}
-                                    className={itemCls}
-                                >
-                                    {label}
-                                </button>
-                            ))}
-                            <div className="border-line my-1 border-t" />
-                            <button
-                                type="button"
-                                onClick={(e) => {
-                                    swallow(e);
-                                    void snoozeFte();
-                                }}
-                                className={itemCls}
-                            >
-                                Until an FTE approves
-                            </button>
-                        </div>
-                    </>,
-                    document.body,
-                )}
-        </>
+                    <ChevronDown size={11} />
+                </ActionIcon>
+            </Menu.Target>
+            <Menu.Dropdown onClick={(event) => event.stopPropagation()}>
+                {SNOOZE_OPTIONS.map(([kind, label]) => (
+                    <Menu.Item key={kind} onClick={() => void snooze(kind)}>
+                        {label}
+                    </Menu.Item>
+                ))}
+                <Menu.Divider />
+                <Menu.Item onClick={() => void snoozeFte()}>
+                    Until an FTE approves
+                </Menu.Item>
+            </Menu.Dropdown>
+        </Menu>
     );
 }
 
 export function ActionBar({ pr }: { pr: Pr }) {
     const qc = useQueryClient();
-    const helpId = useId();
     const [refreshing, setRefreshing] = useState(false);
     const scope = usePending();
     const reviewReq = useMutation({
@@ -383,19 +330,19 @@ export function ActionBar({ pr }: { pr: Pr }) {
     return (
         <div className="relative z-20 flex flex-wrap items-center gap-1.5 border-t border-line pt-2.5">
             <Tip
-                id={`${helpId}-for-me`}
                 label="Copilot reviews first. You add findings and approve comments and the vote."
                 wide
             >
                 <Button
+                    size="xs"
+                    className="shrink-0"
+                    variant="filled"
                     type="button"
-                    aria-describedby={`${helpId}-for-me`}
                     disabled={reviewReq.isPending}
                     onClick={(e) => {
                         swallow(e);
                         reviewReq.mutate("for-me");
                     }}
-                    className="inline-flex items-center gap-1.5 rounded-md bg-[color-mix(in_srgb,var(--peacock-teal)_80%,black)] px-2.5 py-1 text-xs font-semibold text-white transition-colors data-hover:bg-[color-mix(in_srgb,var(--peacock-teal)_65%,black)] data-active:bg-[color-mix(in_srgb,var(--peacock-teal)_55%,black)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent disabled:cursor-not-allowed disabled:opacity-70"
                 >
                     {reviewReq.isPending && (
                         <Loader2 size={12} className="animate-spin" />
@@ -405,44 +352,44 @@ export function ActionBar({ pr }: { pr: Pr }) {
             </Tip>
 
             <Tip
-                id={`${helpId}-with-me`}
                 label="You lead step by step. Copilot fills the gaps. You approve comments and the vote."
                 wide
             >
                 <Button
+                    size="xs"
+                    className="shrink-0"
+                    variant="default"
                     type="button"
-                    aria-describedby={`${helpId}-with-me`}
                     disabled={reviewReq.isPending}
                     onClick={(e) => {
                         swallow(e);
                         reviewReq.mutate("with-me");
                     }}
-                    className="text-muted data-hover:text-fg data-hover:border-accent inline-flex items-center gap-1 rounded-md border border-line px-2 py-1 text-xs font-semibold transition-colors data-hover:bg-[color-mix(in_srgb,var(--peacock-teal)_14%,var(--card-bg))] data-active:bg-[color-mix(in_srgb,var(--peacock-teal)_24%,var(--card-bg))] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent disabled:cursor-not-allowed disabled:opacity-70"
                 >
                     Review with me
                 </Button>
             </Tip>
             <Tip
-                id={`${helpId}-delegate`}
                 label="Copilot can approve without asking, but only with zero findings. It posts no comments."
                 wide
             >
                 <Button
+                    size="xs"
+                    className="shrink-0"
+                    variant="default"
+                    leftSection={<Bot size={12} />}
                     type="button"
-                    aria-describedby={`${helpId}-delegate`}
                     disabled={reviewReq.isPending}
                     onClick={(e) => {
                         swallow(e);
                         reviewReq.mutate("delegate");
                     }}
-                    className="text-muted data-hover:text-fg data-hover:border-accent inline-flex items-center gap-1 rounded-md border border-line px-2 py-1 text-xs font-semibold transition-colors data-hover:bg-[color-mix(in_srgb,var(--peacock-teal)_14%,var(--card-bg))] data-active:bg-[color-mix(in_srgb,var(--peacock-teal)_24%,var(--card-bg))] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent disabled:cursor-not-allowed disabled:opacity-70"
                 >
-                    <Bot size={12} />
                     Delegate
                 </Button>
             </Tip>
 
-            <div className="ml-auto flex items-center gap-0.5">
+            <div className="ml-auto flex shrink-0 items-center gap-0.5">
                 <SnoozeMenu pr={pr} />
                 <ActionBtn
                     icon={RefreshCw}
@@ -451,16 +398,18 @@ export function ActionBar({ pr }: { pr: Pr }) {
                     spinning={refreshing}
                 />
                 <Tip label="Open in Azure DevOps">
-                    <a
+                    <ActionIcon
+                        component="a"
+                        variant="subtle"
+                        color="gray"
                         href={pr.canonical}
                         target="_blank"
                         rel="noreferrer"
                         onClick={(e) => e.stopPropagation()}
                         aria-label="Open in Azure DevOps"
-                        className="text-muted hover:text-fg inline-flex rounded-md p-1.5 transition-colors hover:bg-[color-mix(in_srgb,var(--color-fg)_8%,transparent)]"
                     >
                         <ExternalLink size={14} />
-                    </a>
+                    </ActionIcon>
                 </Tip>
                 <ActionBtn
                     icon={Ban}
@@ -511,22 +460,20 @@ export function VoteChips({
             {groups.map(({ v, names }) => {
                 const m = VOTE_META[v];
                 return (
-                    <span
+                    <Badge
+                        component="span"
                         key={v}
-                        className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs font-medium"
-                        style={{
-                            background: `color-mix(in srgb, var(${m.anchor}) 15%, transparent)`,
-                            color: `color-mix(in srgb, var(${m.anchor}) 70%, var(--color-fg))`,
-                        }}
+                        variant="light"
+                        color={`var(${m.anchor})`}
+                        radius="sm"
+                        size="sm"
+                        h="auto"
+                        py={4}
+                        styles={{ label: { whiteSpace: "normal" } }}
+                        leftSection={<m.Icon size={12} />}
                     >
-                        <span
-                            className="flex h-4 w-4 shrink-0 items-center justify-center rounded-full text-white"
-                            style={{ background: `var(${m.anchor})` }}
-                        >
-                            <m.Icon size={11} />
-                        </span>
                         {m.label} {names.join(", ")}
-                    </span>
+                    </Badge>
                 );
             })}
         </div>
@@ -554,7 +501,7 @@ export function PrCard({
             <Link
                 to="/pr"
                 search={{ c: pr.canonical }}
-                className="pr-card group relative flex items-center gap-2 overflow-hidden rounded-md border py-1.5 pl-3 pr-2 text-xs opacity-85 transition hover:opacity-100"
+                className="pr-card group relative flex flex-wrap items-center gap-2 overflow-hidden rounded-md border py-1.5 pl-3 pr-2 text-xs transition sm:flex-nowrap"
                 style={{
                     borderColor: `color-mix(in srgb, var(${accent}) 42%, var(--color-line))`,
                     background: `color-mix(in srgb, var(${accent}) 13%, var(--card-bg))`,
@@ -574,7 +521,7 @@ export function PrCard({
                         vendor
                     </span>
                 )}
-                <span className="text-fg min-w-0 flex-1 truncate">
+                <span className="text-fg min-w-0 flex-1 basis-36 truncate sm:basis-auto">
                     {pr.title}
                 </span>
                 <span className="text-muted shrink-0">
@@ -616,7 +563,9 @@ export function PrCard({
                     </span>
                 )}
                 {onRestore && (
-                    <button
+                    <ActionIcon
+                        variant="subtle"
+                        color="gray"
                         type="button"
                         aria-label="Back to review"
                         disabled={restore.pending}
@@ -627,7 +576,7 @@ export function PrCard({
                                 await onRestore();
                             });
                         }}
-                        className="text-muted hover:text-fg relative z-20 shrink-0 rounded p-0.5 disabled:opacity-60"
+                        className="relative z-20 shrink-0"
                     >
                         <RotateCcw
                             size={13}
@@ -635,25 +584,29 @@ export function PrCard({
                                 restore.pending ? "animate-spin" : undefined
                             }
                         />
-                    </button>
+                    </ActionIcon>
                 )}
             </Link>
         );
     }
 
     return (
-        <div
-            className={`pr-card border-line group relative flex min-h-[150px] flex-col justify-between gap-3 rounded-xl border pl-4 pr-3.5 pt-4 pb-4 shadow-sm transition-[transform,box-shadow] hover:-translate-y-px hover:shadow-md${pr.isDraft ? " opacity-65 hover:opacity-100" : ""}`}
+        <Card
+            withBorder
+            padding="md"
+            shadow="xs"
+            className="relative flex min-h-[150px] flex-col justify-between"
         >
-            <Link
-                to="/pr"
-                search={{ c: pr.canonical }}
+            <Card.Section
+                renderRoot={(props) => (
+                    <Link to="/pr" search={{ c: pr.canonical }} {...props} />
+                )}
                 aria-label={pr.title}
-                className="absolute inset-0 z-10"
-            />
-
-            <div className="flex flex-col gap-1.5">
-                <div className="flex items-center justify-between gap-3">
+                p="md"
+                pb="sm"
+                className="pr-card-body flex flex-col gap-1.5"
+            >
+                <div className="flex flex-wrap items-center justify-between gap-3">
                     <div className="text-muted flex min-w-0 items-center gap-1.5 text-xs">
                         <GitPullRequest size={12} className="shrink-0" />
                         <span className="text-fg truncate font-semibold">
@@ -683,9 +636,9 @@ export function PrCard({
                 {pr.description && <MarkdownPreview text={pr.description} />}
 
                 <VoteChips votes={pr.otherVotes} />
-            </div>
+            </Card.Section>
 
-            <div className="flex flex-col gap-2.5">
+            <Card.Section p="md" pt={0} className="flex flex-col gap-2.5">
                 <div className="text-muted flex items-center gap-2.5 text-[11px]">
                     {pr.author && (
                         <span className="truncate">by {pr.author}</span>
@@ -708,7 +661,7 @@ export function PrCard({
                     )}
                 </div>
                 <ActionBar pr={pr} />
-            </div>
-        </div>
+            </Card.Section>
+        </Card>
     );
 }

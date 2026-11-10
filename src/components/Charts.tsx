@@ -1,17 +1,11 @@
 import {
     Area,
     AreaChart,
-    Bar,
-    BarChart,
     CartesianGrid,
     Cell,
-    ComposedChart,
     Customized,
     Label,
     LabelList,
-    Legend,
-    Pie,
-    PieChart,
     ReferenceArea,
     ResponsiveContainer,
     Scatter,
@@ -23,8 +17,15 @@ import {
     ZAxis,
 } from "recharts";
 import { useState, type ReactElement } from "react";
+import {
+    BarChart as MantineBarChart,
+    CompositeChart,
+    DonutChart,
+} from "@mantine/charts";
+import { ColorSwatch, Group, Progress, Stack, Text } from "@mantine/core";
 import type { InsightsLoadBucket, Period } from "../lib/api";
 import { fmtHours, nameColor, shortRepo } from "../lib/format";
+import { SegToggle } from "./SegToggle";
 
 type StreamItem = {
     at: string;
@@ -63,11 +64,10 @@ const VERDICT_COLOR: Record<string, string> = {
 };
 const latColor = (v: string | null) => VERDICT_COLOR[v ?? ""] ?? "#0072B2";
 
-// Recharts is intentionally confined to this file. The rest of the app depends
-// only on these thin wrappers, so swapping charting libraries later is local.
+// Keep chart-library details behind these domain components.
 
-const AXIS = "#94a3b8"; // slate-400, legible on both light and dark surfaces
-const GRID = "rgba(148,163,184,0.18)";
+const AXIS = "var(--mantine-color-dimmed)";
+const GRID = "var(--mantine-color-default-border)";
 const TOOLTIP = {
     background: "var(--card-bg)",
     border: "1px solid var(--color-line)",
@@ -75,6 +75,12 @@ const TOOLTIP = {
     fontSize: 12,
     color: "var(--color-fg)",
 } as const;
+
+export const LOAD_COLORS = {
+    inflow: "var(--mantine-primary-color-filled)",
+    reviewed: "var(--mantine-color-gray-6)",
+    backlog: "var(--argus-load-backlog)",
+};
 
 // Parse a date-only key ("YYYY-MM-DD") as a LOCAL date. Using `new Date(key)`
 // would parse it as UTC midnight and shift the day in negative-offset zones.
@@ -106,48 +112,30 @@ export function ThroughputChart({
     data: { week: string; quick: number; review: number }[];
 }) {
     return (
-        <ResponsiveContainer width="100%" height={180}>
-            <BarChart
-                data={data}
-                margin={{ top: 4, right: 4, bottom: 0, left: -22 }}
-            >
-                <CartesianGrid stroke={GRID} vertical={false} />
-                <XAxis
-                    dataKey="week"
-                    tickFormatter={weekLabel}
-                    tick={{ fill: AXIS, fontSize: 11 }}
-                    axisLine={false}
-                    tickLine={false}
-                />
-                <YAxis
-                    allowDecimals={false}
-                    tick={{ fill: AXIS, fontSize: 11 }}
-                    axisLine={false}
-                    tickLine={false}
-                    width={30}
-                />
-                <Tooltip
-                    cursor={{ fill: "rgba(148,163,184,0.08)" }}
-                    contentStyle={TOOLTIP}
-                    labelFormatter={(w) =>
-                        `Week of ${weekLabel(String(w as string))}`
-                    }
-                />
-                <Bar
-                    dataKey="review"
-                    stackId="a"
-                    fill="#14b8a6"
-                    name="Review with me"
-                />
-                <Bar
-                    dataKey="quick"
-                    stackId="a"
-                    fill="#38bdf8"
-                    name="Review for me"
-                    radius={[3, 3, 0, 0]}
-                />
-            </BarChart>
-        </ResponsiveContainer>
+        <MantineBarChart
+            h={180}
+            data={data}
+            dataKey="week"
+            type="stacked"
+            withLegend
+            tickLine="none"
+            series={[
+                {
+                    name: "review",
+                    label: "Review with me",
+                    color: "var(--mantine-primary-color-filled)",
+                },
+                { name: "quick", label: "Review for me", color: "gray.5" },
+            ]}
+            xAxisProps={{ tickFormatter: weekLabel }}
+            yAxisProps={{ allowDecimals: false, width: 30 }}
+            tooltipProps={{
+                labelFormatter: (week) =>
+                    typeof week === "string"
+                        ? `Week of ${weekLabel(week)}`
+                        : week,
+            }}
+        />
     );
 }
 
@@ -221,7 +209,7 @@ export function LoadChart({
                       <text
                           dy={16}
                           textAnchor="middle"
-                          fill={AXIS}
+                          fill="var(--mantine-color-dimmed)"
                           fontSize={11}
                       >
                           {fmt(key)}
@@ -229,90 +217,83 @@ export function LoadChart({
                   </g>
               );
           }
-        : { fill: AXIS, fontSize: 11 };
+        : { fill: "var(--mantine-color-dimmed)", fontSize: 11 };
     return (
-        <ResponsiveContainer width="100%" height={240}>
-            <ComposedChart
-                data={data}
-                margin={{ top: 8, right: 4, bottom: 0, left: 0 }}
-                onClick={(s: { activeLabel?: string | number }) => {
+        <CompositeChart
+            h={240}
+            data={data}
+            dataKey="key"
+            withLegend
+            withDots={false}
+            tickLine="none"
+            series={[
+                {
+                    name: "backlog",
+                    label: backlogName,
+                    type: "area",
+                    color: LOAD_COLORS.backlog,
+                },
+                {
+                    name: "inflow",
+                    label: "New PRs",
+                    type: "bar",
+                    color: LOAD_COLORS.inflow,
+                },
+                {
+                    name: "throughput",
+                    label: "Reviewed",
+                    type: "bar",
+                    color: LOAD_COLORS.reviewed,
+                },
+            ]}
+            xAxisProps={{
+                tickFormatter: fmt,
+                tick,
+                interval: granularity === "day" ? 0 : "preserveStartEnd",
+                minTickGap: 8,
+            }}
+            yAxisProps={{ allowDecimals: false, width: 30 }}
+            tooltipProps={{
+                labelFormatter: (key) =>
+                    typeof key !== "string"
+                        ? key
+                        : granularity === "day"
+                          ? fmt(key)
+                          : `Week of ${weekLabel(key)}`,
+            }}
+            barProps={{ radius: [3, 3, 0, 0] }}
+            areaProps={{ fillOpacity: 0.14 }}
+            composedChartProps={{
+                margin: { top: 8, right: 4, bottom: 0, left: 0 },
+                onClick: (s: { activeLabel?: string | number }) => {
                     if (onSelect && s?.activeLabel != null)
                         onSelect(String(s.activeLabel));
-                }}
-                style={onSelect ? { cursor: "pointer" } : undefined}
-            >
-                {bands.map(({ p, span }) => (
-                    <ReferenceArea
-                        key={p.label + span.x1}
-                        x1={span.x1}
-                        x2={span.x2}
-                        ifOverflow="extendDomain"
-                        fill="#7C4DFF"
-                        fillOpacity={0.12}
-                        stroke="#7C4DFF"
-                        strokeOpacity={0.25}
-                    >
-                        <Label
-                            value={p.label}
-                            position="insideTop"
-                            fill="#9575ff"
-                            fontSize={10}
-                            offset={4}
-                        />
-                    </ReferenceArea>
-                ))}
-                <CartesianGrid stroke={GRID} vertical={false} />
-                <XAxis
-                    dataKey="key"
-                    tickFormatter={fmt}
-                    tick={tick}
-                    axisLine={false}
-                    tickLine={false}
-                    interval={granularity === "day" ? 0 : "preserveStartEnd"}
-                    minTickGap={8}
-                />
-                <YAxis
-                    allowDecimals={false}
-                    tick={{ fill: AXIS, fontSize: 11 }}
-                    axisLine={false}
-                    tickLine={false}
-                    width={30}
-                />
-                <Tooltip
-                    cursor={{ fill: "rgba(148,163,184,0.08)" }}
-                    contentStyle={TOOLTIP}
-                    itemStyle={{ color: "var(--color-fg)" }}
-                    labelFormatter={(k) =>
-                        granularity === "day"
-                            ? fmt(String(k as string))
-                            : `Week of ${weekLabel(String(k as string))}`
-                    }
-                />
-                <Area
-                    type="monotone"
-                    dataKey="backlog"
-                    name={backlogName}
-                    stroke="#E69F00"
-                    strokeWidth={2}
-                    fill="#E69F00"
-                    fillOpacity={0.14}
-                    dot={false}
-                    isAnimationActive={false}
-                />
-                <Bar
-                    dataKey="inflow"
-                    name="New PRs"
-                    fill="#0072B2"
-                    radius={[3, 3, 0, 0]}
-                />
-                <Bar
-                    dataKey="throughput"
-                    name="Reviewed"
-                    fill="#009E73"
-                    radius={[3, 3, 0, 0]}
-                />
-            </ComposedChart>
-        </ResponsiveContainer>
+                },
+                style: onSelect ? { cursor: "pointer" } : undefined,
+            }}
+        >
+            {bands.map(({ p, span }) => (
+                <ReferenceArea
+                    key={p.label + span.x1}
+                    x1={span.x1}
+                    x2={span.x2}
+                    yAxisId="left"
+                    ifOverflow="extendDomain"
+                    fill="var(--mantine-color-violet-6)"
+                    fillOpacity={0.12}
+                    stroke="var(--mantine-color-violet-6)"
+                    strokeOpacity={0.25}
+                >
+                    <Label
+                        value={p.label}
+                        position="insideTop"
+                        fill="var(--mantine-color-text)"
+                        fontSize={10}
+                        offset={4}
+                    />
+                </ReferenceArea>
+            ))}
+        </CompositeChart>
     );
 }
 
@@ -737,7 +718,7 @@ export function ReviewStreamChart({
     );
 }
 
-const PERIOD_COLOR = "#7C4DFF"; // context-band accent (violet), distinct from the peacock band palette
+const PERIOD_COLOR = "#7C4DFF"; // Context bands stay distinct from the data series.
 
 // Top-centered pill for a context band (e.g. "Hackathon"), rendered as the
 // ReferenceArea's label so the period reads as a labeled span, not bare text.
@@ -963,20 +944,19 @@ export function DepthMeter({
     const pct = (n: number) => Math.round((n / total) * 100);
     return (
         <div className="flex flex-col gap-2">
-            <div className="flex h-5 w-full overflow-hidden rounded-md">
+            <Progress.Root size={20} aria-label="Review depth distribution">
                 {segments.map((s) =>
                     s.count > 0 ? (
-                        <div
+                        <Progress.Section
                             key={s.label}
-                            style={{
-                                width: `${(s.count / total) * 100}%`,
-                                background: s.color,
-                            }}
+                            value={(s.count / total) * 100}
+                            color={s.color}
                             title={`${s.label}: ${s.count} (${pct(s.count)}%)`}
+                            aria-label={s.label}
                         />
                     ) : null,
                 )}
-            </div>
+            </Progress.Root>
             <div className="flex flex-wrap gap-x-4 gap-y-1">
                 {segments.map((s) => (
                     <span
@@ -1002,108 +982,68 @@ export function DepthMeter({
 // size shown in the tooltip. Used by Review depth (avg comments by type/repo/latency).
 export function DepthBars({
     data,
-    color = "#0072B2",
+    color = "var(--mantine-primary-color-filled)",
     width = 120,
 }: {
     data: { label: string; avg: number | null; count: number }[];
     color?: string;
     width?: number;
 }) {
-    const rows = data
-        .filter((d) => d.avg != null)
-        .map((d) => ({ ...d, avg: d.avg as number }));
+    const rows = data.flatMap((d) =>
+        d.avg == null ? [] : [{ ...d, avg: d.avg }],
+    );
     return (
-        <ResponsiveContainer
-            width="100%"
-            height={Math.max(60, rows.length * 30 + 8)}
-        >
-            <BarChart
-                data={rows}
-                layout="vertical"
-                margin={{ top: 0, right: 28, bottom: 0, left: 0 }}
-            >
-                <XAxis type="number" hide />
-                <YAxis
-                    type="category"
-                    dataKey="label"
-                    width={width}
-                    tick={{ fill: AXIS, fontSize: 11 }}
-                    axisLine={false}
-                    tickLine={false}
-                />
-                <Tooltip
-                    cursor={{ fill: "rgba(148,163,184,0.08)" }}
-                    contentStyle={TOOLTIP}
-                    formatter={(v, _n, p) => [
-                        `${Number(v).toFixed(1)} avg · ${(p?.payload as { count?: number })?.count ?? 0} PRs`,
-                        "Comments",
-                    ]}
-                />
-                <Bar
-                    dataKey="avg"
-                    fill={color}
-                    radius={[0, 4, 4, 0]}
-                    barSize={14}
-                >
-                    <LabelList
-                        dataKey="avg"
-                        position="right"
-                        fill={AXIS}
-                        fontSize={11}
-                        formatter={(v) => Number(v).toFixed(1)}
-                    />
-                </Bar>
-            </BarChart>
-        </ResponsiveContainer>
+        <MantineBarChart
+            h={Math.max(60, rows.length * 30 + 8)}
+            data={rows}
+            dataKey="label"
+            series={[{ name: "avg", label: "Average comments", color }]}
+            orientation="vertical"
+            withXAxis={false}
+            gridAxis="none"
+            tickLine="none"
+            yAxisProps={{ width }}
+            barProps={{ barSize: 14, radius: [0, 4, 4, 0] }}
+            barChartProps={{
+                margin: { top: 0, right: 32, bottom: 0, left: 0 },
+            }}
+            withBarValueLabel
+            valueFormatter={(value) => value.toFixed(1)}
+            tooltipProps={{
+                labelFormatter: (label) => {
+                    const row = rows.find((row) => row.label === label);
+                    return row ? `${row.label} · ${row.count} PRs` : label;
+                },
+            }}
+        />
     );
 }
 
 // Horizontal bar list, e.g. aging buckets.
 export function HBars({
     data,
-    color = "#14b8a6",
+    color = "var(--mantine-primary-color-filled)",
 }: {
     data: { label: string; count: number }[];
     color?: string;
 }) {
     return (
-        <ResponsiveContainer
-            width="100%"
-            height={Math.max(60, data.length * 30 + 8)}
-        >
-            <BarChart
-                data={data}
-                layout="vertical"
-                margin={{ top: 0, right: 20, bottom: 0, left: 0 }}
-            >
-                <XAxis type="number" hide allowDecimals={false} />
-                <YAxis
-                    type="category"
-                    dataKey="label"
-                    width={120}
-                    tick={{ fill: AXIS, fontSize: 11 }}
-                    axisLine={false}
-                    tickLine={false}
-                />
-                <Tooltip
-                    cursor={{ fill: "rgba(148,163,184,0.08)" }}
-                    contentStyle={TOOLTIP}
-                />
-                <Bar
-                    dataKey="count"
-                    fill={color}
-                    radius={[0, 4, 4, 0]}
-                    barSize={14}
-                >
-                    <LabelList
-                        dataKey="count"
-                        position="right"
-                        fill={AXIS}
-                        fontSize={11}
-                    />
-                </Bar>
-            </BarChart>
-        </ResponsiveContainer>
+        <MantineBarChart
+            h={Math.max(60, data.length * 30 + 8)}
+            data={data}
+            dataKey="label"
+            series={[{ name: "count", label: "PRs", color }]}
+            orientation="vertical"
+            withXAxis={false}
+            gridAxis="none"
+            tickLine="none"
+            yAxisProps={{ width: 120 }}
+            barProps={{ barSize: 14, radius: [0, 4, 4, 0] }}
+            barChartProps={{
+                margin: { top: 0, right: 24, bottom: 0, left: 0 },
+            }}
+            withBarValueLabel
+        />
     );
 }
 
@@ -1157,55 +1097,26 @@ export function VoteBars({
         );
     };
     return (
-        <ResponsiveContainer
-            width="100%"
-            height={Math.max(120, data.length * 48 + 44)}
-        >
-            <BarChart
-                data={data}
-                layout="vertical"
-                stackOffset="expand"
-                margin={{ top: 0, right: 8, bottom: 0, left: 0 }}
-            >
-                <XAxis type="number" hide />
-                <YAxis
-                    type="category"
-                    dataKey="label"
-                    width={hasAvg ? 104 : 64}
-                    tick={tick}
-                    axisLine={false}
-                    tickLine={false}
-                />
-                <Tooltip
-                    cursor={{ fill: "rgba(148,163,184,0.08)" }}
-                    contentStyle={TOOLTIP}
-                    itemStyle={{ color: "var(--color-fg)" }}
-                />
-                <Legend
-                    iconType="circle"
-                    iconSize={8}
-                    wrapperStyle={{ fontSize: 11 }}
-                    formatter={(v) => (
-                        <span style={{ color: "var(--color-fg)" }}>{v}</span>
-                    )}
-                />
-                {VERDICT_BARS.map(([key, name, color], i) => (
-                    <Bar
-                        key={key}
-                        dataKey={key}
-                        stackId="v"
-                        fill={color}
-                        name={name}
-                        barSize={26}
-                        radius={
-                            i === VERDICT_BARS.length - 1
-                                ? [0, 3, 3, 0]
-                                : undefined
-                        }
-                    />
-                ))}
-            </BarChart>
-        </ResponsiveContainer>
+        <MantineBarChart
+            h={Math.max(120, data.length * 48 + 44)}
+            data={data}
+            dataKey="label"
+            series={VERDICT_BARS.map(([name, label, color]) => ({
+                name,
+                label,
+                color,
+            }))}
+            orientation="vertical"
+            type="percent"
+            withXAxis={false}
+            gridAxis="none"
+            tickLine="none"
+            yAxisProps={{ width: hasAvg ? 104 : 64, tick }}
+            barProps={{ barSize: 26 }}
+            withLegend
+            legendProps={{ verticalAlign: "bottom" }}
+            valueFormatter={(value) => `${value} PRs`}
+        />
     );
 }
 
@@ -1221,52 +1132,6 @@ const PIE_COLORS = [
     "#F0E442",
     "#999999",
 ];
-
-const RAD = Math.PI / 180;
-
-interface SliceProps {
-    cx: number;
-    cy: number;
-    midAngle: number;
-    innerRadius: number;
-    outerRadius: number;
-    value: number;
-    percent: number;
-}
-
-// Draw the count inside each slice; skip slivers too small to hold text.
-function renderSliceValue(p: SliceProps) {
-    if (p.percent < 0.05) return null;
-    const r = p.innerRadius + (p.outerRadius - p.innerRadius) * 0.5;
-    const x = p.cx + r * Math.cos(-p.midAngle * RAD);
-    const y = p.cy + r * Math.sin(-p.midAngle * RAD);
-    return (
-        <text
-            x={x}
-            y={y}
-            fill="#0b1220"
-            fontSize={11}
-            fontWeight={700}
-            textAnchor="middle"
-            dominantBaseline="central"
-        >
-            {p.value}
-        </text>
-    );
-}
-
-function legendLabel(value: unknown, entry: unknown) {
-    const s = String(value);
-    const t = s.length > 26 ? `${s.slice(0, 25)}…` : s;
-    const count = (entry as { payload?: { count?: number } } | undefined)
-        ?.payload?.count;
-    return (
-        <span style={{ color: "var(--color-fg)" }}>
-            {t}
-            {count != null && <span style={{ opacity: 0.6 }}> · {count}</span>}
-        </span>
-    );
-}
 
 // Part-to-whole donut. Counts sit on the slices; a vertical legend on the right
 // uses the card's horizontal room to map color to (possibly long) names.
@@ -1779,26 +1644,11 @@ export function ReviewCalendar({ items }: { items: RhythmItem[] }) {
     return (
         <div className="flex flex-col gap-3">
             <div className="flex justify-end">
-                <div className="border-line inline-flex overflow-hidden rounded-md border text-xs">
-                    {ranges.map(([label, m]) => (
-                        <button
-                            key={label}
-                            type="button"
-                            onClick={() => setMonths(m)}
-                            className={`px-2 py-0.5 ${months === m ? "text-fg" : "text-muted"}`}
-                            style={
-                                months === m
-                                    ? {
-                                          background:
-                                              "color-mix(in srgb, var(--color-fg) 10%, transparent)",
-                                      }
-                                    : undefined
-                            }
-                        >
-                            {label}
-                        </button>
-                    ))}
-                </div>
+                <SegToggle
+                    value={months}
+                    onChange={setMonths}
+                    options={ranges.map(([label, v]) => ({ label, v }))}
+                />
             </div>
             <div className="flex flex-wrap gap-x-5 gap-y-4">
                 {monthList.map(({ year, month }) => {
@@ -2074,52 +1924,40 @@ export function BalanceStrip({
 }
 
 export function Donut({ data }: { data: { label: string; count: number }[] }) {
+    const segments = data.map((item, index) => ({
+        name: item.label,
+        value: item.count,
+        color: PIE_COLORS[index % PIE_COLORS.length],
+    }));
     return (
-        <ResponsiveContainer width="100%" height={200}>
-            <PieChart>
-                <Pie
-                    data={data}
-                    dataKey="count"
-                    nameKey="label"
-                    cx="34%"
-                    innerRadius={40}
-                    outerRadius={68}
-                    paddingAngle={2}
-                    stroke="none"
-                    labelLine={false}
-                    label={
-                        renderSliceValue as unknown as (
-                            props: unknown,
-                        ) => React.ReactNode
-                    }
-                    isAnimationActive={false}
-                >
-                    {data.map((_, i) => (
-                        <Cell
-                            key={i}
-                            fill={PIE_COLORS[i % PIE_COLORS.length]}
+        <Group wrap="nowrap" gap="md" mih={200}>
+            <DonutChart
+                data={segments.filter((segment) => segment.value > 0)}
+                size={136}
+                thickness={28}
+                paddingAngle={2}
+                withLabels
+                withLabelsLine={false}
+                tooltipDataSource="segment"
+            />
+            <Stack gap={4} style={{ minWidth: 0, flex: 1 }}>
+                {segments.map((segment) => (
+                    <Group key={segment.name} gap={6} wrap="nowrap">
+                        <ColorSwatch
+                            color={segment.color}
+                            size={9}
+                            style={{ flexShrink: 0 }}
                         />
-                    ))}
-                </Pie>
-                <Tooltip
-                    contentStyle={TOOLTIP}
-                    itemStyle={{ color: "var(--color-fg)" }}
-                />
-                <Legend
-                    layout="vertical"
-                    align="right"
-                    verticalAlign="middle"
-                    iconType="circle"
-                    iconSize={9}
-                    wrapperStyle={{
-                        fontSize: 11,
-                        lineHeight: "17px",
-                        maxWidth: "50%",
-                    }}
-                    formatter={legendLabel}
-                />
-            </PieChart>
-        </ResponsiveContainer>
+                        <Text size="xs" truncate title={segment.name}>
+                            {segment.name}
+                        </Text>
+                        <Text size="xs" c="dimmed" style={{ flexShrink: 0 }}>
+                            {segment.value}
+                        </Text>
+                    </Group>
+                ))}
+            </Stack>
+        </Group>
     );
 }
 

@@ -14,12 +14,12 @@ export function StatusCluster() {
     const running = !!poller?.running;
 
     return (
-        <div className="flex items-center gap-3 text-xs text-white/85">
+        <div className="text-muted flex items-center gap-3 text-xs">
             <AuthControl />
             {poller &&
                 !poller.authOk &&
                 health.data?.auth?.provider !== "broker" && (
-                    <span className="rounded-full border border-amber-300/60 bg-amber-400/20 px-2 py-0.5 text-amber-100">
+                    <span className="text-[var(--mantine-color-orange-text)]">
                         az login needed
                     </span>
                 )}

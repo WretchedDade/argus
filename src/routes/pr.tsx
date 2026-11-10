@@ -1,3 +1,4 @@
+import { Button } from "@mantine/core";
 import { useEffect } from "react";
 import { createFileRoute, useRouter } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -112,7 +113,7 @@ function StatePill({ pr }: { pr: Pr }) {
             className="shrink-0 rounded-full px-2 py-0.5 text-xs font-medium"
             style={{
                 background: `color-mix(in srgb, var(${meta.anchor}) 16%, transparent)`,
-                color: `color-mix(in srgb, var(${meta.anchor}) 62%, var(--color-fg))`,
+                color: `color-mix(in srgb, var(${meta.anchor}) 20%, var(--argus-tag-text))`,
             }}
         >
             {meta.label}
@@ -133,7 +134,7 @@ function Chip({
             className="inline-flex shrink-0 items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium"
             style={{
                 background: `color-mix(in srgb, var(${anchor}) 15%, transparent)`,
-                color: `color-mix(in srgb, var(${anchor}) 64%, var(--color-fg))`,
+                color: `color-mix(in srgb, var(${anchor}) 20%, var(--argus-tag-text))`,
             }}
         >
             {children}
@@ -185,13 +186,14 @@ function PrDetailPage() {
 
     return (
         <div className="mx-auto flex max-w-5xl flex-col gap-5">
-            <button
+            <Button
+                variant="default"
                 type="button"
                 onClick={goBack}
-                className="text-muted hover:text-fg inline-flex w-fit items-center gap-1 text-sm"
+                className="w-fit"
             >
                 <ArrowLeft size={14} /> Board
-            </button>
+            </Button>
 
             {!pr ? (
                 <p className="text-muted text-sm">
@@ -214,7 +216,10 @@ function PrDetailPage() {
                                 target="_blank"
                                 rel="noreferrer"
                                 className="inline-flex shrink-0 items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-semibold text-white"
-                                style={{ background: "var(--peacock-teal)" }}
+                                style={{
+                                    background:
+                                        "var(--mantine-primary-color-filled)",
+                                }}
                             >
                                 <ExternalLink size={14} /> Open in Azure DevOps
                             </a>
@@ -294,7 +299,7 @@ function PrDetailPage() {
                                             className="absolute -left-[21px] top-1.5 h-2 w-2 rounded-full"
                                             style={{
                                                 background:
-                                                    "var(--peacock-teal)",
+                                                    "var(--mantine-primary-color-filled)",
                                             }}
                                         />
                                         <div className="text-fg text-sm">

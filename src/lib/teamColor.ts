@@ -32,13 +32,12 @@ export function teamAnchor(name: string): string {
     return `var(${PALETTE[hashString(name) % PALETTE.length]})`;
 }
 
-// Soft tinted background, stronger border, hue-biased text that keeps contrast
-// by mixing toward the theme's foreground token.
+// Mix a small part of the team color into the muted theme text.
 export function teamBadgeStyle(name: string): CSSProperties {
     const c = teamAnchor(name);
     return {
         background: `color-mix(in srgb, ${c} 15%, transparent)`,
         borderColor: `color-mix(in srgb, ${c} 40%, var(--color-line))`,
-        color: `color-mix(in srgb, ${c} 60%, var(--color-fg))`,
+        color: `color-mix(in srgb, ${c} 20%, var(--argus-tag-text))`,
     };
 }

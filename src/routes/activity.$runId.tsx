@@ -44,7 +44,7 @@ function ChangeRow({ c, color }: { c: RunEvent; color: string }) {
             href={c.canonical}
             target="_blank"
             rel="noreferrer"
-            className="flex items-center gap-3 px-3 py-1.5 text-xs transition-colors hover:bg-[color-mix(in_srgb,var(--peacock-teal)_9%,transparent)]"
+            className="flex items-center gap-3 px-3 py-1.5 text-xs transition-colors hover:bg-[color-mix(in_srgb,var(--mantine-primary-color-filled)_9%,transparent)]"
         >
             <span className="text-muted shrink-0 tabular-nums">
                 {c.repo} #{c.number}
@@ -88,7 +88,9 @@ function ChangeSection({
 
 function TraceItem({ entry, last }: { entry: ActivityEntry; last: boolean }) {
     const err = entry.level === "error";
-    const dot = err ? "var(--true-color-red, #cf222e)" : "var(--peacock-teal)";
+    const dot = err
+        ? "var(--true-color-red, #cf222e)"
+        : "var(--mantine-primary-color-filled)";
     return (
         <li className="relative pb-2.5 pl-6 last:pb-0">
             {!last && (
@@ -153,7 +155,9 @@ function RunDetail() {
                             {running && (
                                 <span
                                     className="ml-auto text-xs"
-                                    style={{ color: "var(--peacock-teal)" }}
+                                    style={{
+                                        color: "var(--mantine-primary-color-filled)",
+                                    }}
                                 >
                                     live
                                 </span>
@@ -172,22 +176,22 @@ function RunDetail() {
                                 <StatChip
                                     label="added"
                                     value={run.added ?? 0}
-                                    color="var(--peacock-gold)"
+                                    color="var(--mantine-color-orange-6)"
                                 />
                                 <StatChip
                                     label="updated"
                                     value={run.updated ?? 0}
-                                    color="var(--peacock-teal)"
+                                    color="var(--mantine-primary-color-filled)"
                                 />
                                 <StatChip
                                     label="events"
                                     value={run.events ?? 0}
-                                    color="var(--peacock-emerald)"
+                                    color="var(--mantine-color-green-6)"
                                 />
                                 <StatChip
                                     label="closed"
                                     value={run.closed ?? 0}
-                                    color="var(--peacock-blue)"
+                                    color="var(--mantine-color-blue-6)"
                                 />
                             </div>
                         ) : null}
@@ -195,17 +199,17 @@ function RunDetail() {
 
                     <ChangeSection
                         title="Added"
-                        color="var(--peacock-gold)"
+                        color="var(--mantine-color-orange-6)"
                         items={added}
                     />
                     <ChangeSection
                         title="Updated"
-                        color="var(--peacock-teal)"
+                        color="var(--mantine-primary-color-filled)"
                         items={updated}
                     />
                     <ChangeSection
                         title="Closed"
-                        color="var(--peacock-blue)"
+                        color="var(--mantine-color-blue-6)"
                         items={closed}
                     />
                     {run.finishedAt && changes.length === 0 && (
@@ -230,12 +234,15 @@ function RunDetail() {
                                 <span
                                     className="watch-pulse absolute top-1.5 left-0 h-2.5 w-2.5 rounded-full"
                                     style={{
-                                        background: "var(--peacock-teal)",
+                                        background:
+                                            "var(--mantine-primary-color-filled)",
                                     }}
                                 />
                                 <span
                                     className="text-xs"
-                                    style={{ color: "var(--peacock-teal)" }}
+                                    style={{
+                                        color: "var(--mantine-primary-color-filled)",
+                                    }}
                                 >
                                     watching…
                                 </span>

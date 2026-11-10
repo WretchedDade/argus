@@ -1,3 +1,4 @@
+import { Button } from "@mantine/core";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Loader2 } from "lucide-react";
 import { api, configApi, type ArgusConfig } from "../lib/api";
@@ -120,37 +121,29 @@ export function AuthGate({ onDismiss }: { onDismiss: () => void }) {
 
                 <div className="mt-6 flex items-center justify-end gap-3">
                     {provider === "broker" && auth?.configured && (
-                        <button
+                        <Button
+                            variant="filled"
                             type="button"
                             disabled={busy}
                             onClick={() => recheck.mutate(api.signIn)}
-                            className="app-header inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50"
                         >
                             {busy && (
                                 <Loader2 size={15} className="animate-spin" />
                             )}
                             Sign in
-                        </button>
+                        </Button>
                     )}
-                    <button
+                    <Button
+                        variant="filled"
                         type="button"
                         disabled={busy}
                         onClick={() => recheck.mutate(undefined)}
-                        className={
-                            provider === "broker" && auth?.configured
-                                ? "border-line hover:bg-black/5 rounded-lg border px-4 py-2.5 text-sm"
-                                : "app-header inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50"
-                        }
                     >
                         Check again
-                    </button>
-                    <button
-                        type="button"
-                        onClick={onDismiss}
-                        className="border-line hover:bg-black/5 rounded-lg border px-4 py-2.5 text-sm text-muted"
-                    >
+                    </Button>
+                    <Button variant="default" type="button" onClick={onDismiss}>
                         Skip
-                    </button>
+                    </Button>
                 </div>
             </div>
         </div>

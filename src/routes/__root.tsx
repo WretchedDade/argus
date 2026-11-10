@@ -7,11 +7,11 @@ import {
 import type { QueryClient } from "@tanstack/react-query";
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
+import { ActionIcon, Badge, Button, Menu } from "@mantine/core";
 import { ChevronDown, Settings as SettingsIcon } from "lucide-react";
 import { configQuery, healthQuery, prsQuery } from "../lib/api";
 import { needsYouCount } from "../lib/triage";
 import { useUpdateToasts } from "../lib/useUpdate";
-import { BrandMark } from "../components/BrandMark";
 import { NotificationsBell } from "../components/NotificationsBell";
 import { ArchiveBanner } from "../components/notifications/ArchiveBanner";
 import { PrSearch } from "../components/PrSearch";
@@ -20,6 +20,7 @@ import { StatusCluster } from "../components/StatusCluster";
 import { AuthGate } from "../components/AuthGate";
 import { SetupGate } from "../components/SetupGate";
 import { Toaster } from "../components/Toaster";
+import { BrandMark } from "../components/BrandMark";
 
 export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
     {
@@ -43,85 +44,46 @@ const menuTabs = [
 function TabCount({ n, tone }: { n: number; tone: "attention" | "neutral" }) {
     if (n <= 0) return null;
     return (
-        <span
-            className="ml-1.5 inline-flex min-w-[1.1rem] items-center justify-center rounded-full px-1 text-[11px] font-semibold leading-4"
-            style={
-                tone === "attention"
-                    ? { background: "var(--peacock-gold)", color: "#3a2c00" }
-                    : { background: "rgba(255,255,255,0.25)", color: "#fff" }
-            }
+        <Badge
+            size="sm"
+            variant="light"
+            color={tone === "attention" ? undefined : "gray"}
+            ml={6}
         >
             {n}
-        </span>
+        </Badge>
     );
 }
 
 // Dropdown grouping the secondary views (Insights / Recap / Activity). The
 // trigger shows the active child's name when you're on one, else "Insights".
 function NavMenu() {
-    const [open, setOpen] = useState(false);
     const { pathname } = useLocation();
     const active = menuTabs.find((t) => pathname.startsWith(t.to));
     return (
-        <div className="relative">
-            <button
-                type="button"
-                onClick={() => setOpen((o) => !o)}
-                className="inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-md px-2.5 py-1 text-sm transition-colors hover:text-white"
-                style={
-                    active
-                        ? {
-                              background: "rgba(255,255,255,0.22)",
-                              color: "#fff",
-                          }
-                        : { color: "rgba(255,255,255,0.8)" }
-                }
-            >
-                {active ? active.label : "Insights"}
-                <ChevronDown
-                    size={14}
-                    className={
-                        open
-                            ? "rotate-180 transition-transform"
-                            : "transition-transform"
-                    }
-                />
-            </button>
-            {open && (
-                <>
-                    <div
-                        className="fixed inset-0 z-40"
-                        onClick={() => setOpen(false)}
-                    />
-                    <div
-                        className="border-line absolute left-0 top-full z-50 mt-1.5 w-40 overflow-hidden rounded-lg border shadow-lg"
-                        style={{ background: "var(--card-bg)" }}
-                    >
-                        {menuTabs.map((t) => (
-                            <Link
-                                key={t.to}
-                                to={t.to}
-                                onClick={() => setOpen(false)}
-                                className="text-fg hover:bg-surface block px-3 py-2 text-sm"
-                                activeProps={{
-                                    style: {
-                                        background:
-                                            "color-mix(in srgb, var(--color-fg) 8%, transparent)",
-                                        fontWeight: 600,
-                                    },
-                                }}
-                            >
-                                {t.label}
-                            </Link>
-                        ))}
-                    </div>
-                </>
-            )}
-        </div>
+        <Menu shadow="md" position="bottom-start" withinPortal>
+            <Menu.Target>
+                <Button
+                    variant={active ? "light" : "subtle"}
+                    color={active ? undefined : "gray"}
+                    rightSection={<ChevronDown size={14} />}
+                >
+                    {active ? active.label : "Insights"}
+                </Button>
+            </Menu.Target>
+            <Menu.Dropdown>
+                {menuTabs.map((t) => (
+                    <Menu.Item component={Link} key={t.to} to={t.to}>
+                        {t.label}
+                    </Menu.Item>
+                ))}
+            </Menu.Dropdown>
+        </Menu>
     );
 }
 
 function RootLayout() {
+    const { pathname } = useLocation();
     const health = useQuery(healthQuery).data;
     const prs = useQuery(prsQuery).data ?? [];
     const recencyDays = useQuery(configQuery).data?.recencyDays ?? 7;
@@ -171,7 +133,7 @@ function RootLayout() {
     return (
         <div className="app-bg text-fg min-h-screen">
             <div className="app-shell">
-                <header className="app-header sticky top-0 z-30 flex flex-col gap-3.5 px-4 py-2.5">
+                <header className="app-header sticky top-0 z-30 flex flex-col gap-3.5 px-4 pb-2.5 pt-3.5">
                     <div className="flex items-center gap-3">
                         <div className="flex shrink-0 items-center gap-2.5">
                             <BrandMark size={30} />
@@ -182,31 +144,45 @@ function RootLayout() {
                         <div className="ml-auto flex shrink-0 items-center gap-3">
                             <StatusCluster />
                             <NotificationsBell />
-                            <Link
+                            <ActionIcon
+                                component={Link}
                                 to="/settings"
-                                className="text-white/80 hover:text-white"
+                                variant="subtle"
+                                color="gray"
                                 title="Settings"
                                 aria-label="Settings"
                             >
                                 <SettingsIcon size={18} />
-                            </Link>
+                            </ActionIcon>
                         </div>
                     </div>
-                    <div className="flex items-center gap-2">
-                        <nav className="flex min-w-0 flex-1 flex-wrap items-center gap-1">
+                    <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                        <nav className="flex w-full min-w-0 flex-1 flex-wrap items-center gap-1 sm:w-auto">
                             {tabs.map((t) => (
-                                <Link
+                                <Button
+                                    component={Link}
+                                    size="xs"
                                     key={t.to}
                                     to={t.to}
                                     activeOptions={{ exact: t.exact }}
-                                    className="inline-flex shrink-0 items-center whitespace-nowrap rounded-md px-2.5 py-1 text-sm text-white/80 transition-colors hover:text-white"
-                                    activeProps={{
-                                        className: "text-white",
-                                        style: {
-                                            background:
-                                                "rgba(255,255,255,0.22)",
-                                        },
-                                    }}
+                                    variant={
+                                        (
+                                            t.exact
+                                                ? pathname === t.to
+                                                : pathname.startsWith(t.to)
+                                        )
+                                            ? "light"
+                                            : "subtle"
+                                    }
+                                    color={
+                                        (
+                                            t.exact
+                                                ? pathname === t.to
+                                                : pathname.startsWith(t.to)
+                                        )
+                                            ? undefined
+                                            : "gray"
+                                    }
                                 >
                                     {t.label}
                                     {counts[t.to] && (
@@ -215,11 +191,11 @@ function RootLayout() {
                                             tone={counts[t.to]!.tone}
                                         />
                                     )}
-                                </Link>
+                                </Button>
                             ))}
                             <NavMenu />
                         </nav>
-                        <div className="flex shrink-0 items-center gap-2">
+                        <div className="flex shrink-0 self-end items-center gap-2 sm:self-auto">
                             <PrSearch />
                             <RefreshButton />
                         </div>

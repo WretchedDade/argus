@@ -129,6 +129,32 @@ The client is a single-page app in `src/`:
 - API domain calls use `hono/client` with `AppType` from the server.
 - `src/components/` holds shared components. Charts are in `Charts.tsx`.
 
+`AppearanceProvider` wraps the client in Mantine. It stores mode and accent
+choices in browser storage under `argus.appearance`. Automatic mode reads the
+host's `--background-color-default` CSS token and selects light or dark from its
+relative luminance. It observes host style changes and system preference changes.
+Without an opaque host background, it uses the system preference. Explicit mode
+choices override this detection. Host palettes and accents are not imported.
+The saved `forceRadarAnimation` choice overrides reduced motion for the radar
+sweep only. Existing appearance settings default to no override.
+
+Controls, menus, filters, notifications, and the load drawer use Mantine.
+`src/theme.ts` defines shared component defaults and badge color variables.
+PR cards use `Card.Section` to separate the linked body from footer controls.
+The description fade uses an alpha mask, so it follows the surface on hover.
+TanStack Form still owns the configuration form. Appearance has its own Settings
+tab. Its choices apply separately and do not enter that form.
+Throughput, load, horizontal bars, verdict mixes, and donuts use Mantine Charts
+over the existing Recharts dependency. The streamgraph, labeled scatter plots,
+bubble grid, and treemap keep their custom Recharts layouts.
+Tailwind handles page layout and domain-specific visuals. Its semantic color
+utilities read Mantine tokens. Chart text, grids, and surfaces use those tokens.
+Keep verdict and category palettes distinct from the user-selected accent.
+Tinted tags mix a small part of their category color into muted theme text.
+Use stronger category colors for their backgrounds and borders.
+The [Mantine migration plan](MANTINE-MIGRATION.md) lists the remaining component
+replacements and proposed layout changes.
+
 There is no dev server. `npm run dev` runs a watch build, and you reload the canvas to see client changes. A server change needs a reload of extensions (or a restart of the Copilot app).
 
 ## Where the data lives

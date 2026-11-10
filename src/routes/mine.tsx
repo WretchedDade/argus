@@ -1,3 +1,4 @@
+import { ActionIcon, Button } from "@mantine/core";
 import { createFileRoute } from "@tanstack/react-router";
 import {
     ErrorBanner,
@@ -119,7 +120,7 @@ function ReviewerChips({ votes }: { votes: { name: string; vote: number }[] }) {
                         className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium"
                         style={{
                             background: `color-mix(in srgb, var(${m.anchor}) 14%, transparent)`,
-                            color: `color-mix(in srgb, var(${m.anchor}) 68%, var(--color-fg))`,
+                            color: `color-mix(in srgb, var(${m.anchor}) 20%, var(--argus-tag-text))`,
                         }}
                     >
                         <m.Icon size={11} className="shrink-0" />
@@ -176,25 +177,25 @@ function MyPrCard({ pr }: { pr: Pr }) {
                 </div>
                 <div className="flex shrink-0 flex-col items-end gap-1.5">
                     <div className="flex items-center gap-1.5">
-                        <button
+                        <ActionIcon
+                            variant="subtle"
                             type="button"
                             onClick={onRefresh}
                             disabled={refresh.isPending}
                             title="Refresh from Azure DevOps"
                             aria-label="Refresh"
-                            className="text-muted hover:text-fg hover:bg-surface rounded-md p-1 transition-colors disabled:opacity-50"
                         >
                             {refresh.isPending ? (
                                 <Loader2 size={13} className="animate-spin" />
                             ) : (
                                 <RotateCw size={13} />
                             )}
-                        </button>
+                        </ActionIcon>
                         <span
                             className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium"
                             style={{
                                 background: `color-mix(in srgb, var(${s.anchor}) 15%, transparent)`,
-                                color: `color-mix(in srgb, var(${s.anchor}) 65%, var(--color-fg))`,
+                                color: `color-mix(in srgb, var(${s.anchor}) 20%, var(--argus-tag-text))`,
                             }}
                         >
                             <s.Icon size={12} />
@@ -315,14 +316,9 @@ function MyPrs() {
                     <span className="text-muted text-sm">{mine.length}</span>
                 </div>
                 {mine.length > 0 && (
-                    <button
-                        type="button"
-                        onClick={copy}
-                        className="inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-semibold text-white"
-                        style={{ background: "var(--peacock-teal)" }}
-                    >
+                    <Button variant="filled" type="button" onClick={copy}>
                         <Copy size={14} /> Copy list
-                    </button>
+                    </Button>
                 )}
             </div>
             {mine.length === 0 ? (

@@ -47,7 +47,9 @@ const shared: Components = {
 const compactComponents: Components = {
     ...shared,
     a: ({ children }) => (
-        <span style={{ color: "var(--peacock-teal)" }}>{children}</span>
+        <span style={{ color: "var(--mantine-primary-color-filled)" }}>
+            {children}
+        </span>
     ),
     h1: ({ children }) => <p className="text-fg font-semibold">{children}</p>,
     h2: ({ children }) => <p className="text-fg font-semibold">{children}</p>,
@@ -79,7 +81,7 @@ const fullComponents: Components = {
             target="_blank"
             rel="noreferrer"
             className="underline underline-offset-2"
-            style={{ color: "var(--peacock-teal)" }}
+            style={{ color: "var(--mantine-primary-color-filled)" }}
         >
             {children}
         </a>
@@ -143,7 +145,7 @@ const fullComponents: Components = {
 };
 
 // Renders a markdown preview. By default the block content is height-capped with
-// a fade to the card background; pass clamp={false} for a full render (detail page).
+// a bottom fade; pass clamp={false} for a full render (detail page).
 export function MarkdownPreview({
     text,
     clamp = true,
@@ -185,7 +187,15 @@ function ClampedPreview({ text }: { text: string }) {
     }, [text]);
 
     return (
-        <div ref={outerRef} className="relative max-h-[7.5rem] overflow-hidden">
+        <div
+            ref={outerRef}
+            className="relative max-h-[7.5rem] overflow-hidden"
+            style={{
+                maskImage: overflowing
+                    ? "linear-gradient(to bottom, #000 calc(100% - 1.75rem), transparent)"
+                    : undefined,
+            }}
+        >
             <div
                 ref={innerRef}
                 className="text-muted text-xs leading-relaxed [&>*+*]:mt-1 [&_*]:my-0"
@@ -197,9 +207,6 @@ function ClampedPreview({ text }: { text: string }) {
                     {text}
                 </ReactMarkdown>
             </div>
-            {overflowing && (
-                <div className="pointer-events-none absolute inset-x-0 bottom-0 h-7 bg-gradient-to-b from-transparent to-[var(--card-bg)] group-hover:to-[var(--card-bg-hover)]" />
-            )}
         </div>
     );
 }

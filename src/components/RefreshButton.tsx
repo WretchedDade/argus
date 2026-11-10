@@ -1,3 +1,4 @@
+import { Button } from "@mantine/core";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, healthQuery, type Health } from "../lib/api";
 
@@ -25,13 +26,14 @@ export function RefreshButton() {
     const running = !!health.data?.poller?.running || refresh.isPending;
 
     return (
-        <button
+        <Button
+            variant="default"
             type="button"
             onClick={() => refresh.mutate()}
             disabled={running}
-            className="shrink-0 rounded-md bg-white px-2.5 py-1 text-xs font-semibold text-[var(--peacock-indigo)] shadow-sm hover:bg-white/90 disabled:opacity-60"
+            className="shrink-0"
         >
             Refresh
-        </button>
+        </Button>
     );
 }

@@ -14,7 +14,7 @@ function initials(name: string): string {
 
 // A colored initials circle keyed to the name — or a custom image when `imageUrl`
 // is set (falls back to initials if the image fails to load). `ring` draws a
-// peacock accent ring (used to mark the current user's items).
+// The accent ring marks the current user's items.
 export function Avatar({
     name,
     imageUrl,
@@ -30,7 +30,7 @@ export function Avatar({
     const label = name ?? "Unknown";
     const color = nameColor(label);
     const ringShadow = ring
-        ? "0 0 0 2px var(--card-bg), 0 0 0 4px var(--peacock-teal)"
+        ? "0 0 0 2px var(--card-bg), 0 0 0 4px var(--mantine-primary-color-filled)"
         : undefined;
 
     if (imageUrl && !broken) {
