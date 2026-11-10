@@ -4,7 +4,11 @@ import { HTTPException } from "hono/http-exception";
 import { z } from "zod";
 import type { AppEnv } from "./app.ts";
 
-export function jsonBody<T extends z.ZodType>(schema: T) {
+export function jsonBody<T extends z.ZodType>(
+    schema: T,
+    formatIssues: (issues: z.ZodError["issues"]) => string = (issues) =>
+        issues[0].message,
+) {
     return [
         createMiddleware<AppEnv>(async (c, next) => {
             // Legacy actions accept an empty body as an empty object.
@@ -15,7 +19,7 @@ export function jsonBody<T extends z.ZodType>(schema: T) {
         zValidator("json", schema, (result) => {
             if (!result.success)
                 throw new HTTPException(400, {
-                    message: result.error.issues[0].message,
+                    message: formatIssues(result.error.issues),
                 });
         }),
     ] as const;

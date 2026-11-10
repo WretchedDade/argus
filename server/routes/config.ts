@@ -4,6 +4,7 @@ import type { ApiContext } from "../api.ts";
 import type { AppEnv } from "../app.ts";
 import {
     ConfigOverridesSchema,
+    configValidationMessage,
     hasRequiredSetup,
     mergeConfig,
 } from "../config.ts";
@@ -42,48 +43,58 @@ export function configRoutes(ctx: ApiContext) {
         .get("/health", async (c) => c.json(await health()))
         .all("/health", async (c) => c.json(await health()))
         .get("/config", (c) => c.json(config()))
-        .post("/config", ...jsonBody(ConfigOverridesSchema), (c) => {
-            const before = ctx.getConfig().adoAuth;
-            const body = c.req.valid("json");
-            const config = ctx.saveConfig({
-                ...ctx.store.getConfigOverrides(),
-                ...body,
-            });
-            setAuthProvider(config.adoAuth);
-            if (config.adoAuth !== before) resetIdentity(ctx.store);
-            return c.json({ config });
-        })
+        .post(
+            "/config",
+            ...jsonBody(ConfigOverridesSchema, configValidationMessage),
+            (c) => {
+                const before = ctx.getConfig().adoAuth;
+                const body = c.req.valid("json");
+                const config = ctx.saveConfig({
+                    ...ctx.store.getConfigOverrides(),
+                    ...body,
+                });
+                setAuthProvider(config.adoAuth);
+                if (config.adoAuth !== before) resetIdentity(ctx.store);
+                return c.json({ config });
+            },
+        )
         .all("/config", (c) => c.json(config()))
-        .post("/setup", ...jsonBody(setupSchema), (c) => {
-            const { dbLocation, installPrReviewSkill, ...overrides } =
-                c.req.valid("json");
-            if (!hasRequiredSetup(mergeConfig(ctx.getConfig(), overrides)))
-                return c.json(
-                    { error: "Valid org URL, org slug, and project required" },
-                    400,
-                );
-            const storage =
-                dbLocation && ctx.setDbLocation
-                    ? ctx.setDbLocation(dbLocation)
-                    : null;
-            if (storage && !storage.ok)
-                return c.json(
-                    {
-                        error:
-                            storage.reason ??
-                            "Could not save the storage location",
-                    },
-                    400,
-                );
-            const config = ctx.saveConfig(overrides);
-            setAuthProvider(config.adoAuth);
-            ctx.markSetupComplete();
-            const skill =
-                installPrReviewSkill === true
-                    ? ctx.installBaselineSkill()
-                    : { installed: false, reason: "skipped" };
-            return c.json({ config, setup_complete: true, skill, storage });
-        })
+        .post(
+            "/setup",
+            ...jsonBody(setupSchema, configValidationMessage),
+            (c) => {
+                const { dbLocation, installPrReviewSkill, ...overrides } =
+                    c.req.valid("json");
+                if (!hasRequiredSetup(mergeConfig(ctx.getConfig(), overrides)))
+                    return c.json(
+                        {
+                            error: "Valid org URL, org slug, and project required",
+                        },
+                        400,
+                    );
+                const storage =
+                    dbLocation && ctx.setDbLocation
+                        ? ctx.setDbLocation(dbLocation)
+                        : null;
+                if (storage && !storage.ok)
+                    return c.json(
+                        {
+                            error:
+                                storage.reason ??
+                                "Could not save the storage location",
+                        },
+                        400,
+                    );
+                const config = ctx.saveConfig(overrides);
+                setAuthProvider(config.adoAuth);
+                ctx.markSetupComplete();
+                const skill =
+                    installPrReviewSkill === true
+                        ? ctx.installBaselineSkill()
+                        : { installed: false, reason: "skipped" };
+                return c.json({ config, setup_complete: true, skill, storage });
+            },
+        )
         .post("/refresh", async (c) => {
             const result = await ctx.reconcile();
             const skipped = result === "skipped";

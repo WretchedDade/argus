@@ -3,7 +3,7 @@ import { createServer } from "node:http";
 import { test } from "node:test";
 import type { ApiContext } from "./api.ts";
 import { createHonoHandler } from "./app.ts";
-import { defaultConfig } from "./config.ts";
+import { defaultConfig, parseConfigOverrides } from "./config.ts";
 import { ArgusStore } from "./db.ts";
 
 test("API validation rejects malformed JSON and invalid field types before actions", async () => {
@@ -86,6 +86,38 @@ test("API validation rejects malformed JSON and invalid field types before actio
                 typeof ((await response.json()) as { error: unknown }).error,
                 "string",
             );
+        }
+        const invalidConfig = {
+            reviewModels: {
+                ...defaultConfig().reviewModels,
+                quick: { model: "unsafe/model", reasoningEffort: "bad/value" },
+            },
+            vendorPattern: "(",
+        };
+        let expectedConfigError = "";
+        assert.throws(
+            () => parseConfigOverrides(invalidConfig),
+            (error: Error) => {
+                expectedConfigError = error.message;
+                return true;
+            },
+        );
+        assert.match(expectedConfigError, /reviewModels\.quick\.model:/);
+        assert.match(
+            expectedConfigError,
+            /reviewModels\.quick\.reasoningEffort:/,
+        );
+        assert.match(expectedConfigError, /vendorPattern:/);
+        for (const route of ["/config", "/setup"]) {
+            const response = await fetch(`${base}${route}`, {
+                method: "POST",
+                headers: { "content-type": "application/json" },
+                body: JSON.stringify(invalidConfig),
+            });
+            assert.equal(response.status, 400, route);
+            assert.deepEqual(await response.json(), {
+                error: expectedConfigError,
+            });
         }
         assert.equal(actions, 0);
         assert.equal(store.isStaleSweepApproved(), false);
