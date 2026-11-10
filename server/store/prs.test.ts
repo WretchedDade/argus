@@ -198,10 +198,11 @@ test("metadata-only polls keep the activity clock, archive, and user choices", (
         old,
         key,
     );
-    const apply = (sha = "sha1") =>
+    let metadata = current;
+    const apply = (sha: string | null = "sha1") =>
         prs.applyPlan(
             db,
-            reconcile([{ ...current, sha }], prs.listSnapshots(db), {
+            reconcile([{ ...metadata, sha }], prs.listSnapshots(db), {
                 nowMs: Date.now(),
                 recencyDays: 7,
             }),
@@ -213,6 +214,19 @@ test("metadata-only polls keep the activity clock, archive, and user choices", (
     assert.equal(prs.getPr(db, key)?.reviewSessionId, "session");
     assert.deepEqual(prs.prsNeedingFileCount(db)[0]?.sourceBranch, "new");
     assert.equal(prs.prsNeedingFileCount(db)[0]?.targetBranch, "release");
+    for (const branch of ["sourceBranch", "targetBranch"] as const) {
+        prs.setChangedFiles(db, key, 4, "sha1");
+        assert.equal(prs.prsNeedingFileCount(db).length, 0);
+        metadata = { ...metadata, [branch]: `changed-${branch}` };
+        assert.deepEqual(apply(), { added: 0, updated: 0, events: 0 });
+        assert.equal(prs.getPr(db, key)?.changedFiles, null);
+        assert.equal(prs.prsNeedingFileCount(db).length, 1);
+        assert.equal(prs.getPr(db, key)?.updatedAt, old);
+        prs.setChangedFiles(db, key, 5, "sha1");
+        apply();
+        assert.equal(prs.getPr(db, key)?.changedFiles, 5);
+        assert.equal(prs.prsNeedingFileCount(db).length, 0);
+    }
     prs.setReviewSession(db, key, null);
     assert.equal(prs.archiveStale(db, [key]), 1);
     prs.setReviewSession(db, key, "archived-session");
@@ -225,6 +239,36 @@ test("metadata-only polls keep the activity clock, archive, and user choices", (
     assert.equal(prs.getPr(db, key)?.dismissed, false);
     assert.equal(prs.getPr(db, key)?.reviewSessionId, null);
     assert.notEqual(prs.getPr(db, key)?.updatedAt, old);
+});
+
+test("a missing poll SHA keeps the known commit without false activity", (t) => {
+    const db = open();
+    t.after(() => db.close());
+    const key = current.canonical;
+    const old = "2000-01-01T00:00:00.000Z";
+    prs.upsertPr(db, pr(key, { lastCommitAt: old }));
+    db.prepare("UPDATE prs SET updated_at = ? WHERE canonical = ?").run(
+        old,
+        key,
+    );
+    prs.archiveStale(db, [key]);
+    const priorEvents = events.listEvents(db, key);
+    for (const sha of [null, "sha1"]) {
+        const result = prs.applyPlan(
+            db,
+            reconcile([{ ...current, sha }], prs.listSnapshots(db), {
+                nowMs: Date.now(),
+                recencyDays: 7,
+            }),
+        );
+        assert.deepEqual(result, { added: 0, updated: 0, events: 0 });
+        const saved = prs.getPr(db, key);
+        assert.equal(saved?.lastCommitSha, "sha1");
+        assert.equal(saved?.lastCommitAt, old);
+        assert.equal(saved?.updatedAt, old);
+        assert.equal(saved?.dismissedReason, "stale");
+        assert.deepEqual(events.listEvents(db, key), priorEvents);
+    }
 });
 
 test("author fetches preserve failed fields and refresh successful fields independently", async (t) => {

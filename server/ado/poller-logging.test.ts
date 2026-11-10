@@ -56,6 +56,7 @@ test("lease recovery requires ownership and keeps failures deduplicated", async 
 for (const mode of [
     "success",
     "partial",
+    "missing-threads",
     "failure",
     "cleanup-failure",
     "silent",
@@ -92,7 +93,9 @@ for (const mode of [
                 const value = list ? [pr] : args.includes("get-access-token")
                     ? { accessToken: "private-token" } : args.includes("commits")
                     ? { committer: { date: new Date().toISOString() } }
-                    : args.includes("policy") ? [] : { value: [] };
+                    : args.includes("policy") ? []
+                    : mode === "missing-threads" && args.includes("pullRequestThreads")
+                    ? null : { value: [] };
                 queueMicrotask(() => callback(
                     fail ? new Error("private-upstream-text") : null,
                     { stdout: Buffer.from(JSON.stringify(value)), stderr: Buffer.alloc(0) },
@@ -178,15 +181,15 @@ for (const mode of [
             assert.equal(summaries.length, 1);
             assert.ok(summaries[0].durationMs! >= 0);
             assert.ok(records.every((r) => r.runId === 1));
-            if (mode === "partial") {
+            if (mode === "partial" || mode === "missing-threads") {
                 assert.equal(records.length, 2);
                 assert.equal(records[0].level, 40);
                 assert.deepEqual(records[0].failures, {
-                    commitTime: 1,
-                    policies: 1,
+                    commitTime: mode === "partial" ? 1 : 0,
+                    policies: mode === "partial" ? 1 : 0,
                     authorComments: 1,
                     reviewComments: 0,
-                    changedFiles: 1,
+                    changedFiles: mode === "partial" ? 1 : 0,
                 });
             } else if (mode === "debug") {
                 assert.ok(records.some((r) => r.level === 20));

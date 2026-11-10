@@ -204,6 +204,12 @@ export function upsertPr(
             WHEN last_commit_sha IS excluded.last_commit_sha THEN last_commit_at
           END ELSE reviewed_sha_authored_at END,
         pr_created_at = excluded.pr_created_at,
+        changed_files = CASE
+          WHEN source_branch IS NOT excluded.source_branch OR target_branch IS NOT excluded.target_branch
+          THEN NULL ELSE changed_files END,
+        changed_files_sha = CASE
+          WHEN source_branch IS NOT excluded.source_branch OR target_branch IS NOT excluded.target_branch
+          THEN NULL ELSE changed_files_sha END,
         source_branch = excluded.source_branch,
         target_branch = excluded.target_branch,
         updated_at = CASE WHEN $refresh_activity THEN excluded.updated_at ELSE updated_at END

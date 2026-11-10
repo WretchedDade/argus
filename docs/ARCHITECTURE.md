@@ -66,6 +66,8 @@ Each tick catches its own errors, so one failed run does not stop the schedule. 
 
 Reconciliation refreshes metadata for every tracked PR that is not manually dismissed, even when its commit, draft state, and votes do not change. A metadata-only refresh does not add events, reset `updated_at`, or revive a stale archive.
 
+If a poll response has no head SHA, reconciliation keeps the known SHA and commit time. A branch change clears the cached file count so the poller can read it again.
+
 For authored PRs, policy and comment fetches report success separately. A failed fetch keeps the stored fields and records a warning in the poll trace. `authorMeta.lastSuccessfulAt` holds the last successful fetch time for policies and comments. Each time is `null` until that source succeeds. Older records can omit these times. No database migration is needed.
 
 ## Store

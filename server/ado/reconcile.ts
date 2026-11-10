@@ -117,7 +117,7 @@ export function reconcile(
             stats.changed += 1;
         }
         items.push({
-            upsert: toUpsert(c),
+            upsert: toUpsert({ ...c, sha: c.sha ?? snap.sha }),
             isAdd: false,
             lane: "review",
             events,
