@@ -1,22 +1,10 @@
 import { Hono } from "hono";
 import { createMiddleware } from "hono/factory";
+import { z } from "zod";
 import type { ApiContext } from "../api.ts";
 import type { AppEnv } from "../app.ts";
 import { UpdateJob } from "../update-job.ts";
-
-// Keep the legacy empty-body behavior while exposing typed JSON input.
-const noticeBody = createMiddleware<
-    AppEnv,
-    string,
-    { in: { json: { id?: unknown } }; out: { json: { id?: unknown } } }
->(async (c, next) => {
-    const text = (await c.req.text()).trim();
-    c.req.addValidatedData(
-        "json",
-        text ? (JSON.parse(text) as { id?: unknown }) : {},
-    );
-    await next();
-});
+import { jsonBody } from "../validation.ts";
 
 // Hono maps HEAD to GET, but these legacy routes accept only GET.
 const getOnly = createMiddleware<AppEnv>(async (c, next) => {
@@ -46,17 +34,22 @@ export function noticeRoutes(ctx: ApiContext) {
                 ctx.store.restoreNotice(`app-update:${result.latest}`);
             return c.json(result);
         })
-        .post("/notices/act", noticeBody, async (c) => {
-            const body = c.req.valid("json");
-            const notice = (ctx.getNotices?.() ?? []).find(
-                (n) => n.id === body.id,
-            );
-            if (!notice?.prompt)
-                return c.json({ error: "no action for that notice" }, 404);
-            await ctx.dispatch(notice.prompt);
-            if (notice.kind !== "storage") ctx.store.dismissNotice(notice.id);
-            return c.json({ ok: true });
-        })
+        .post(
+            "/notices/act",
+            ...jsonBody(z.object({ id: z.string().optional() })),
+            async (c) => {
+                const body = c.req.valid("json");
+                const notice = (ctx.getNotices?.() ?? []).find(
+                    (n) => n.id === body.id,
+                );
+                if (!notice?.prompt)
+                    return c.json({ error: "no action for that notice" }, 404);
+                await ctx.dispatch(notice.prompt);
+                if (notice.kind !== "storage")
+                    ctx.store.dismissNotice(notice.id);
+                return c.json({ ok: true });
+            },
+        )
         .post("/skill/replace", (c) => {
             const notice = (ctx.getNotices?.() ?? []).find(
                 (n) => n.kind === "skill-update",
@@ -105,11 +98,22 @@ export function noticeRoutes(ctx: ApiContext) {
         .get("/update/status", getOnly, (c) =>
             c.json((ctx.updateJob ??= new UpdateJob()).status()),
         )
-        .post("/notices/dismiss", noticeBody, (c) => {
-            const body = c.req.valid("json");
-            if (typeof body.id !== "string" || body.id.length === 0)
-                return c.json({ error: "id is required" }, 400);
-            ctx.store.dismissNotice(body.id);
-            return c.json({ ok: true });
-        });
+        .post(
+            "/notices/dismiss",
+            ...jsonBody(
+                z.object(
+                    {
+                        id: z
+                            .string({ error: "id is required" })
+                            .min(1, "id is required"),
+                    },
+                    { error: "id is required" },
+                ),
+            ),
+            (c) => {
+                const body = c.req.valid("json");
+                ctx.store.dismissNotice(body.id);
+                return c.json({ ok: true });
+            },
+        );
 }

@@ -1,5 +1,5 @@
-import type { IncomingMessage, ServerResponse } from "node:http";
-import { sendJson } from "./respond.ts";
+import { createMiddleware } from "hono/factory";
+import type { AppEnv } from "./app.ts";
 
 // Dev-only failure injection for the standalone runner. Set ARGUS_FAKE_FAULT to
 // a comma-separated list: prs, prs-bad, config, config-slow, setup.
@@ -14,43 +14,30 @@ export function parseFaults(value: string | undefined): Set<string> {
     );
 }
 
-// Returns true when the fault answered the request itself.
-export async function injectFault(
-    faults: Set<string>,
-    req: IncomingMessage,
-    res: ServerResponse,
-): Promise<boolean> {
-    if (faults.size === 0) return false;
-    const route = new URL(req.url || "/", "http://127.0.0.1").pathname;
-
-    if (route === "/api/prs") {
-        if (faults.has("prs")) {
-            sendJson(res, 500, { error: "Injected fault: prs" });
-            return true;
+export function faultMiddleware(faults: Set<string>) {
+    return createMiddleware<AppEnv>(async (c, next) => {
+        const route = c.req.path;
+        if (route === "/api/prs") {
+            if (faults.has("prs"))
+                return c.json({ error: "Injected fault: prs" }, 500);
+            if (faults.has("prs-bad")) return c.json({ prs: "not-a-list" });
         }
-        if (faults.has("prs-bad")) {
-            sendJson(res, 200, { prs: "not-a-list" });
-            return true;
+        if (route === "/api/config") {
+            if (faults.has("config"))
+                return c.json({ error: "Injected fault: config" }, 500);
+            if (faults.has("config-slow"))
+                await new Promise((resolve) =>
+                    setTimeout(resolve, CONFIG_SLOW_MS),
+                );
         }
-    }
-
-    if (route === "/api/config") {
-        if (faults.has("config")) {
-            sendJson(res, 500, { error: "Injected fault: config" });
-            return true;
+        await next();
+        if (route === "/api/health" && faults.has("setup")) {
+            const response = c.res;
+            const body = (await response.json()) as Record<string, unknown>;
+            c.res = new Response(
+                c.json({ ...body, setup_complete: false }).body,
+                response,
+            );
         }
-        if (faults.has("config-slow")) {
-            await new Promise((r) => setTimeout(r, CONFIG_SLOW_MS));
-        }
-    }
-
-    if (route === "/api/health" && faults.has("setup")) {
-        const end = res.end.bind(res) as (chunk?: unknown) => ServerResponse;
-        res.end = ((chunk?: unknown) => {
-            if (typeof chunk !== "string") return end(chunk);
-            const body = JSON.parse(chunk) as Record<string, unknown>;
-            return end(JSON.stringify({ ...body, setup_complete: false }));
-        }) as typeof res.end;
-    }
-    return false;
+    });
 }

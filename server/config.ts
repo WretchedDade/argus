@@ -116,18 +116,20 @@ export const ConfigSchema = z.object({
         ),
 }) satisfies z.ZodType<ArgusConfig>;
 
-const ConfigOverridesSchema = ConfigSchema.partial();
+export const ConfigOverridesSchema = ConfigSchema.partial();
+
+export function configValidationMessage(issues: z.ZodError["issues"]): string {
+    return issues
+        .map((i) => `${i.path.join(".") || "config"}: ${i.message}`)
+        .join("; ");
+}
 
 // Validate untrusted config input (file, saved settings, HTTP body). Unknown
 // keys are dropped. Throws a ConfigError that names every invalid field.
 export function parseConfigOverrides(input: unknown): ConfigOverrides {
     const result = ConfigOverridesSchema.safeParse(input);
     if (result.success) return result.data;
-    throw new ConfigError(
-        result.error.issues
-            .map((i) => `${i.path.join(".") || "config"}: ${i.message}`)
-            .join("; "),
-    );
+    throw new ConfigError(configValidationMessage(result.error.issues));
 }
 
 export class ConfigError extends Error {}
