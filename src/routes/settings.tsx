@@ -149,9 +149,9 @@ const trimModel = (m: { model: string; reasoningEffort: string }) => ({
 });
 
 const REVIEW_MODES = [
-    { id: "quick", label: "Quick review" },
-    { id: "full", label: "Full review" },
-    { id: "automatic", label: "Automatic review" },
+    { id: "quick", label: "Review for me" },
+    { id: "full", label: "Review with me" },
+    { id: "automatic", label: "Delegate" },
 ] as const;
 
 const GROUPS = [

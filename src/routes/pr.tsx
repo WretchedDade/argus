@@ -45,11 +45,13 @@ function eventLabel(e: PrEvent): string {
         case "refreshed":
             return "Metadata refreshed";
         case "lane_changed":
-            return `Moved to ${p.lane === "quick" ? "Quick" : "Full review"}`;
+            return `Review mode: ${p.lane === "quick" ? "Review for me" : "Review with me"}`;
         case "state_changed":
             return `State changed to ${String(p.state ?? "")}`;
         case "reviewed":
             return "Reviewed";
+        case "review_provisional":
+            return "Delegate found issues; no vote cast";
         case "vote_changed": {
             const who = p.name ? String(p.name) : "A reviewer";
             return `${who} ${voteLabel(Number(p.vote ?? 0))}`;
@@ -118,7 +120,7 @@ function StatePill({ pr }: { pr: Pr }) {
     );
 }
 
-// A small tinted status pill used across the detail header (lane, snooze, scope).
+// A small tinted status pill for the detail header.
 function Chip({
     anchor,
     children,
@@ -224,10 +226,6 @@ function PrDetailPage() {
 
                         <div className="flex flex-wrap items-center gap-2">
                             <StatePill pr={pr} />
-                            <Chip anchor="--color-sky-500">
-                                <span className="capitalize">{pr.lane}</span>{" "}
-                                lane
-                            </Chip>
                             {isSnoozed(pr) && (
                                 <Chip anchor="--color-amber-500">
                                     <AlarmClock size={11} /> {snoozeLabel(pr)}

@@ -1,8 +1,5 @@
 import type { Pr, PrReviewState } from "./api";
 
-export const shouldShowAutomaticReview = (pr: Pick<Pr, "lane">): boolean =>
-    pr.lane === "quick";
-
 const DAY_MS = 86_400_000;
 
 // A PR is stale once its last activity is older than the recency window: the
@@ -33,6 +30,10 @@ export function needsAction(pr: Pr): boolean {
 // Most recent activity first.
 export function byRecent(a: Pr, b: Pr): number {
     return Date.parse(b.updatedAt) - Date.parse(a.updatedAt);
+}
+
+export function byQueuePriority(a: Pr, b: Pr): number {
+    return Number(needsAction(b)) - Number(needsAction(a)) || byRecent(a, b);
 }
 
 // Count of review PRs that need your attention right now (the Board's headline),

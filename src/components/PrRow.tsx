@@ -6,11 +6,11 @@ import { REVIEW_STATE_META } from "../lib/triage";
 function LanePill({ lane }: { lane: Pr["lane"] }) {
     return (
         <span
-            className={`shrink-0 rounded-full border px-2 py-0.5 text-xs capitalize ${
+            className={`shrink-0 rounded-full border px-2 py-0.5 text-xs ${
                 lane === "quick" ? "lane-quick" : "lane-review"
             }`}
         >
-            {lane}
+            {lane === "quick" ? "Review for me" : "Review with me"}
         </span>
     );
 }
@@ -93,7 +93,7 @@ export function PrRow({
                 <ReviewStatePill state={pr.reviewState} />
             )}
             <TeamChips teams={pr.teams} labels={labels} />
-            <LanePill lane={pr.lane} />
+            {pr.reviewCount > 0 && <LanePill lane={pr.lane} />}
         </a>
     );
 }

@@ -198,6 +198,13 @@ try {
     );
     store.close();
     storeOpen = false;
+    store = new ArgusStore(dbFile);
+    storeOpen = true;
+    assert.deepEqual(
+        store.weeklyReviewFacts(startKey),
+        facts,
+        "Saved lane keys and review history keep the same meaning after reopening.",
+    );
 } finally {
     if (storeOpen) store.close();
     rmSync(dir, { recursive: true, force: true });

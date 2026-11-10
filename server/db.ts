@@ -1772,7 +1772,12 @@ export class ArgusStore {
 
     recordReview(
         canonical: string,
-        opts: { verdict?: string; sha?: string; sessionId?: string },
+        opts: {
+            verdict?: string;
+            sha?: string;
+            sessionId?: string;
+            provisional?: boolean;
+        },
     ): void {
         prs.recordReview(this.#db, canonical, opts);
     }

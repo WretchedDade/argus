@@ -138,10 +138,15 @@ async function countMyComments(canonical: string): Promise<void> {
 // and the headless HTTP ingest endpoint so both paths behave identically.
 function doRecordReview(
     canonical: string,
-    opts: { verdict?: string; sha?: string; sessionId?: string },
+    opts: {
+        verdict?: string;
+        sha?: string;
+        sessionId?: string;
+        provisional?: boolean;
+    },
 ): void {
     store.recordReview(canonical, opts);
-    void countMyComments(canonical);
+    if (!opts.provisional) void countMyComments(canonical);
 }
 
 // Install the bundled baseline pr-review skill into the user's skills directory,
@@ -440,20 +445,36 @@ const session = await joinSession({
                                 description: "head commit sha reviewed",
                             },
                             sessionId: { type: "string" },
+                            provisional: {
+                                type: "boolean",
+                                description:
+                                    "Record Delegate findings with verdict waiting, without completing the review.",
+                            },
                         },
                         required: ["canonical"],
                         additionalProperties: false,
                     },
                     handler: async (ctx) => {
-                        const { canonical, verdict, sha, sessionId } =
-                            (ctx.input ?? {}) as {
-                                canonical?: string;
-                                verdict?: string;
-                                sha?: string;
-                                sessionId?: string;
-                            };
+                        const {
+                            canonical,
+                            verdict,
+                            sha,
+                            sessionId,
+                            provisional,
+                        } = (ctx.input ?? {}) as {
+                            canonical?: string;
+                            verdict?: string;
+                            sha?: string;
+                            sessionId?: string;
+                            provisional?: boolean;
+                        };
                         if (!canonical) return { ok: false };
-                        doRecordReview(canonical, { verdict, sha, sessionId });
+                        doRecordReview(canonical, {
+                            verdict,
+                            sha,
+                            sessionId,
+                            provisional,
+                        });
                         return { ok: true };
                     },
                 },

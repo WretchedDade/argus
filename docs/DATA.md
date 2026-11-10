@@ -57,7 +57,7 @@ One row for each PR that Argus tracks. It is the current snapshot. The poller wr
 | `changed_files`, `changed_files_sha`                      | Count of changed files, and the commit it was counted at                 | ADO              |
 | `my_comments`, `other_comments`                           | Comment counts                                                           | ADO              |
 | `added_at`, `updated_at`                                  | When Argus first saw and last updated the row                            | Argus            |
-| `lane`                                                    | Board lane                                                               | User or computed |
+| `lane`                                                    | Last interactive review mode (`quick`: for me, `review`: with me)        | User or computed |
 | `review_state`                                            | Your standing on the PR                                                  | Computed         |
 | `dismissed`, `dismissed_reason`, `dismissed_at`           | Dismiss choice                                                           | User             |
 | `snoozed_until`, `snooze_mode`                            | Snooze choice                                                            | User             |
@@ -69,14 +69,14 @@ One row for each PR that Argus tracks. It is the current snapshot. The poller wr
 
 The append-only timeline of each PR. The Insights page and the Changes bell read from this table. Argus never edits or removes a row in normal use.
 
-| Column      | Content                                                                                                                                                                                                                                    |
-| ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `id`        | Row id                                                                                                                                                                                                                                     |
-| `canonical` | PR key                                                                                                                                                                                                                                     |
-| `ts`        | Time of the event (UTC, ISO 8601)                                                                                                                                                                                                          |
-| `type`      | `added`, `refreshed`, `lane_changed`, `state_changed`, `reviewed`, `vote_changed`, `review_state`, `commit_pushed`, `draft_changed`, `comment_posted`, `snoozed`, `fte_woke`, `dismissed`, `out_of_scope`, `in_scope`, `removed`, `closed` |
-| `payload`   | JSON that depends on the type. Examples: commit sha, vote value, reviewer id and display name (`vote_changed`), verdict and session id (`reviewed`), close reason                                                                          |
-| `run_id`    | The poll run that wrote the event                                                                                                                                                                                                          |
+| Column      | Content                                                                                                                                                                                                                                                          |
+| ----------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `id`        | Row id                                                                                                                                                                                                                                                           |
+| `canonical` | PR key                                                                                                                                                                                                                                                           |
+| `ts`        | Time of the event (UTC, ISO 8601)                                                                                                                                                                                                                                |
+| `type`      | `added`, `refreshed`, `lane_changed`, `state_changed`, `reviewed`, `review_provisional`, `vote_changed`, `review_state`, `commit_pushed`, `draft_changed`, `comment_posted`, `snoozed`, `fte_woke`, `dismissed`, `out_of_scope`, `in_scope`, `removed`, `closed` |
+| `payload`   | JSON that depends on the type. Examples: commit sha, vote value, reviewer id and display name (`vote_changed`), verdict and session id (`reviewed`), close reason                                                                                                |
+| `run_id`    | The poll run that wrote the event                                                                                                                                                                                                                                |
 
 ### `poll_runs`
 

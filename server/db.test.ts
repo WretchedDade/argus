@@ -63,6 +63,24 @@ try {
     assert.deepEqual(store.getPr(canonical)?.teams, ["Optional team"]);
 
     store.setReviewSession(canonical, "session-1");
+    const pendingReview = store.getPr(canonical);
+    const week = new Date().toISOString().slice(0, 10);
+    const pendingFacts = store.weeklyReviewFacts(week);
+    store.recordReview(canonical, {
+        verdict: "waiting",
+        sha: "sha-1",
+        provisional: true,
+    });
+    assert.deepEqual(store.getPr(canonical), pendingReview);
+    assert.deepEqual(store.weeklyReviewFacts(week), pendingFacts);
+    assert.equal(
+        store.listEvents(canonical).at(-1)?.type,
+        "review_provisional",
+    );
+    assert.equal(
+        store.listEvents(canonical).at(-1)?.payload?.verdict,
+        "waiting",
+    );
     store.recordReview(canonical, {});
     assert.equal(store.getPr(canonical)?.reviewCount, 0);
 
@@ -71,6 +89,15 @@ try {
 
     assert.equal(store.getPr(canonical)?.reviewCount, 2);
     assert.equal(store.listPrs()[0]?.reviewCount, 2);
+    const completedReview = store.getPr(canonical);
+    const completedFacts = store.weeklyReviewFacts(week);
+    store.recordReview(canonical, {
+        verdict: "waiting",
+        sha: "sha-3",
+        provisional: true,
+    });
+    assert.deepEqual(store.getPr(canonical), completedReview);
+    assert.deepEqual(store.weeklyReviewFacts(week), completedFacts);
 
     const other = "https://example.test/pr/8";
     assert.equal(store.checkVerdictAllowed(canonical, "approved"), true);

@@ -79,6 +79,7 @@ export type PrEventType =
     | "lane_changed"
     | "state_changed"
     | "reviewed"
+    | "review_provisional"
     | "vote_changed"
     | "review_state"
     | "commit_pushed"

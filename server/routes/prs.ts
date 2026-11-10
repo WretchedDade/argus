@@ -14,7 +14,7 @@ import {
     reviewPrompt,
 } from "../prompts.ts";
 import { jsonBody, queryParams } from "../validation.ts";
-import { LaneSchema } from "#shared/schemas/pr";
+import { ReviewActionModeSchema } from "#shared/schemas/pr";
 
 const canonical = z
     .string({ error: "canonical required" })
@@ -29,7 +29,6 @@ const validNumber = z
             .int("valid number required")
             .positive("valid number required"),
     );
-const laneError = "canonical and lane (quick|review) required";
 
 export function prRoutes(ctx: ApiContext) {
     const app = new Hono<AppEnv>()
@@ -84,29 +83,15 @@ export function prRoutes(ctx: ApiContext) {
             },
         )
         .post(
-            "/pr/lane",
-            ...jsonBody(
-                z.object({
-                    canonical: z.string({ error: laneError }).min(1, laneError),
-                    lane: z.enum(LaneSchema.options, { error: laneError }),
-                }),
-            ),
-            (c) => {
-                const body = c.req.valid("json");
-                ctx.store.setLane(body.canonical, body.lane);
-                return c.json({ pr: ctx.store.getPr(body.canonical) });
-            },
-        )
-        .post(
             "/pr/review",
             ...jsonBody(
                 z.object({
                     canonical: z
                         .string({ error: "canonical required / not found" })
                         .min(1, "canonical required / not found"),
-                    automatic: z
-                        .boolean({ error: "automatic must be boolean" })
-                        .optional(),
+                    mode: z.enum(ReviewActionModeSchema.options, {
+                        error: "mode must be with-me, for-me, or delegate",
+                    }),
                 }),
             ),
             async (c) => {
@@ -119,14 +104,12 @@ export function prRoutes(ctx: ApiContext) {
                         { error: "canonical required / not found" },
                         400,
                     );
-                if (body.automatic && pr.lane !== "quick")
-                    return c.json(
-                        { error: "automatic review requires quick lane" },
-                        400,
-                    );
-                const token = body.automatic
-                    ? ctx.store.issueAutomaticReviewToken(pr.canonical)
-                    : null;
+                const mode = body.mode;
+                const lane = mode === "for-me" ? "quick" : "review";
+                const token =
+                    mode === "delegate"
+                        ? ctx.store.issueAutomaticReviewToken(pr.canonical)
+                        : null;
                 try {
                     await ctx.dispatch(
                         token
@@ -137,11 +120,13 @@ export function prRoutes(ctx: ApiContext) {
                                   ctx.getConfig().reviewModels,
                               )
                             : reviewPrompt(
-                                  pr,
+                                  { ...pr, lane },
                                   ctx.getConfig().reviewSkillName,
                                   ctx.getConfig().reviewModels,
                               ),
                     );
+                    if (mode !== "delegate")
+                        ctx.store.setLane(pr.canonical, lane);
                 } catch (error) {
                     if (token)
                         ctx.store.revokeAutomaticReviewToken(
@@ -156,13 +141,20 @@ export function prRoutes(ctx: ApiContext) {
         .post(
             "/pr/record-review",
             ...jsonBody(
-                canonicalBody.extend({
-                    verdict: z.string().optional(),
-                    sha: z.string().optional(),
-                    sessionId: z.string().optional(),
-                    token: z.string().optional(),
-                    release: z.boolean().optional(),
-                }),
+                canonicalBody
+                    .extend({
+                        verdict: z.string().optional(),
+                        sha: z.string().optional(),
+                        sessionId: z.string().optional(),
+                        token: z.string().optional(),
+                        release: z.boolean().optional(),
+                        provisional: z.boolean().optional(),
+                    })
+                    .refine(
+                        (body) =>
+                            !body.provisional || body.verdict === "waiting",
+                        { error: "provisional requires waiting verdict" },
+                    ),
             ),
             (c) => {
                 const body = c.req.valid("json");
@@ -190,6 +182,7 @@ export function prRoutes(ctx: ApiContext) {
                         verdict: body.verdict,
                         sha: body.sha,
                         sessionId: body.sessionId,
+                        provisional: body.provisional,
                     });
                 }
                 return c.json({ ok: true });

@@ -13,8 +13,8 @@ invitations to contribute. See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## What it does
 
-- **Board** — the PRs on your plate, split into a full-review lane and a quick
-  lane, plus snoozed, stale, and out-of-scope sections.
+- **Board** — one review queue, plus snoozed, stale, and out-of-scope sections.
+  Start with Review for me, Review with me, or Delegate.
 - **My PRs** — the PRs you authored, with merge-blockers and comment counts.
 - **Insights** — review rhythm, verdict mix, coverage, and a Load and capacity
   chart with a per-day drill-down.
@@ -281,8 +281,15 @@ does not increase the count.
 - **Ownership** — Argus classifies each PR as authored, a direct-reviewer PR, or
   a team PR (a reviewer group you match). Team PRs show as "covered" when every
   matched group has approved, so a teammate's approval takes it off your plate.
-- **Lanes** — new PRs default to the full-review lane. Move a PR to the quick lane
-  when it needs only a light look. The lane is remembered.
+- **Review modes** — choose a mode when you start a review. **Review for me** is
+  the primary action: Copilot reviews, then you add your findings. **Review with
+  me** lets you lead, turn by turn. **Delegate** lets Copilot approve only when
+  it finds no issues. All three are available on every PR. The queue puts PRs
+  that need you first, then sorts by recent activity.
+- **History** — the stored `quick` and `review` keys now mean Review for me and
+  Review with me. Starting either mode saves that choice for history and charts.
+  Delegate leaves it unchanged, so its reviews count under the last saved mode
+  (or Review with me for a new PR). No database migration is needed.
 - **Snooze** — hide a PR until a time, or until an FTE (a non-vendor teammate)
   approves it. An FTE approval wakes an FTE-snooze automatically. A name is a
   vendor when it matches the **Vendor name pattern** setting (`vendorPattern`
@@ -318,10 +325,18 @@ is the head commit that was reviewed. Argus uses it to detect a later push.
 
 ## Review workflow (optional)
 
-The board's **Review** and **Re-review** buttons dispatch a chat message that
-spawns a child session to review the PR, then records the verdict back with the
-POST above. That loop needs a **`pr-review` skill** installed, because the
-dispatched message tells the agent to "run the pr-review skill".
+The board's **Review for me**, **Review with me**, and **Delegate** buttons
+dispatch a chat message to start a review session. A later interactive review
+reuses the linked session and applies the selected mode. That loop needs a
+**`pr-review` skill** installed. The skill owns the review behavior; prompts
+carry the PR, mode marker, and session and verdict commands.
+
+No mode runs local tests, builds, linters, or typechecks. The PR build runs
+them. Merge validations and policies do not affect the review verdict.
+Delegate posts no comments and votes only to approve with zero findings.
+When it finds issues, it records a provisional `waiting` result in Argus
+(not an ADO vote) and offers to continue as Review for me in the same chat.
+That result does not change the current vote state or completed-review metrics.
 
 A baseline skill ships in `skills/pr-review/` in this folder. It carries the parts
 Argus depends on plus a neutral review philosophy. To use it, copy it into your
@@ -341,8 +356,10 @@ personal rules in your global instructions or skills instead.
 
 If you write your own skill, keep this contract, because Argus drives it:
 
-- Read the mode from the `Review mode:` line in the kickoff prompt (`full`,
-  `quick`, or `automatic`). Use full when the line is missing.
+- Read the mode from the `Review mode:` line in the kickoff prompt (`with-me`,
+  `for-me`, or `delegate`). Use Review with me when the line is missing.
+- Keep the `reviewModels` config keys: `quick` selects Review for me, `full`
+  selects Review with me, and `automatic` selects Delegate.
 - Record the verdict with the POST above, using the exact ingest URL from the
   kickoff prompt. Send the head commit as `sha` and keep any `token` field
   unchanged.

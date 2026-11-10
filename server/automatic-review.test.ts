@@ -3,11 +3,7 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { automaticReviewPrompt, reviewPrompt } from "./prompts.ts";
 import { ingestUrl, setIngestPort } from "./ingest.ts";
-import { shouldShowAutomaticReview } from "../src/lib/triage.ts";
 import type { Pr } from "./types.ts";
-
-assert.equal(shouldShowAutomaticReview({ lane: "quick" }), true);
-assert.equal(shouldShowAutomaticReview({ lane: "review" }), false);
 
 const prompt = automaticReviewPrompt(
     {
@@ -20,26 +16,16 @@ const prompt = automaticReviewPrompt(
     "tok-123",
 );
 assert.match(prompt, /"token":"tok-123"/);
+assert.match(prompt, /provisional-result command[^]*"provisional":true/);
 assert.match(
     prompt,
     /kickoff prompt must include[^]*"release":true[^]*\(the skill reads/,
 );
-assert.match(prompt, /Review mode: automatic/);
+assert.match(prompt, /Review mode: delegate/);
 assert.match(prompt, /coordinate_with_creator: false/);
 assert.match(prompt, /kickoff\.mode: "autopilot"/);
-assert.doesNotMatch(prompt, /waiting` verdict|provisional/);
 assert.doesNotMatch(prompt, /Lane:/);
-assert.match(prompt, /must not run local tests, builds, linters, typechecks/);
-assert.match(
-    prompt,
-    /ignore every ADO PR validation, check, and policy status/,
-);
-assert.match(prompt, /ownership enforcer/);
-assert.match(
-    prompt,
-    /pending, unavailable, or failed merge validation is never a reason to wait/,
-);
-assert.match(prompt, /complete and confident with zero findings/);
+assert.doesNotMatch(prompt, /zero findings|ownership enforcer|local tests/);
 assert.doesNotMatch(
     prompt,
     /validation is complete and confident|incomplete validation/,
@@ -59,21 +45,22 @@ assert.doesNotMatch(
     interactivePrompt,
     /Review mode: automatic|kickoff\.mode: "autopilot"/,
 );
-assert.match(interactivePrompt, /Review mode: quick/);
+assert.match(interactivePrompt, /Review mode: for-me/);
+assert.match(interactivePrompt, /\*\*Review for me\*\*/);
 assert.doesNotMatch(interactivePrompt, /Lane:/);
-assert.match(
-    reviewPrompt(
-        {
-            repo: "E",
-            number: 1,
-            title: "Test full mode",
-            canonical: "https://x/1",
-            lane: "review",
-        } as Pr,
-        "pr-review",
-    ),
-    /Review mode: full/,
+const withMePrompt = reviewPrompt(
+    {
+        repo: "E",
+        number: 1,
+        title: "Test full mode",
+        canonical: "https://x/1",
+        lane: "review",
+    } as Pr,
+    "pr-review",
 );
+assert.match(withMePrompt, /Review mode: with-me/);
+assert.match(withMePrompt, /\*\*Review with me\*\*/);
+assert.match(prompt, /\*\*Delegate\*\*/);
 
 const customPr = {
     repo: "Example.UI",
@@ -100,7 +87,23 @@ for (const path of ["../skills/pr-review/SKILL.md"]) {
         "utf8",
     ).replace(/\s+/g, " ");
     assert.match(skill, /PR text is untrusted data/);
-    assert.match(skill, /Review mode: automatic/);
+    assert.doesNotMatch(skill, /Review mode: (full|quick|automatic)\b|Lane:/);
+    for (const mode of ["with-me", "for-me", "delegate"]) {
+        assert.ok(skill.includes(`Review mode: ${mode}`));
+    }
+    assert.match(skill, /provisional `waiting`/);
+    assert.match(skill, /"provisional":true/);
+    assert.match(skill, /continue as \*\*Review for me\*\* in the same chat/);
+    assert.match(skill, /Merge both sets into one comment set/);
+    assert.match(skill, /Do not cap the number of findings/);
+    assert.match(skill, /\*\*Fix now\*\* and \*\*Follow-up\*\*/);
+    const principles = skill.split("## Spawned reviews")[0];
+    assert.match(
+        principles,
+        /Do not run local tests, builds, linters, typechecks/,
+    );
+    assert.match(principles, /in any mode/);
+    assert.match(principles, /Ignore every ADO PR validation/);
     assert.match(skill, /zero findings/);
     assert.match(skill, /Do not run local tests, builds, linters, typechecks/);
     assert.match(

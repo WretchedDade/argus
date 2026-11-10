@@ -938,7 +938,7 @@ export function setRepo(
     applyScopePolicy(db);
 }
 
-// Move a PR between the quick and full-review lanes (manual triage).
+// Keep the last interactive review mode in the legacy lane field.
 export function setLane(db: DatabaseSync, canonical: string, lane: Lane): void {
     prep(db, "UPDATE prs SET lane = ? WHERE canonical = ?").run(
         lane,
@@ -1053,8 +1053,23 @@ export function revokeAutomaticReviewToken(
 export function recordReview(
     db: DatabaseSync,
     canonical: string,
-    opts: { verdict?: string; sha?: string; sessionId?: string },
+    opts: {
+        verdict?: string;
+        sha?: string;
+        sessionId?: string;
+        provisional?: boolean;
+    },
 ): void {
+    if (opts.provisional) {
+        if (opts.verdict !== "waiting")
+            throw new Error("provisional requires waiting verdict");
+        appendEvent(db, canonical, "review_provisional", {
+            verdict: opts.verdict,
+            sha: opts.sha ?? null,
+            sessionId: opts.sessionId ?? null,
+        });
+        return;
+    }
     if (opts.sessionId)
         prep(
             db,
