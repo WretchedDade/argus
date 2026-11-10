@@ -4,6 +4,7 @@ import type {
     ArchivableSession,
     ArchiveReason,
     AuthorMeta,
+    AuthorMetaUpdate,
     Lane,
     Pr,
     PrReviewState,
@@ -167,7 +168,11 @@ export function clearExpiredSnoozes(db: DatabaseSync): void {
 
 // Insert on first sight, otherwise refresh only ADO-sourced columns. Triage
 // columns (lane, state, dismissed, snooze, session, added_at) are untouched.
-export function upsertPr(db: DatabaseSync, pr: PrUpsert): void {
+export function upsertPr(
+    db: DatabaseSync,
+    pr: PrUpsert,
+    refreshActivity = true,
+): void {
     const ts = now();
     prep(
         db,
@@ -201,7 +206,7 @@ export function upsertPr(db: DatabaseSync, pr: PrUpsert): void {
         pr_created_at = excluded.pr_created_at,
         source_branch = excluded.source_branch,
         target_branch = excluded.target_branch,
-        updated_at = excluded.updated_at
+        updated_at = CASE WHEN $refresh_activity THEN excluded.updated_at ELSE updated_at END
     `,
     ).run({
         $canonical: pr.canonical,
@@ -222,6 +227,7 @@ export function upsertPr(db: DatabaseSync, pr: PrUpsert): void {
         $source_branch: pr.sourceBranch ?? null,
         $target_branch: pr.targetBranch ?? null,
         $ts: ts,
+        $refresh_activity: b(refreshActivity),
     });
 }
 
@@ -485,11 +491,11 @@ export function applyPlan(
                 );
                 eventCount += 1;
             }
-            upsertPr(db, item.upsert);
+            upsertPr(db, item.upsert, item.events.length > 0);
             if (item.revive) revive(db, item.upsert.canonical, "updated");
             setReviewers(db, item.upsert.canonical, item.votes);
             if (item.isAdd) added += 1;
-            else updated += 1;
+            else if (item.events.length > 0) updated += 1;
         }
         db.exec("COMMIT");
     } catch (err) {
@@ -1128,8 +1134,26 @@ export function setSnooze(
 export function setAuthorMeta(
     db: DatabaseSync,
     canonical: string,
-    meta: AuthorMeta,
+    update: AuthorMetaUpdate,
 ): void {
+    const previous = getPr(db, canonical)?.authorMeta;
+    const meta: AuthorMeta = {
+        completable: previous?.completable ?? false,
+        blockers: previous?.blockers ?? [],
+        activeComments: previous?.activeComments ?? 0,
+        resolvedComments: previous?.resolvedComments ?? 0,
+        mergeStatus: update.mergeStatus,
+        lastSuccessfulAt: {
+            policies: update.policies.ok
+                ? update.policies.lastSuccessfulAt
+                : (previous?.lastSuccessfulAt?.policies ?? null),
+            comments: update.comments.ok
+                ? update.comments.lastSuccessfulAt
+                : (previous?.lastSuccessfulAt?.comments ?? null),
+        },
+        ...(update.policies.ok ? update.policies.value : {}),
+        ...(update.comments.ok ? update.comments.value : {}),
+    };
     prep(db, "UPDATE prs SET author_meta_json = ? WHERE canonical = ?").run(
         JSON.stringify(meta),
         canonical,

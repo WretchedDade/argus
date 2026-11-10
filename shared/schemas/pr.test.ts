@@ -1,6 +1,11 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { PrSchema, PrsResponseSchema, type Pr } from "./pr.ts";
+import {
+    AuthorMetaSchema,
+    PrSchema,
+    PrsResponseSchema,
+    type Pr,
+} from "./pr.ts";
 
 const pr: Pr = {
     canonical: "org/proj/repo/1",
@@ -52,4 +57,23 @@ test("PrSchema rejects a bad enum value and a missing field", () => {
 test("PrsResponseSchema rejects a malformed list", () => {
     assert.equal(PrsResponseSchema.safeParse({ prs: [{}] }).success, false);
     assert.equal(PrsResponseSchema.parse({ prs: [pr] }).prs.length, 1);
+});
+
+test("author metadata accepts old records and keeps per-source success times", () => {
+    const old = {
+        completable: false,
+        blockers: ["Build"],
+        activeComments: 2,
+        resolvedComments: 1,
+        mergeStatus: "succeeded",
+    };
+    assert.deepEqual(AuthorMetaSchema.parse(old), old);
+    const current = {
+        ...old,
+        lastSuccessfulAt: {
+            policies: null,
+            comments: "2026-01-01T00:00:00.000Z",
+        },
+    };
+    assert.deepEqual(AuthorMetaSchema.parse(current), current);
 });

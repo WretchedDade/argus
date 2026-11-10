@@ -34,6 +34,12 @@ export const AuthorMetaSchema = z.object({
     resolvedComments: z.number(),
     // e.g. "succeeded" | "conflicts"
     mergeStatus: z.string(),
+    lastSuccessfulAt: z
+        .object({
+            policies: z.string().nullable(),
+            comments: z.string().nullable(),
+        })
+        .optional(),
 });
 export type AuthorMeta = z.infer<typeof AuthorMetaSchema>;
 

@@ -6,6 +6,7 @@ import type {
     ActivityEvent,
     ArchivableSession,
     AuthorMeta,
+    AuthorMetaUpdate,
     Insights,
     InsightsCount,
     InsightsLoadBucket,
@@ -1784,7 +1785,7 @@ export class ArgusStore {
         prs.setSnooze(this.#db, canonical, until, mode);
     }
 
-    setAuthorMeta(canonical: string, meta: AuthorMeta): void {
+    setAuthorMeta(canonical: string, meta: AuthorMetaUpdate): void {
         prs.setAuthorMeta(this.#db, canonical, meta);
     }
 

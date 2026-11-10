@@ -65,10 +65,12 @@ const types = (p: ReturnType<typeof reconcile>) =>
     assert.deepEqual(types(plan), ["added"]);
 }
 
-// Unchanged signature -> nothing.
+// Unchanged signatures still refresh metadata without events.
 {
     const plan = reconcile([pr()], new Map([[key, snap()]]), opts);
-    assert.equal(plan.items.length, 0);
+    assert.equal(plan.items.length, 1);
+    assert.deepEqual(types(plan), []);
+    assert.equal(plan.stats.unchanged, 1);
 }
 
 // New commit -> commit_pushed.
