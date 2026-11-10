@@ -1,13 +1,11 @@
 import { fetchPrThreads, listPrPolicies } from "./client.ts";
-import type { AuthorMeta } from "../types.ts";
+import type { AuthorMetaUpdate } from "../types.ts";
 import type { CurrentPr } from "./types.ts";
 import { logger } from "../log.ts";
 
 const RESOLVED_THREAD = new Set(["fixed", "wontfix", "closed", "bydesign"]);
 
-// Enrich one of my authored PRs with ADO's own completability signal (branch
-// policy evaluations) and comment-thread counts. Best-effort: any fetch failure
-// yields a conservative result rather than throwing out of the poll.
+// Keep policy and comment results separate so a failed fetch cannot erase data.
 export async function fetchAuthorMeta(
     pr: CurrentPr,
     orgUrl: string,
@@ -19,24 +17,27 @@ export async function fetchAuthorMeta(
             { component: "poller", operation, err },
             "PR enrichment failed",
         ),
-): Promise<AuthorMeta> {
-    const meta: AuthorMeta = {
-        completable: false,
-        blockers: [],
-        activeComments: 0,
-        resolvedComments: 0,
+    client = { listPrPolicies, fetchPrThreads },
+): Promise<AuthorMetaUpdate> {
+    const meta: AuthorMetaUpdate = {
+        policies: { ok: false, error: "Policies have not been fetched." },
+        comments: {
+            ok: false,
+            error: "PR has no repository id for thread lookup.",
+        },
         mergeStatus: pr.mergeStatus,
     };
 
     try {
-        const policies =
-            (await listPrPolicies(
-                orgUrl,
-                pr.project,
-                pr.projectId,
-                pr.number,
-            )) ?? [];
-        meta.blockers = policies
+        const policies = await client.listPrPolicies(
+            orgUrl,
+            pr.project,
+            pr.projectId,
+            pr.number,
+        );
+        if (policies === null)
+            throw new Error("Policy lookup returned no data.");
+        const blockers = policies
             .filter(
                 (p) =>
                     p.configuration?.isBlocking &&
@@ -46,18 +47,25 @@ export async function fetchAuthorMeta(
             .map((p) => p.configuration?.type?.displayName ?? "policy")
             // de-dupe (a policy type can have several evaluations)
             .filter((name, i, arr) => arr.indexOf(name) === i);
-        // Completable when nothing blocks, it's not a draft, and it merges cleanly.
-        meta.completable =
-            meta.blockers.length === 0 &&
-            !pr.isDraft &&
-            pr.mergeStatus === "succeeded";
-    } catch (err) {
-        onFailure("policies", err);
+        meta.policies = {
+            ok: true,
+            value: {
+                blockers,
+                completable:
+                    blockers.length === 0 &&
+                    !pr.isDraft &&
+                    pr.mergeStatus === "succeeded",
+            },
+            lastSuccessfulAt: new Date().toISOString(),
+        };
+    } catch (error) {
+        meta.policies = { ok: false, error: String(error) };
+        onFailure("policies", error);
     }
 
     try {
         if (pr.repoId) {
-            const threads = await fetchPrThreads(
+            const threads = await client.fetchPrThreads(
                 orgUrl,
                 pr.project,
                 pr.repoId,
@@ -68,13 +76,21 @@ export async function fetchAuthorMeta(
                     !t.isDeleted &&
                     (t.comments ?? []).some((c) => c.commentType !== "system"),
             );
-            meta.resolvedComments = real.filter((t) =>
+            const resolvedComments = real.filter((t) =>
                 RESOLVED_THREAD.has((t.status ?? "").toLowerCase()),
             ).length;
-            meta.activeComments = real.length - meta.resolvedComments;
+            meta.comments = {
+                ok: true,
+                value: {
+                    resolvedComments,
+                    activeComments: real.length - resolvedComments,
+                },
+                lastSuccessfulAt: new Date().toISOString(),
+            };
         }
-    } catch (err) {
-        onFailure("authorComments", err);
+    } catch (error) {
+        meta.comments = { ok: false, error: String(error) };
+        onFailure("authorComments", error);
     }
 
     return meta;

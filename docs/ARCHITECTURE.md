@@ -64,6 +64,12 @@ flowchart LR
 
 Each tick catches its own errors, so one failed run does not stop the schedule. Every ADO call has a timeout (30 s for REST, 60 s for `az`). `withRetry` in `packages/ado-client/src/retry.ts` retries timeouts, network errors, 408, 429, and 5xx with backoff, and it honors `Retry-After`. It does not retry auth errors. A hung call therefore ends, and the run finishes. Several hosts can share one database, but only the host that holds the `poll_lease` row polls. It renews the lease while its poller runs, and another host takes over after the lease expires. A host without the lease skips its runs, and a manual refresh on it returns no summary. The poller does not change user choices such as lane, scope, or manual dismissal. It can clear a snooze: the store clears an expired snooze, and an FTE approval wakes an "until FTE approves" snooze. After each run it also applies the archive rules (see "Archive and scope").
 
+Reconciliation refreshes metadata for every tracked PR that is not manually dismissed, even when its commit, draft state, and votes do not change. A metadata-only refresh does not add events, reset `updated_at`, or revive a stale archive.
+
+If a poll response has no head SHA, reconciliation keeps the known SHA and commit time. A branch change clears the cached file count so the poller can read it again.
+
+For authored PRs, policy and comment fetches report success separately. A failed fetch keeps the stored fields and records a warning in the poll trace. `authorMeta.lastSuccessfulAt` holds the last successful fetch time for policies and comments. Each time is `null` until that source succeeds. Older records can omit these times. No database migration is needed.
+
 ## Store
 
 `ArgusStore` in `server/db.ts` uses `node:sqlite` in WAL mode. It keeps the database handle and delegates each method to a module in `server/store/`. Each module exports functions that take the handle: `settings.ts`, `activity.ts`, `events.ts`, and `prs.ts`. The insights and load analytics still live in `db.ts`. Add new queries to the matching module, and add a thin method to `ArgusStore`. There are two data models:

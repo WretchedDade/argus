@@ -421,9 +421,13 @@ export function listPrPolicies(
         if (!projectId)
             throw new AdoError("PR has no project id for policy lookup.");
         const artifactId = `vstfs:///CodeReview/CodeReviewId/${projectId}/${id}`;
-        return restJson<{ value?: PolicyEval[] }>(
+        return restJson<{ value?: PolicyEval[] } | null>(
             `${orgRoot(org)}/${enc(projectId)}/_apis/policy/evaluations?artifactId=${enc(artifactId)}&api-version=7.1-preview.1`,
-        ).then((j) => j.value ?? []);
+        ).then((response) => {
+            if (!Array.isArray(response?.value))
+                throw new AdoError("Policy lookup returned no data.");
+            return response.value;
+        });
     }
     return azJson<PolicyEval[]>([
         "repos",
@@ -471,10 +475,17 @@ export function fetchPrThreads(
     repoId: string,
     prId: number,
 ): Promise<PrThread[]> {
+    const readThreads = (
+        response: { value?: PrThread[] } | null,
+    ): PrThread[] => {
+        if (!Array.isArray(response?.value))
+            throw new AdoError("Thread lookup returned no data.");
+        return response.value;
+    };
     if (useBroker())
         return restJson<{ value?: PrThread[] }>(
             `${orgRoot(orgUrl)}/${enc(project)}/_apis/git/repositories/${enc(repoId)}/pullRequests/${prId}/threads?api-version=7.1`,
-        ).then((j) => j.value ?? []);
+        ).then(readThreads);
     return azJson<{ value?: PrThread[] }>([
         "devops",
         "invoke",
@@ -490,7 +501,7 @@ export function fetchPrThreads(
         orgUrl.replace(/\/$/, ""),
         "--api-version",
         "7.1",
-    ]).then((j) => j?.value ?? []);
+    ]).then(readThreads);
 }
 
 // Commit time (committer date) of one commit. The PR list does not carry it.

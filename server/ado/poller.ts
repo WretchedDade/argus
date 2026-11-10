@@ -312,17 +312,28 @@ async function runReconcile(
                 "info",
                 `enriching ${authored.length} authored PR(s) with policy + comments`,
             );
-            for (const m of authored)
-                ctx.store.setAuthorMeta(
-                    m.canonical,
-                    await fetchAuthorMeta(m, cfg.orgUrl, (operation, err) => {
+            for (const m of authored) {
+                const meta = await fetchAuthorMeta(
+                    m,
+                    cfg.orgUrl,
+                    (operation, err) => {
                         failures[operation]++;
                         runLog.debug(
                             { err, operation },
                             "PR enrichment failed",
                         );
-                    }),
+                    },
                 );
+                for (const field of ["policies", "comments"] as const) {
+                    const result = meta[field];
+                    if (!result.ok)
+                        note("warn", `Could not refresh author ${field}`, {
+                            canonical: m.canonical,
+                            error: result.error,
+                        });
+                }
+                ctx.store.setAuthorMeta(m.canonical, meta);
+            }
         }
         if (applied.events) {
             note("info", `recorded ${applied.events} event(s)`, {

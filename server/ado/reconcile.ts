@@ -113,16 +113,16 @@ export function reconcile(
         const events = diffEvents(c, snap, votes, nowIso, opts.me ?? null);
         if (events.length === 0) {
             stats.unchanged += 1;
-            continue;
+        } else {
+            stats.changed += 1;
         }
-        stats.changed += 1;
         items.push({
-            upsert: toUpsert(c),
+            upsert: toUpsert({ ...c, sha: c.sha ?? snap.sha }),
             isAdd: false,
             lane: "review",
             events,
             votes,
-            revive: snap.archived === "stale",
+            revive: events.length > 0 && snap.archived === "stale",
         });
     }
 

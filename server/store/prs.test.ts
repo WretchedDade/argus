@@ -5,6 +5,10 @@ import { migrations } from "./migrations.ts";
 import * as events from "./events.ts";
 import * as prs from "./prs.ts";
 import type { PrUpsert } from "../types.ts";
+import { reconcile } from "../ado/reconcile.ts";
+import { normalizePr } from "../ado/normalize.ts";
+import { fetchAuthorMeta } from "../ado/authorMeta.ts";
+import { listPrPolicies, setAuthProvider, useBroker } from "../ado/client.ts";
 
 function open(): DatabaseSync {
     const db = new DatabaseSync(":memory:");
@@ -34,6 +38,24 @@ function pr(canonical: string, over: Partial<PrUpsert> = {}): PrUpsert {
         ...over,
     };
 }
+
+const current = normalizePr(
+    {
+        pullRequestId: 1,
+        title: "Edited title",
+        status: "active",
+        isDraft: false,
+        mergeStatus: "succeeded",
+        creationDate: new Date().toISOString(),
+        repository: { name: "r", id: "repo", project: { id: "project" } },
+        lastMergeSourceCommit: { commitId: "sha1" },
+        sourceRefName: "refs/heads/new",
+        targetRefName: "refs/heads/release",
+    },
+    "o",
+    "p",
+    { role: "author", teams: [], reviewState: null, otherVotes: [] },
+);
 
 test("upsertPr inserts, then refreshes ADO columns and keeps triage columns", () => {
     const db = open();
@@ -163,6 +185,219 @@ test("applyPlan rolls back every change when one item fails", () => {
     const bad = { ...good, upsert: null as unknown as PrUpsert };
     assert.throws(() => prs.applyPlan(db, { items: [good, bad] } as never));
     assert.equal(prs.getPr(db, "good"), null);
+});
+
+test("metadata-only polls keep the activity clock, archive, and user choices", (t) => {
+    const db = open();
+    t.after(() => db.close());
+    const key = current.canonical;
+    prs.upsertPr(db, pr(key));
+    prs.setLane(db, key, "quick");
+    prs.setReviewSession(db, key, "session");
+    const old = "2000-01-01T00:00:00.000Z";
+    db.prepare("UPDATE prs SET updated_at = ? WHERE canonical = ?").run(
+        old,
+        key,
+    );
+    let metadata = current;
+    const apply = (sha: string | null = "sha1") =>
+        prs.applyPlan(
+            db,
+            reconcile([{ ...metadata, sha }], prs.listSnapshots(db), {
+                nowMs: Date.now(),
+                recencyDays: 7,
+            }),
+        );
+    assert.deepEqual(apply(), { added: 0, updated: 0, events: 0 });
+    assert.equal(prs.getPr(db, key)?.title, "Edited title");
+    assert.equal(prs.getPr(db, key)?.updatedAt, old);
+    assert.equal(prs.getPr(db, key)?.lane, "quick");
+    assert.equal(prs.getPr(db, key)?.reviewSessionId, "session");
+    assert.deepEqual(prs.prsNeedingFileCount(db)[0]?.sourceBranch, "new");
+    assert.equal(prs.prsNeedingFileCount(db)[0]?.targetBranch, "release");
+    for (const branch of ["sourceBranch", "targetBranch"] as const) {
+        prs.setChangedFiles(db, key, 4, "sha1");
+        assert.equal(prs.prsNeedingFileCount(db).length, 0);
+        metadata = { ...metadata, [branch]: `changed-${branch}` };
+        assert.deepEqual(apply(), { added: 0, updated: 0, events: 0 });
+        assert.equal(prs.getPr(db, key)?.changedFiles, null);
+        assert.equal(prs.prsNeedingFileCount(db).length, 1);
+        assert.equal(prs.getPr(db, key)?.updatedAt, old);
+        prs.setChangedFiles(db, key, 5, "sha1");
+        apply();
+        assert.equal(prs.getPr(db, key)?.changedFiles, 5);
+        assert.equal(prs.prsNeedingFileCount(db).length, 0);
+    }
+    prs.setReviewSession(db, key, null);
+    assert.equal(prs.archiveStale(db, [key]), 1);
+    prs.setReviewSession(db, key, "archived-session");
+    const priorEvents = events.listEvents(db, key);
+    apply();
+    assert.equal(prs.getPr(db, key)?.dismissedReason, "stale");
+    assert.equal(prs.getPr(db, key)?.reviewSessionId, "archived-session");
+    assert.deepEqual(events.listEvents(db, key), priorEvents);
+    assert.deepEqual(apply("sha2"), { added: 0, updated: 1, events: 1 });
+    assert.equal(prs.getPr(db, key)?.dismissed, false);
+    assert.equal(prs.getPr(db, key)?.reviewSessionId, null);
+    assert.notEqual(prs.getPr(db, key)?.updatedAt, old);
+});
+
+test("a missing poll SHA keeps the known commit without false activity", (t) => {
+    const db = open();
+    t.after(() => db.close());
+    const key = current.canonical;
+    const old = "2000-01-01T00:00:00.000Z";
+    prs.upsertPr(db, pr(key, { lastCommitAt: old }));
+    db.prepare("UPDATE prs SET updated_at = ? WHERE canonical = ?").run(
+        old,
+        key,
+    );
+    prs.archiveStale(db, [key]);
+    const priorEvents = events.listEvents(db, key);
+    for (const sha of [null, "sha1"]) {
+        const result = prs.applyPlan(
+            db,
+            reconcile([{ ...current, sha }], prs.listSnapshots(db), {
+                nowMs: Date.now(),
+                recencyDays: 7,
+            }),
+        );
+        assert.deepEqual(result, { added: 0, updated: 0, events: 0 });
+        const saved = prs.getPr(db, key);
+        assert.equal(saved?.lastCommitSha, "sha1");
+        assert.equal(saved?.lastCommitAt, old);
+        assert.equal(saved?.updatedAt, old);
+        assert.equal(saved?.dismissedReason, "stale");
+        assert.deepEqual(events.listEvents(db, key), priorEvents);
+    }
+});
+
+test("author fetches preserve failed fields and refresh successful fields independently", async (t) => {
+    const db = open();
+    t.after(() => db.close());
+    prs.upsertPr(db, pr("c"));
+    const previous = {
+        completable: false,
+        blockers: ["Build"],
+        activeComments: 3,
+        resolvedComments: 2,
+        mergeStatus: "succeeded",
+        lastSuccessfulAt: {
+            policies: "2026-01-01T00:00:00.000Z",
+            comments: "2026-01-01T00:00:00.000Z",
+        },
+    };
+    const seed = (meta: object) =>
+        db
+            .prepare("UPDATE prs SET author_meta_json = ? WHERE canonical = ?")
+            .run(JSON.stringify(meta), "c");
+    const fail = () => Promise.reject(new Error("Lookup failed"));
+    for (const policiesFail of [false, true]) {
+        for (const commentsFail of [false, true]) {
+            seed(previous);
+            const failures: string[] = [];
+            const update = await fetchAuthorMeta(
+                current,
+                "https://dev.azure.com/o",
+                (operation) => {
+                    failures.push(operation);
+                },
+                {
+                    listPrPolicies: policiesFail
+                        ? fail
+                        : () => Promise.resolve([]),
+                    fetchPrThreads: commentsFail
+                        ? fail
+                        : () => Promise.resolve([]),
+                },
+            );
+            assert.equal(update.policies.ok, !policiesFail);
+            assert.equal(update.comments.ok, !commentsFail);
+            assert.deepEqual(failures, [
+                ...(policiesFail ? ["policies"] : []),
+                ...(commentsFail ? ["authorComments"] : []),
+            ]);
+            for (const result of [update.policies, update.comments]) {
+                if (result.ok)
+                    assert.ok(
+                        Number.isFinite(Date.parse(result.lastSuccessfulAt)),
+                    );
+                else assert.match(result.error, /Lookup failed/);
+            }
+            prs.setAuthorMeta(db, "c", update);
+            assert.deepEqual(prs.getPr(db, "c")?.authorMeta, {
+                ...previous,
+                completable: !policiesFail,
+                blockers: policiesFail ? previous.blockers : [],
+                activeComments: commentsFail ? previous.activeComments : 0,
+                resolvedComments: commentsFail ? previous.resolvedComments : 0,
+                lastSuccessfulAt: {
+                    policies: update.policies.ok
+                        ? update.policies.lastSuccessfulAt
+                        : previous.lastSuccessfulAt.policies,
+                    comments: update.comments.ok
+                        ? update.comments.lastSuccessfulAt
+                        : previous.lastSuccessfulAt.comments,
+                },
+            });
+        }
+    }
+    const { lastSuccessfulAt: _times, ...legacy } = previous;
+    seed(legacy);
+    const failed = await fetchAuthorMeta(
+        { ...current, repoId: "" },
+        "https://dev.azure.com/o",
+        () => {},
+        {
+            listPrPolicies: () => Promise.resolve(null),
+            fetchPrThreads: () => {
+                throw new Error("Must not fetch without a repository");
+            },
+        },
+    );
+    assert.equal(failed.policies.ok, false);
+    assert.equal(failed.comments.ok, false);
+    prs.setAuthorMeta(db, "c", failed);
+    assert.deepEqual(prs.getPr(db, "c")?.authorMeta, {
+        ...legacy,
+        lastSuccessfulAt: { policies: null, comments: null },
+    });
+    const { AdoRestClient } = await import("@devstart/ado-client");
+    const previousProvider = useBroker() ? "broker" : "az";
+    t.after(() => setAuthProvider(previousProvider));
+    setAuthProvider("broker");
+    let response: unknown;
+    t.mock.method(AdoRestClient.prototype, "request", async () =>
+        Response.json(response),
+    );
+    for (const [payload, valid] of [
+        [null, false],
+        [{}, false],
+        [{ value: null }, false],
+        [{ value: {} }, false],
+        [{ value: [] }, true],
+    ] as const) {
+        response = payload;
+        seed(previous);
+        const update = await fetchAuthorMeta(
+            current,
+            "https://dev.azure.com/o",
+            () => {},
+            { listPrPolicies, fetchPrThreads: () => Promise.resolve([]) },
+        );
+        assert.equal(update.policies.ok, valid);
+        assert.equal(update.comments.ok, true);
+        prs.setAuthorMeta(db, "c", update);
+        const saved = prs.getPr(db, "c")?.authorMeta;
+        assert.deepEqual(saved?.blockers, valid ? [] : previous.blockers);
+        assert.equal(saved?.completable, valid);
+        assert.equal(
+            saved?.lastSuccessfulAt?.policies,
+            update.policies.ok
+                ? update.policies.lastSuccessfulAt
+                : previous.lastSuccessfulAt.policies,
+        );
+    }
 });
 
 test("removePr deletes the row and its events", () => {

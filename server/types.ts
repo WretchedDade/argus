@@ -30,6 +30,18 @@ import type {
 } from "#shared/schemas/insights";
 
 export type { AuthorMeta, Lane, Pr, PrReviewState, PrRole, PrState };
+
+type MetaFetch<T> =
+    | { ok: true; value: T; lastSuccessfulAt: string }
+    | { ok: false; error: string };
+
+export interface AuthorMetaUpdate {
+    mergeStatus: string;
+    policies: MetaFetch<Pick<AuthorMeta, "completable" | "blockers">>;
+    comments: MetaFetch<
+        Pick<AuthorMeta, "activeComments" | "resolvedComments">
+    >;
+}
 export type {
     ActivityEntry,
     ActivityEvent,
