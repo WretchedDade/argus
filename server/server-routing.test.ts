@@ -17,12 +17,33 @@ import {
 test("canvas and ingest servers keep API routing separate from static files", async () => {
     const dir = mkdtempSync(path.join(tmpdir(), "argus-server-routing-"));
     const store = new ArgusStore(":memory:");
-    const context = {
+    const context: ServerContext = {
         store,
         distDir: dir,
         getConfig: defaultConfig,
         appVersion: "0.0.0",
-    } as ServerContext;
+        bootAt: new Date().toISOString(),
+        reconcile: async () => null,
+        deleteAllData: async () => {},
+        trackPr: async () => ({ ok: false }),
+        recordReview: () => {},
+        dispatch: async () => {},
+        pollerStatus: () => ({
+            me: null,
+            authOk: true,
+            running: false,
+            currentRunId: null,
+            lastRunAt: null,
+            lastSummary: null,
+            lastError: null,
+        }),
+        saveConfig: defaultConfig,
+        markSetupComplete: () => {},
+        installBaselineSkill: () => ({ installed: false }),
+        refreshPr: async () => {
+            throw new Error("private diagnostic detail");
+        },
+    };
     const instance: Instance = {
         instanceId: path.basename(dir),
         server: null,
@@ -51,6 +72,15 @@ test("canvas and ingest servers keep API routing separate from static files", as
             const version = await fetch(`${base}api/version`);
             assert.equal(version.status, 200);
             assert.deepEqual(await version.json(), { version: "0.0.0" });
+            const failed = await fetch(`${base}api/pr/refresh`, {
+                method: "POST",
+                headers: { "content-type": "application/json" },
+                body: JSON.stringify({ canonical: "missing" }),
+            });
+            assert.equal(failed.status, 500);
+            assert.deepEqual(await failed.json(), {
+                error: "Internal server error.",
+            });
             for (const route of ["api/missing", "api/prs/extra"]) {
                 const missing = await fetch(`${base}${route}`);
                 assert.equal(missing.status, 404);

@@ -116,7 +116,7 @@ export const ConfigSchema = z.object({
         ),
 }) satisfies z.ZodType<ArgusConfig>;
 
-const ConfigOverridesSchema = ConfigSchema.partial();
+export const ConfigOverridesSchema = ConfigSchema.partial();
 
 // Validate untrusted config input (file, saved settings, HTTP body). Unknown
 // keys are dropped. Throws a ConfigError that names every invalid field.
