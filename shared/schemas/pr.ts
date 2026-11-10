@@ -6,6 +6,9 @@ import { z } from "zod";
 export const LaneSchema = z.enum(["quick", "review"]);
 export type Lane = z.infer<typeof LaneSchema>;
 
+export const ReviewActionModeSchema = z.enum(["with-me", "for-me", "delegate"]);
+export type ReviewActionMode = z.infer<typeof ReviewActionModeSchema>;
+
 export const PrStateSchema = z.enum(["pending", "reviewed", "closed"]);
 export type PrState = z.infer<typeof PrStateSchema>;
 

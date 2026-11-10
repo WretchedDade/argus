@@ -57,7 +57,7 @@ One row for each PR that Argus tracks. It is the current snapshot. The poller wr
 | `changed_files`, `changed_files_sha`                      | Count of changed files, and the commit it was counted at                 | ADO              |
 | `my_comments`, `other_comments`                           | Comment counts                                                           | ADO              |
 | `added_at`, `updated_at`                                  | When Argus first saw and last updated the row                            | Argus            |
-| `lane`                                                    | Board lane                                                               | User or computed |
+| `lane`                                                    | Last interactive review mode (`quick`: for me, `review`: with me)        | User or computed |
 | `review_state`                                            | Your standing on the PR                                                  | Computed         |
 | `dismissed`, `dismissed_reason`, `dismissed_at`           | Dismiss choice                                                           | User             |
 | `snoozed_until`, `snooze_mode`                            | Snooze choice                                                            | User             |

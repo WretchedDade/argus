@@ -10,69 +10,23 @@ import {
     Hourglass,
     ListChecks,
     UserCheck,
-    Zap,
 } from "lucide-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import {
-    api,
-    configQuery,
-    healthQuery,
-    prsQuery,
-    type Lane,
-    type Pr,
-} from "../lib/api";
+import { api, configQuery, healthQuery, prsQuery, type Pr } from "../lib/api";
 import { PrCard } from "./PrCard";
 import { pushToast } from "../lib/toast";
-import { byRecent, isSnoozed, isStale, needsAction } from "../lib/triage";
+import {
+    byQueuePriority,
+    byRecent,
+    isSnoozed,
+    isStale,
+    needsAction,
+} from "../lib/triage";
 import { QueueFilters } from "./QueueFilters";
 import {
     matchesQueueFilters,
     type QueueFilters as Filters,
 } from "../lib/queue-filters";
-
-const LANE_LABEL: Record<Lane, string> = {
-    review: "Full review",
-    quick: "Quick",
-};
-
-function LaneSection({
-    id,
-    lane,
-    items,
-    labels,
-}: {
-    id: string;
-    lane: Lane;
-    items: Pr[];
-    labels: Record<string, string>;
-}) {
-    const sorted = [...items].sort(byRecent);
-
-    return (
-        <section id={id} className="flex scroll-mt-20 flex-col gap-2">
-            <div className="flex items-baseline gap-2">
-                <h2 className="text-fg text-sm font-semibold">
-                    {LANE_LABEL[lane]}
-                </h2>
-                <span className="text-muted text-xs">{items.length}</span>
-            </div>
-            <div className="flex flex-col gap-3">
-                {sorted.map((pr) =>
-                    needsAction(pr) ? (
-                        <PrCard key={pr.canonical} pr={pr} labels={labels} />
-                    ) : (
-                        <PrCard
-                            key={pr.canonical}
-                            pr={pr}
-                            labels={labels}
-                            variant="compact"
-                        />
-                    ),
-                )}
-            </div>
-        </section>
-    );
-}
 
 function CollapsedSection({
     id,
@@ -155,7 +109,7 @@ function CollapsedSection({
 interface RailEntry {
     id: string;
     label: string;
-    Icon: typeof Zap;
+    Icon: typeof ListChecks;
 }
 
 function SectionRail({ entries }: { entries: RailEntry[] }) {
@@ -313,21 +267,13 @@ export function TriageQueue({
     const active = notCovered.filter((p) => !isStale(p, recencyDays));
     const stale = notCovered.filter((p) => isStale(p, recencyDays));
     const needs = active.filter((p) => needsAction(p)).length;
-    const lanes: Lane[] = ["review", "quick"];
-    const laneIcon: Record<Lane, typeof Zap> = {
-        review: ListChecks,
-        quick: Zap,
-    };
-
     const rail: RailEntry[] = [];
-    for (const l of lanes) {
-        if (active.some((p) => p.lane === l))
-            rail.push({
-                id: `sec-${l}`,
-                label: LANE_LABEL[l],
-                Icon: laneIcon[l],
-            });
-    }
+    if (active.length > 0)
+        rail.push({
+            id: "sec-review",
+            label: "Review queue",
+            Icon: ListChecks,
+        });
     if (covered.length > 0)
         rail.push({ id: "sec-covered", label: "Covered", Icon: UserCheck });
     if (drafts.length > 0)
@@ -371,18 +317,17 @@ export function TriageQueue({
                 {filterControls}
             </div>
 
-            {lanes.map((l) => {
-                const items = active.filter((p) => p.lane === l);
-                return items.length ? (
-                    <LaneSection
-                        key={l}
-                        id={`sec-${l}`}
-                        lane={l}
-                        items={items}
-                        labels={labels}
-                    />
-                ) : null;
-            })}
+            {active.length > 0 && (
+                <section
+                    id="sec-review"
+                    aria-label="Review queue"
+                    className="flex scroll-mt-20 flex-col gap-3"
+                >
+                    {[...active].sort(byQueuePriority).map((pr) => (
+                        <PrCard key={pr.canonical} pr={pr} labels={labels} />
+                    ))}
+                </section>
+            )}
 
             {covered.length > 0 && (
                 <CollapsedSection

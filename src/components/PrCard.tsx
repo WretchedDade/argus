@@ -1,5 +1,6 @@
-import { useRef, useState } from "react";
+import { useId, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { Button } from "@headlessui/react";
 import { Link } from "@tanstack/react-router";
 import {
     AlarmClock,
@@ -18,17 +19,12 @@ import {
     RefreshCw,
     RotateCcw,
     X,
-    Zap,
 } from "lucide-react";
-import { useQueryClient } from "@tanstack/react-query";
-import { api, type Pr } from "../lib/api";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { api, type Pr, type ReviewActionMode } from "../lib/api";
 import { resolveTeamLabel, shortAge, timeUntil } from "../lib/format";
 import { teamBadgeStyle } from "../lib/teamColor";
-import {
-    isSnoozed,
-    REVIEW_STATE_META,
-    shouldShowAutomaticReview,
-} from "../lib/triage";
+import { isSnoozed, REVIEW_STATE_META } from "../lib/triage";
 import { pushToast } from "../lib/toast";
 import { usePending } from "../lib/usePending";
 import { MarkdownPreview } from "./MarkdownPreview";
@@ -117,16 +113,21 @@ const swallow = (e: React.MouseEvent) => {
 function Tip({
     label,
     children,
+    id,
+    wide = false,
 }: {
     label: string;
     children: React.ReactNode;
+    id?: string;
+    wide?: boolean;
 }) {
     return (
-        <span className="group/tip relative inline-flex">
+        <span className={`group/tip inline-flex ${wide ? "" : "relative"}`}>
             {children}
             <span
+                id={id}
                 role="tooltip"
-                className="pr-card border-line text-fg pointer-events-none absolute bottom-full left-1/2 z-50 mb-1.5 -translate-x-1/2 whitespace-nowrap rounded-md border px-2 py-1 text-xs opacity-0 shadow-md transition-opacity duration-100 group-hover/tip:opacity-100"
+                className={`pr-card border-line text-fg pointer-events-none absolute bottom-full z-50 mb-1.5 rounded-md border px-2 py-1 text-xs opacity-0 shadow-md transition-opacity duration-100 group-hover/tip:opacity-100 group-focus-within/tip:opacity-100 ${wide ? "left-0 w-72 max-w-full whitespace-normal" : "left-1/2 -translate-x-1/2 whitespace-nowrap"}`}
             >
                 {label}
             </span>
@@ -163,45 +164,6 @@ function ActionBtn({
                 />
             </button>
         </Tip>
-    );
-}
-
-function LaneButton({ pr }: { pr: Pr }) {
-    const qc = useQueryClient();
-    const { pending, run } = usePending();
-    const dest = pr.lane === "review" ? "quick" : "review";
-    const move = () =>
-        run(async () => {
-            try {
-                await api.setLane(pr.canonical, dest);
-                pushToast(
-                    `Moved to ${dest === "quick" ? "Quick" : "Full review"}`,
-                );
-                void qc.invalidateQueries({ queryKey: ["prs"] });
-                void qc.invalidateQueries({ queryKey: ["pr", pr.canonical] });
-            } catch {
-                pushToast("Couldn't move lane", "error");
-            }
-        });
-    return (
-        <button
-            type="button"
-            disabled={pending}
-            onClick={(e) => {
-                swallow(e);
-                move();
-            }}
-            className="border-line text-muted hover:text-fg inline-flex items-center gap-1 rounded-md border px-2 py-1 text-[11px] transition-colors disabled:opacity-60"
-        >
-            {pending ? (
-                <Loader2 size={12} className="animate-spin" />
-            ) : dest === "quick" ? (
-                <Zap size={12} />
-            ) : (
-                <ListChecks size={12} />
-            )}
-            Move to {dest === "quick" ? "Quick" : "Full"}
-        </button>
     );
 }
 
@@ -377,9 +339,20 @@ function SnoozeMenu({ pr }: { pr: Pr }) {
 
 export function ActionBar({ pr }: { pr: Pr }) {
     const qc = useQueryClient();
+    const helpId = useId();
     const [refreshing, setRefreshing] = useState(false);
     const scope = usePending();
-    const reviewReq = usePending();
+    const reviewReq = useMutation({
+        mutationFn: (mode: ReviewActionMode) => api.review(pr.canonical, mode),
+        onSuccess: (_data, mode) => {
+            pushToast(
+                mode === "delegate" ? "Delegate requested" : "Review requested",
+            );
+            void qc.invalidateQueries({ queryKey: ["prs"] });
+            void qc.invalidateQueries({ queryKey: ["pr", pr.canonical] });
+        },
+        onError: () => pushToast("Couldn't start review", "error"),
+    });
 
     const markOutOfScope = () =>
         scope.run(async () => {
@@ -407,57 +380,67 @@ export function ActionBar({ pr }: { pr: Pr }) {
         }
     };
 
-    const review = (automatic = false) =>
-        reviewReq.run(async () => {
-            try {
-                const { reReview } = await api.review(pr.canonical, automatic);
-                pushToast(
-                    automatic
-                        ? "Automatic review requested"
-                        : reReview
-                          ? "Re-review requested"
-                          : "Review requested",
-                );
-            } catch {
-                pushToast("Couldn't start review", "error");
-            }
-        });
-
     return (
-        <div className="relative z-20 flex items-center gap-1.5 border-t border-line pt-2.5">
-            <button
-                type="button"
-                disabled={reviewReq.pending}
-                onClick={(e) => {
-                    swallow(e);
-                    review(false);
-                }}
-                className="inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-semibold text-white disabled:opacity-70"
-                style={{ background: "var(--peacock-teal)" }}
+        <div className="relative z-20 flex flex-wrap items-center gap-1.5 border-t border-line pt-2.5">
+            <Tip
+                id={`${helpId}-for-me`}
+                label="Copilot reviews first. You add findings and approve comments and the vote."
+                wide
             >
-                {reviewReq.pending && (
-                    <Loader2 size={12} className="animate-spin" />
-                )}
-                {pr.reviewSessionId ? "Re-review" : "Review"}
-            </button>
-
-            {shouldShowAutomaticReview(pr) && (
-                <button
+                <Button
                     type="button"
-                    disabled={reviewReq.pending}
+                    aria-describedby={`${helpId}-for-me`}
+                    disabled={reviewReq.isPending}
                     onClick={(e) => {
                         swallow(e);
-                        review(true);
+                        reviewReq.mutate("for-me");
                     }}
-                    aria-label="Start automatic review"
-                    className="text-muted hover:text-fg inline-flex items-center gap-1 rounded-md border border-line px-2 py-1 text-xs font-semibold transition-colors hover:bg-[color-mix(in_srgb,var(--color-fg)_8%,transparent)] disabled:opacity-70"
+                    className="inline-flex items-center gap-1.5 rounded-md bg-[color-mix(in_srgb,var(--peacock-teal)_80%,black)] px-2.5 py-1 text-xs font-semibold text-white transition-colors data-hover:bg-[color-mix(in_srgb,var(--peacock-teal)_65%,black)] data-active:bg-[color-mix(in_srgb,var(--peacock-teal)_55%,black)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent disabled:cursor-not-allowed disabled:opacity-70"
+                >
+                    {reviewReq.isPending && (
+                        <Loader2 size={12} className="animate-spin" />
+                    )}
+                    Review for me
+                </Button>
+            </Tip>
+
+            <Tip
+                id={`${helpId}-with-me`}
+                label="You lead step by step. Copilot fills the gaps. You approve comments and the vote."
+                wide
+            >
+                <Button
+                    type="button"
+                    aria-describedby={`${helpId}-with-me`}
+                    disabled={reviewReq.isPending}
+                    onClick={(e) => {
+                        swallow(e);
+                        reviewReq.mutate("with-me");
+                    }}
+                    className="text-muted data-hover:text-fg data-hover:border-accent inline-flex items-center gap-1 rounded-md border border-line px-2 py-1 text-xs font-semibold transition-colors data-hover:bg-[color-mix(in_srgb,var(--peacock-teal)_14%,var(--card-bg))] data-active:bg-[color-mix(in_srgb,var(--peacock-teal)_24%,var(--card-bg))] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent disabled:cursor-not-allowed disabled:opacity-70"
+                >
+                    Review with me
+                </Button>
+            </Tip>
+            <Tip
+                id={`${helpId}-delegate`}
+                label="Copilot can approve without asking, but only with zero findings. It posts no comments."
+                wide
+            >
+                <Button
+                    type="button"
+                    aria-describedby={`${helpId}-delegate`}
+                    disabled={reviewReq.isPending}
+                    onClick={(e) => {
+                        swallow(e);
+                        reviewReq.mutate("delegate");
+                    }}
+                    className="text-muted data-hover:text-fg data-hover:border-accent inline-flex items-center gap-1 rounded-md border border-line px-2 py-1 text-xs font-semibold transition-colors data-hover:bg-[color-mix(in_srgb,var(--peacock-teal)_14%,var(--card-bg))] data-active:bg-[color-mix(in_srgb,var(--peacock-teal)_24%,var(--card-bg))] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent disabled:cursor-not-allowed disabled:opacity-70"
                 >
                     <Bot size={12} />
-                    Auto
-                </button>
-            )}
-
-            <LaneButton pr={pr} />
+                    Delegate
+                </Button>
+            </Tip>
 
             <div className="ml-auto flex items-center gap-0.5">
                 <SnoozeMenu pr={pr} />

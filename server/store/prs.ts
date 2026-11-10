@@ -938,7 +938,7 @@ export function setRepo(
     applyScopePolicy(db);
 }
 
-// Move a PR between the quick and full-review lanes (manual triage).
+// Keep the last interactive review mode in the legacy lane field.
 export function setLane(db: DatabaseSync, canonical: string, lane: Lane): void {
     prep(db, "UPDATE prs SET lane = ? WHERE canonical = ?").run(
         lane,

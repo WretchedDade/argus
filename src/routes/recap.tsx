@@ -97,7 +97,7 @@ const EFFORT_META: {
     {
         key: "depth",
         label: "Review depth",
-        desc: "Lane and your comments",
+        desc: "Last review mode and your comments",
         color: "var(--peacock-teal)",
     },
     {

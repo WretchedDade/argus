@@ -99,7 +99,7 @@ function weekLabel(iso: string): string {
     });
 }
 
-// Weekly unique PR throughput, quick + full lanes stacked.
+// Weekly unique PR throughput by the last interactive review mode.
 export function ThroughputChart({
     data,
 }: {
@@ -133,12 +133,17 @@ export function ThroughputChart({
                         `Week of ${weekLabel(String(w as string))}`
                     }
                 />
-                <Bar dataKey="review" stackId="a" fill="#14b8a6" name="Full" />
+                <Bar
+                    dataKey="review"
+                    stackId="a"
+                    fill="#14b8a6"
+                    name="Review with me"
+                />
                 <Bar
                     dataKey="quick"
                     stackId="a"
                     fill="#38bdf8"
-                    name="Quick"
+                    name="Review for me"
                     radius={[3, 3, 0, 0]}
                 />
             </BarChart>

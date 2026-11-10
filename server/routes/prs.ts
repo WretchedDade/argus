@@ -4,6 +4,10 @@ import type { ApiContext } from "../api.ts";
 import type { AppEnv } from "../app.ts";
 import { STALE_ARCHIVE_DAYS } from "../types.ts";
 import {
+    ReviewActionModeSchema,
+    type ReviewActionMode,
+} from "../../shared/schemas/pr.ts";
+import {
     fetchAdoImage,
     ImageProxyError,
     isAllowedImageHost,
@@ -92,25 +96,8 @@ export function prRoutes(ctx: ApiContext) {
             },
         )
         .post(
-            "/pr/lane",
-            jsonBody<CanonicalBody & { lane?: string }>(),
-            (c) => {
-                const body = c.req.valid("json");
-                if (
-                    !body.canonical ||
-                    (body.lane !== "quick" && body.lane !== "review")
-                )
-                    return c.json(
-                        { error: "canonical and lane (quick|review) required" },
-                        400,
-                    );
-                ctx.store.setLane(body.canonical, body.lane);
-                return c.json({ pr: ctx.store.getPr(body.canonical) });
-            },
-        )
-        .post(
             "/pr/review",
-            jsonBody<CanonicalBody & { automatic?: boolean }>(),
+            jsonBody<CanonicalBody & { mode: ReviewActionMode }>(),
             async (c) => {
                 const body = c.req.valid("json");
                 const pr = body.canonical
@@ -121,19 +108,17 @@ export function prRoutes(ctx: ApiContext) {
                         { error: "canonical required / not found" },
                         400,
                     );
-                if (
-                    body.automatic !== undefined &&
-                    typeof body.automatic !== "boolean"
-                )
-                    return c.json({ error: "automatic must be boolean" }, 400);
-                if (body.automatic && pr.lane !== "quick")
+                if (!ReviewActionModeSchema.safeParse(body.mode).success)
                     return c.json(
-                        { error: "automatic review requires quick lane" },
+                        { error: "mode must be with-me, for-me, or delegate" },
                         400,
                     );
-                const token = body.automatic
-                    ? ctx.store.issueAutomaticReviewToken(pr.canonical)
-                    : null;
+                const mode = body.mode;
+                const lane = mode === "for-me" ? "quick" : "review";
+                const token =
+                    mode === "delegate"
+                        ? ctx.store.issueAutomaticReviewToken(pr.canonical)
+                        : null;
                 try {
                     await ctx.dispatch(
                         token
@@ -144,11 +129,13 @@ export function prRoutes(ctx: ApiContext) {
                                   ctx.getConfig().reviewModels,
                               )
                             : reviewPrompt(
-                                  pr,
+                                  { ...pr, lane },
                                   ctx.getConfig().reviewSkillName,
                                   ctx.getConfig().reviewModels,
                               ),
                     );
+                    if (mode !== "delegate")
+                        ctx.store.setLane(pr.canonical, lane);
                 } catch (error) {
                     if (token)
                         ctx.store.revokeAutomaticReviewToken(

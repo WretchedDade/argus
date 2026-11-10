@@ -5,6 +5,7 @@ import {
     queueFilterOptions,
 } from "./queue-filters.ts";
 import type { Pr } from "./api.ts";
+import { byQueuePriority } from "./triage.ts";
 
 const pr: Pr = {
     canonical: "https://example.test/pr/1",
@@ -134,4 +135,40 @@ assert.deepEqual(
 assert.deepEqual(
     parseQueueFilters({ ...filters, unrelated: "ignored" }),
     filters,
+);
+
+const queue = [
+    {
+        ...pr,
+        number: 1,
+        lane: "review",
+        reviewState: "approved",
+        updatedAt: "2026-11-10",
+    },
+    {
+        ...pr,
+        number: 2,
+        lane: "quick",
+        reviewState: "needs",
+        updatedAt: "2026-11-08",
+    },
+    {
+        ...pr,
+        number: 3,
+        lane: "review",
+        reviewState: null,
+        updatedAt: "2026-11-09",
+    },
+    {
+        ...pr,
+        number: 4,
+        lane: "quick",
+        reviewState: "waiting",
+        updatedAt: "2026-11-07",
+    },
+] satisfies Pr[];
+assert.deepEqual(
+    queue.sort(byQueuePriority).map((item) => item.number),
+    [3, 2, 1, 4],
+    "One queue sorts by need, then recent activity, regardless of the stored lane.",
 );

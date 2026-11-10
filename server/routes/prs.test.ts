@@ -157,25 +157,72 @@ try {
             error: "canonical required",
         });
     assert.equal(
-        (await post("/api/pr/lane", { canonical, lane: "invalid" })).status,
-        400,
+        (await post("/api/pr/lane", { canonical, lane: "review" })).status,
+        404,
     );
-    assert.equal(
-        (await client.pr.lane.$post({ json: { canonical, lane: "review" } }))
-            .status,
-        200,
-    );
-    assert.equal(store.getPr(canonical)?.lane, "review");
-    assert.equal(
-        (await post("/api/pr/review", { canonical, automatic: true })).status,
-        400,
-    );
-    assert.equal(
-        (await post("/api/pr/review", { canonical, automatic: "yes" })).status,
-        400,
-    );
+    assert.equal(store.getPr(canonical)?.lane, "quick");
+    for (const body of [
+        {},
+        { mode: "invalid" },
+        { mode: null },
+        { mode: "quick" },
+        { mode: "full" },
+        { mode: "automatic" },
+        { mode: true },
+        { automatic: true },
+        { automatic: false },
+        { automatic: "yes" },
+    ]) {
+        assert.equal(
+            (await post("/api/pr/review", { canonical, ...body })).status,
+            400,
+        );
+    }
+    assert.equal(prompts.length, 0, "Invalid requests do not start a review.");
+    assert.equal(store.getPr(canonical)?.lane, "quick");
     assert.equal((await post("/api/pr/review", {})).status, 400);
-    store.setLane(canonical, "quick");
+    for (const [mode, lane] of [
+        ["for-me", "quick"],
+        ["with-me", "review"],
+    ] as const) {
+        assert.equal(
+            (await client.pr.review.$post({ json: { canonical, mode } }))
+                .status,
+            200,
+        );
+        assert.equal(store.getPr(canonical)?.lane, lane);
+        assert.match(prompts.at(-1) ?? "", new RegExp(`Review mode: ${mode}`));
+        assert.equal(
+            (
+                await client.pr.review.$post({
+                    json: { canonical, mode: "delegate" },
+                })
+            ).status,
+            200,
+        );
+        assert.equal(store.getPr(canonical)?.lane, lane);
+        assert.match(prompts.at(-1) ?? "", /Review mode: delegate/);
+        const token = /"token":"([^"]+)"/.exec(prompts.at(-1) ?? "")?.[1];
+        assert.ok(token);
+        assert.equal(
+            (
+                await post("/api/pr/record-review", {
+                    canonical,
+                    token,
+                    release: true,
+                })
+            ).status,
+            200,
+        );
+    }
+    failDispatch = true;
+    assert.equal(
+        (await post("/api/pr/review", { canonical, mode: "for-me" })).status,
+        500,
+    );
+    failDispatch = false;
+    assert.equal(store.getPr(canonical)?.lane, "review");
+    prompts.length = 0;
     const until = new Date(Date.now() + 60_000).toISOString();
     assert.equal(
         (await client.pr.snooze.$post({ json: { canonical, until } })).status,
@@ -249,9 +296,10 @@ try {
 
     const dispatched = await post("/api/pr/review", {
         canonical,
-        automatic: true,
+        mode: "delegate",
     });
     assert.equal(dispatched.status, 200);
+    assert.equal(store.getPr(canonical)?.lane, "review");
     const token = /"token":"([^"]+)"/.exec(prompts[0] ?? "")?.[1];
     assert.ok(token, "automatic prompt carries a token");
 
@@ -271,9 +319,10 @@ try {
     // An escalation releases its token without recording a verdict.
     const dispatchedAgain = await post("/api/pr/review", {
         canonical,
-        automatic: true,
+        mode: "delegate",
     });
     assert.equal(dispatchedAgain.status, 200);
+    assert.match(prompts.at(-1) ?? "", /Review mode: delegate/);
     const releaseToken = /"token":"([^"]+)"/.exec(prompts.at(-1) ?? "")?.[1];
     assert.ok(releaseToken);
     assert.equal((await verdict("approved")).status, 403);
@@ -290,14 +339,28 @@ try {
     // A failed dispatch revokes its own token only.
     const keep = store.issueAutomaticReviewToken(canonical);
     failDispatch = true;
-    const failed = await post("/api/pr/review", { canonical, automatic: true });
+    const failed = await post("/api/pr/review", {
+        canonical,
+        mode: "delegate",
+    });
     assert.equal(failed.status, 500);
     failDispatch = false;
     assert.equal(store.checkVerdictAllowed(canonical, "approved", keep), true);
     assert.equal(store.checkVerdictAllowed(canonical, "approved"), true);
     store.setReviewSession(canonical, "review-session");
-    const reReview = await post("/api/pr/review", { canonical });
+    const reReview = await post("/api/pr/review", {
+        canonical,
+        mode: "with-me",
+    });
     assert.deepEqual(await reReview.json(), { ok: true, reReview: true });
+    assert.match(prompts.at(-1) ?? "", /Review mode: with-me/);
+    assert.equal(
+        (await post("/api/pr/review", { canonical, mode: "for-me" })).status,
+        200,
+    );
+    assert.match(prompts.at(-1) ?? "", /review-session/);
+    assert.match(prompts.at(-1) ?? "", /Review mode: for-me/);
+    assert.equal(store.getPr(canonical)?.lane, "quick");
     store.markClosed(canonical, "completed");
     failDispatch = true;
     assert.equal((await client.archive.$post()).status, 500);

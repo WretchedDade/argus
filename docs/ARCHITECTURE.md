@@ -109,6 +109,10 @@ API rules:
 - The client uses `hc<AppType>` from `hono/client`. Keep schema checks for shared response types.
 - The API reaches the host through `ApiContext` (store, `getConfig`, poller functions). The auth and config routes call `resetIdentity` after a sign-in provider change.
 
+`POST /api/pr/review` requires an explicit `mode`: `with-me`, `for-me`, or
+`delegate`. The stored lane records the last interactive mode; it does not
+select the next review mode. Only starting an interactive review changes it.
+
 ## Client
 
 The client is a single-page app in `src/`:

@@ -13,6 +13,7 @@ import type {
     PrReviewState,
     PrRole,
     PrState,
+    ReviewActionMode,
 } from "#shared/schemas/pr";
 
 import { NoticesResponseSchema, type Notice } from "#shared/schemas/notice";
@@ -41,7 +42,15 @@ import {
     type WeeklyReviewPr,
 } from "#shared/schemas/insights";
 
-export type { AuthorMeta, Lane, Pr, PrReviewState, PrRole, PrState };
+export type {
+    AuthorMeta,
+    Lane,
+    Pr,
+    PrReviewState,
+    PrRole,
+    PrState,
+    ReviewActionMode,
+};
 export type { Notice, ActivityEntry, ArgusConfig, Period };
 export type {
     Insights,
@@ -256,10 +265,6 @@ export const api = {
         });
         if (!res.ok) throw new Error(`scope -> ${res.status}`);
     },
-    setLane: async (canonical: string, lane: Lane): Promise<void> => {
-        const res = await client.pr.lane.$post({ json: { canonical, lane } });
-        if (!res.ok) throw new Error(`lane -> ${res.status}`);
-    },
     refreshPr: async (canonical: string): Promise<void> => {
         const res = await client.pr.refresh.$post({ json: { canonical } });
         if (!res.ok) throw new Error(`refreshPr -> ${res.status}`);
@@ -294,10 +299,10 @@ export const api = {
     },
     review: async (
         canonical: string,
-        automatic = false,
+        mode: ReviewActionMode,
     ): Promise<{ reReview: boolean }> => {
         const res = await client.pr.review.$post({
-            json: { canonical, automatic },
+            json: { canonical, mode },
         });
         if (!res.ok) throw new Error(`review -> ${res.status}`);
         return readJson(res);

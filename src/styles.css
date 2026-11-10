@@ -139,8 +139,7 @@ button:not(:disabled) {
     box-shadow: 0 6px 22px -12px var(--accent-glow);
 }
 
-/* Lane accents drawn from the feather: review = teal, quick = gold. Text mixes
-   toward the theme foreground so it stays legible in both light and dark. */
+/* Legacy mode accents: Review with me is teal; Review for me is gold. */
 .lane-review {
     color: color-mix(in srgb, var(--peacock-teal) 60%, var(--color-fg));
     border-color: color-mix(in srgb, var(--peacock-teal) 45%, transparent);
