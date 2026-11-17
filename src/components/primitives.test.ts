@@ -21,6 +21,8 @@ const result = await build({
             import { SegToggle } from "./src/components/SegToggle.tsx";
             import { RefreshButton } from "./src/components/RefreshButton.tsx";
             import { NotificationsBell } from "./src/components/NotificationsBell.tsx";
+            import { Toaster } from "./src/components/Toaster.tsx";
+            import { dismissToast, pushToast } from "./src/lib/toast.ts";
             import { AuthorTreemap, CoverageWaffle, Donut, LatencyScatter, ReviewCalendar, ReviewRhythm, VoteBars } from "./src/components/Charts.tsx";
             const render = (child, client = new QueryClient()) => renderToStaticMarkup(
                 h(MantineProvider, { theme: argusTheme }, h(QueryClientProvider, { client }, child)));
@@ -36,6 +38,14 @@ const result = await build({
                 onRetry: () => {}, showActivityLink: false,
             }));
             export const pending = () => render(h(PendingPage));
+            export const toast = (kind) => {
+                const id = pushToast("Synthetic toast", kind, null);
+                try {
+                    return render(h(Toaster));
+                } finally {
+                    dismissToast(id);
+                }
+            };
             export const boardPending = () => render(h(TriageQueue, { filters: {}, onFiltersChange: () => {} }));
             export const pollWarning = (authOk) => {
                 const client = new QueryClient();
@@ -235,6 +245,7 @@ try {
         | "longChartLegend",
         () => string
     > & {
+        toast: (kind: "success" | "error" | "progress") => string;
         pollWarning: (authOk: boolean) => string;
         registration: (polling?: boolean) => string;
         latencySamples: () => {
@@ -323,6 +334,12 @@ try {
     }
     assert.match(render.noticePending(), /data-loading="true"/);
     assert.match(render.noticePending(), /disabled/);
+    for (const kind of ["success", "error"] as const) {
+        const toast = render.toast(kind);
+        assert.match(toast, /Synthetic toast/);
+        assert.match(toast, /<button\b[^>]*aria-label="Dismiss"/);
+    }
+    assert.doesNotMatch(render.toast("progress"), /<button\b/);
     const bell = render.notificationBell();
     const bellButton = bell.match(
         /<button\b[^>]*aria-label="Notifications"[^]*?<\/button>/,

@@ -27,6 +27,7 @@ export function Toaster() {
                         )
                     }
                     withCloseButton={toast.kind !== "progress"}
+                    closeButtonProps={{ "aria-label": "Dismiss" }}
                     onClose={() => dismissToast(toast.id)}
                     withBorder
                 >
