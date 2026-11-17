@@ -8,6 +8,7 @@ import type { ApiContext } from "../api.ts";
 import { createHonoHandler, type AppType } from "../app.ts";
 import { defaultConfig } from "../config.ts";
 import { ArgusStore } from "../db.ts";
+import { PrsResponseSchema } from "../../shared/schemas/pr.ts";
 
 const dir = mkdtempSync(path.join(tmpdir(), "argus-review-api-test-"));
 const store = new ArgusStore(path.join(dir, "argus.db"));
@@ -113,6 +114,39 @@ try {
         canonical: null,
     });
     assert.equal((await client.prs.$get()).status, 200);
+    const storedPr = store.getPr(canonical);
+    assert.ok(storedPr);
+    const archivedCanonical = "https://example.test/pr/43";
+    const closedCanonical = "https://example.test/pr/44";
+    for (const [historyCanonical, number] of [
+        [archivedCanonical, 43],
+        [closedCanonical, 44],
+    ] as const)
+        store.upsertPr({
+            ...storedPr,
+            canonical: historyCanonical,
+            number,
+            sourceBranch: null,
+            targetBranch: null,
+        });
+    store.setOutOfScope(archivedCanonical, true);
+    store.markClosed(closedCanonical, "completed");
+    const allPrs = await get("/api/prs/all");
+    assert.equal(allPrs.status, 200);
+    assert.deepEqual(
+        PrsResponseSchema.parse(allPrs.body)
+            .prs.map((pr) => pr.number)
+            .sort((a, b) => a - b),
+        [42, 43, 44],
+        "The history listing includes archived and closed PRs.",
+    );
+    assert.deepEqual(
+        PrsResponseSchema.parse(await (await client.prs.$get()).json()).prs.map(
+            (pr) => pr.canonical,
+        ),
+        [canonical],
+        "The board listing still excludes archived and closed PRs.",
+    );
     assert.equal((await post("/api/prs", {})).status, 200);
     assert.equal((await post("/api/pr/refresh", {})).status, 400);
     assert.equal((await fetch(`${base}/api/pr/refresh`)).status, 404);

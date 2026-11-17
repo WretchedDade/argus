@@ -30,6 +30,7 @@ export function StorageNotice({
                 <PrimaryButton
                     onClick={() => chooseWithCopilot.mutate()}
                     disabled={chooseWithCopilot.isPending}
+                    loading={chooseWithCopilot.isPending}
                 >
                     {chooseWithCopilot.isPending
                         ? "Sending…"

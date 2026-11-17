@@ -33,6 +33,14 @@ const validNumber = z
 export function prRoutes(ctx: ApiContext) {
     const app = new Hono<AppEnv>()
         .get("/prs", (c) => c.json({ prs: ctx.store.listPrs() }))
+        .get("/prs/all", (c) =>
+            c.json({
+                prs: ctx.store.listPrs({
+                    includeClosed: true,
+                    includeDismissed: true,
+                }),
+            }),
+        )
         .get("/pr", queryParams(canonicalBody), (c) => {
             const { canonical } = c.req.valid("query");
             return c.json({

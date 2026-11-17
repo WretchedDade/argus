@@ -1,11 +1,4 @@
-import {
-    ActionIcon,
-    Group,
-    Select,
-    Stack,
-    Text,
-    TextInput,
-} from "@mantine/core";
+import { ActionIcon, Group, Select, Stack, TextInput } from "@mantine/core";
 import { X } from "lucide-react";
 
 function guessLabel(name: string): string {
@@ -16,25 +9,20 @@ export function TeamLabelEditor({
     value,
     options,
     onChange,
+    onBlur,
 }: {
     value: Record<string, string>;
     options: string[];
     onChange: (value: Record<string, string>) => void;
+    onBlur?: () => void;
 }) {
     return (
         <Stack gap="xs">
             {Object.entries(value).map(([name, label]) => (
-                <Group key={name} wrap="nowrap" gap="xs">
-                    <Text
-                        size="xs"
-                        c="dimmed"
-                        truncate
-                        style={{ flex: 1 }}
-                        title={name}
-                    >
-                        {name}
-                    </Text>
+                <Group key={name} wrap="nowrap" gap="xs" align="flex-end">
                     <TextInput
+                        label={name}
+                        styles={{ label: { overflowWrap: "anywhere" } }}
                         aria-label={`Label for ${name}`}
                         value={label}
                         onChange={(event) =>
@@ -43,11 +31,14 @@ export function TeamLabelEditor({
                                 [name]: event.currentTarget.value,
                             })
                         }
-                        w={140}
+                        onBlur={onBlur}
+                        flex={1}
+                        miw={0}
                     />
                     <ActionIcon
                         variant="subtle"
                         color="gray"
+                        size="input-sm"
                         aria-label={`Remove label for ${name}`}
                         onClick={() => {
                             const next = { ...value };
@@ -67,6 +58,7 @@ export function TeamLabelEditor({
                 value={null}
                 data={[...new Set(options)].filter((name) => !(name in value))}
                 nothingFoundMessage="No teams without labels"
+                onBlur={onBlur}
                 onChange={(name) => {
                     if (name !== null)
                         onChange({ ...value, [name]: guessLabel(name) });

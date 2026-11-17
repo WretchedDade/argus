@@ -4,13 +4,16 @@ export function SegToggle<T extends string | number>({
     value,
     onChange,
     options,
+    "aria-label": ariaLabel,
 }: {
     value: T;
     onChange: (value: T) => void;
     options: { v: T; label: string }[];
+    "aria-label"?: string;
 }) {
     return (
         <SegmentedControl
+            aria-label={ariaLabel}
             size="xs"
             value={String(value)}
             data={options.map((option) => ({

@@ -7,7 +7,17 @@ import {
 import type { QueryClient } from "@tanstack/react-query";
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
-import { ActionIcon, Badge, Button, Menu } from "@mantine/core";
+import {
+    ActionIcon,
+    Badge,
+    Box,
+    Button,
+    Container,
+    Group,
+    Menu,
+    Stack,
+    Text,
+} from "@mantine/core";
 import { ChevronDown, Settings as SettingsIcon } from "lucide-react";
 import { configQuery, healthQuery, prsQuery } from "../lib/api";
 import { needsYouCount } from "../lib/triage";
@@ -37,7 +47,6 @@ const tabs = [
 // Secondary views grouped under one dropdown to keep the primary nav lean.
 const menuTabs = [
     { to: "/insights", label: "Insights" },
-    { to: "/recap", label: "Recap" },
     { to: "/activity", label: "Activity" },
 ] as const;
 
@@ -55,8 +64,7 @@ function TabCount({ n, tone }: { n: number; tone: "attention" | "neutral" }) {
     );
 }
 
-// Dropdown grouping the secondary views (Insights / Recap / Activity). The
-// trigger shows the active child's name when you're on one, else "Insights".
+// The trigger shows the active secondary view, or "Insights".
 function NavMenu() {
     const { pathname } = useLocation();
     const active = menuTabs.find((t) => pathname.startsWith(t.to));
@@ -64,6 +72,7 @@ function NavMenu() {
         <Menu shadow="md" position="bottom-start" withinPortal>
             <Menu.Target>
                 <Button
+                    size="xs"
                     variant={active ? "light" : "subtle"}
                     color={active ? undefined : "gray"}
                     rightSection={<ChevronDown size={14} />}
@@ -131,82 +140,100 @@ function RootLayout() {
     };
 
     return (
-        <div className="app-bg text-fg min-h-screen">
-            <div className="app-shell">
-                <header className="app-header sticky top-0 z-30 flex flex-col gap-3.5 px-4 pb-2.5 pt-3.5">
-                    <div className="flex items-center gap-3">
-                        <div className="flex shrink-0 items-center gap-2.5">
-                            <BrandMark size={30} />
-                            <span className="text-lg font-semibold tracking-tight">
-                                Argus
-                            </span>
-                        </div>
-                        <div className="ml-auto flex shrink-0 items-center gap-3">
-                            <StatusCluster />
-                            <NotificationsBell />
-                            <ActionIcon
+        <Box mih="100vh" bg="var(--page-base)">
+            <Stack
+                component="header"
+                pos="sticky"
+                top={0}
+                gap={14}
+                px="md"
+                pt={18}
+                pb={10}
+                bg="var(--mantine-color-body)"
+                style={{
+                    zIndex: 30,
+                    borderBottom:
+                        "1px solid var(--mantine-color-default-border)",
+                }}
+            >
+                <Group justify="space-between" gap="sm">
+                    <Group gap={10} wrap="nowrap">
+                        <BrandMark size={30} />
+                        <Text size="lg" fw={600}>
+                            Argus
+                        </Text>
+                    </Group>
+                    <Group gap="sm" ml="auto">
+                        <StatusCluster />
+                        <NotificationsBell />
+                        <ActionIcon
+                            component={Link}
+                            to="/settings"
+                            variant="subtle"
+                            color="gray"
+                            title="Settings"
+                            aria-label="Settings"
+                        >
+                            <SettingsIcon size={18} />
+                        </ActionIcon>
+                    </Group>
+                </Group>
+                <Group justify="space-between" gap="xs">
+                    <Group
+                        component="nav"
+                        aria-label="Primary navigation"
+                        gap={4}
+                        flex="1 1 320px"
+                        miw={0}
+                    >
+                        {tabs.map((t) => (
+                            <Button
                                 component={Link}
-                                to="/settings"
-                                variant="subtle"
-                                color="gray"
-                                title="Settings"
-                                aria-label="Settings"
+                                size="xs"
+                                key={t.to}
+                                to={t.to}
+                                activeOptions={{ exact: t.exact }}
+                                variant={
+                                    (
+                                        t.exact
+                                            ? pathname === t.to
+                                            : pathname.startsWith(t.to)
+                                    )
+                                        ? "light"
+                                        : "subtle"
+                                }
+                                color={
+                                    (
+                                        t.exact
+                                            ? pathname === t.to
+                                            : pathname.startsWith(t.to)
+                                    )
+                                        ? undefined
+                                        : "gray"
+                                }
                             >
-                                <SettingsIcon size={18} />
-                            </ActionIcon>
-                        </div>
-                    </div>
-                    <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-                        <nav className="flex w-full min-w-0 flex-1 flex-wrap items-center gap-1 sm:w-auto">
-                            {tabs.map((t) => (
-                                <Button
-                                    component={Link}
-                                    size="xs"
-                                    key={t.to}
-                                    to={t.to}
-                                    activeOptions={{ exact: t.exact }}
-                                    variant={
-                                        (
-                                            t.exact
-                                                ? pathname === t.to
-                                                : pathname.startsWith(t.to)
-                                        )
-                                            ? "light"
-                                            : "subtle"
-                                    }
-                                    color={
-                                        (
-                                            t.exact
-                                                ? pathname === t.to
-                                                : pathname.startsWith(t.to)
-                                        )
-                                            ? undefined
-                                            : "gray"
-                                    }
-                                >
-                                    {t.label}
-                                    {counts[t.to] && (
-                                        <TabCount
-                                            n={counts[t.to]!.n}
-                                            tone={counts[t.to]!.tone}
-                                        />
-                                    )}
-                                </Button>
-                            ))}
-                            <NavMenu />
-                        </nav>
-                        <div className="flex shrink-0 self-end items-center gap-2 sm:self-auto">
-                            <PrSearch />
-                            <RefreshButton />
-                        </div>
-                    </div>
-                </header>
-                <main className="p-4">
-                    <ArchiveBanner />
-                    <Outlet />
-                </main>
-            </div>
+                                {t.label}
+                                {counts[t.to] && (
+                                    <TabCount
+                                        n={counts[t.to]!.n}
+                                        tone={counts[t.to]!.tone}
+                                    />
+                                )}
+                            </Button>
+                        ))}
+                        <NavMenu />
+                    </Group>
+                    <Group gap="xs" ml="auto">
+                        <PrSearch />
+                        <RefreshButton />
+                    </Group>
+                </Group>
+            </Stack>
+            <Container component="main" fluid p="md" miw={0}>
+                <ArchiveBanner />
+                <Outlet />
+            </Container>
             <Toaster />
-        </div>
+        </Box>
     );
 }

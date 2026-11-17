@@ -5,12 +5,22 @@ import {
     createTheme,
     getThemeColor,
 } from "@mantine/core";
+import { ChartLegend } from "@mantine/charts";
 
 export const argusTheme = createTheme({
     autoContrast: true,
     defaultRadius: "md",
     fontFamily: 'ui-sans-serif, system-ui, "Segoe UI", sans-serif',
     components: {
+        ChartLegend: ChartLegend.extend({
+            styles: {
+                legendItem: { maxWidth: "100%", minWidth: 0 },
+                legendItemName: {
+                    whiteSpace: "normal",
+                    overflowWrap: "anywhere",
+                },
+            },
+        }),
         Badge: Badge.extend({
             defaultProps: { tt: "none" },
             vars: (theme, props) => ({

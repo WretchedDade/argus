@@ -27,10 +27,17 @@ export function RefreshButton() {
 
     return (
         <Button
+            size="xs"
             variant="default"
             type="button"
             onClick={() => refresh.mutate()}
             disabled={running}
+            loading={refresh.isPending}
+            title={
+                running && !refresh.isPending
+                    ? "A poll is already running"
+                    : undefined
+            }
             className="shrink-0"
         >
             Refresh

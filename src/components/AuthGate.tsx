@@ -1,6 +1,5 @@
-import { Button } from "@mantine/core";
+import { Alert, Button } from "@mantine/core";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Loader2 } from "lucide-react";
 import { api, configApi, type ArgusConfig } from "../lib/api";
 import { BrandMark } from "./BrandMark";
 import { RegistrationImport } from "./AuthRegistration";
@@ -66,6 +65,7 @@ export function AuthGate({ onDismiss }: { onDismiss: () => void }) {
                 </p>
 
                 <SegToggle
+                    aria-label="Sign-in method"
                     value={provider}
                     onChange={(v) => setProvider.mutate(v)}
                     options={[
@@ -112,11 +112,7 @@ export function AuthGate({ onDismiss }: { onDismiss: () => void }) {
                             appears only if Azure DevOps needs more from you.
                         </p>
                     )}
-                    {error && (
-                        <p className="text-xs text-red-500" role="alert">
-                            {error}
-                        </p>
-                    )}
+                    {error && <Alert color="red">{error}</Alert>}
                 </div>
 
                 <div className="mt-6 flex items-center justify-end gap-3">
@@ -125,11 +121,12 @@ export function AuthGate({ onDismiss }: { onDismiss: () => void }) {
                             variant="filled"
                             type="button"
                             disabled={busy}
+                            loading={
+                                recheck.isPending &&
+                                recheck.variables === api.signIn
+                            }
                             onClick={() => recheck.mutate(api.signIn)}
                         >
-                            {busy && (
-                                <Loader2 size={15} className="animate-spin" />
-                            )}
                             Sign in
                         </Button>
                     )}
@@ -137,6 +134,9 @@ export function AuthGate({ onDismiss }: { onDismiss: () => void }) {
                         variant="filled"
                         type="button"
                         disabled={busy}
+                        loading={
+                            recheck.isPending && recheck.variables === undefined
+                        }
                         onClick={() => recheck.mutate(undefined)}
                     >
                         Check again

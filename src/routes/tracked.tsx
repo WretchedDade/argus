@@ -1,438 +1,427 @@
-import { Button, TextInput, UnstyledButton } from "@mantine/core";
+import {
+    Accordion,
+    ActionIcon,
+    Anchor,
+    Badge,
+    Button,
+    CloseButton,
+    Container,
+    Group,
+    List,
+    Pagination,
+    ScrollArea,
+    Stack,
+    Table,
+    Tabs,
+    Text,
+    TextInput,
+    Title,
+    Tooltip,
+} from "@mantine/core";
 import { useMemo, useState } from "react";
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { ExternalLink, Search } from "lucide-react";
 import {
     ErrorBanner,
     LoadErrorPage,
     PendingPage,
 } from "../components/ErrorBanner";
 import { warmQuery } from "../lib/query-defaults";
-import { ChevronDown, ChevronRight, Search } from "lucide-react";
+import { api, allPrsQuery, configQuery, stalePreviewQuery } from "../lib/api";
+import { shortRepo } from "../lib/format";
 import {
-    api,
-    archivedQuery,
-    configQuery,
-    prsQuery,
-    stalePreviewQuery,
-    type Pr,
-    type PrReviewState,
-} from "../lib/api";
-import { SegToggle } from "../components/SegToggle";
-import { REVIEW_STATE_META } from "../lib/triage";
-import { resolveTeamLabel, shortAge, shortRepo } from "../lib/format";
+    filterTrackedPrs,
+    isArchivedPr,
+    trackedPrDate,
+    trackedPrStatus,
+    type TrackedView,
+} from "../lib/tracked-prs";
 
 export const Route = createFileRoute("/tracked")({
     loader: ({ context }) =>
         Promise.all([
-            warmQuery(context.queryClient, prsQuery),
+            warmQuery(context.queryClient, allPrsQuery),
             context.queryClient.ensureQueryData(configQuery),
         ]),
     component: TrackedPage,
 });
 
-type GroupBy = "repo" | "author" | "state" | "none";
-
-const STATE_ORDER = [
-    "needs",
-    "covered",
-    "suggestions",
-    "waiting",
-    "approved",
-    "rejected",
-];
-
-function stateLabel(pr: Pr): string {
-    if (pr.role === "author") return "Authored by me";
-    if (pr.isDraft) return "Draft";
-    return pr.reviewState
-        ? REVIEW_STATE_META[pr.reviewState].label
-        : "No standing";
-}
-
-function groupKey(pr: Pr, by: Exclude<GroupBy, "none">): string {
-    if (by === "repo") return shortRepo(pr.repo);
-    if (by === "author") return pr.author ?? "Unknown author";
-    return stateLabel(pr);
-}
-
-function orderGroups(entries: [string, Pr[]][], by: GroupBy): [string, Pr[]][] {
-    if (by === "state") {
-        const rank = (label: string) => {
-            const i = STATE_ORDER.findIndex(
-                (s) => REVIEW_STATE_META[s as PrReviewState]?.label === label,
-            );
-            return i === -1 ? STATE_ORDER.length + 1 : i;
-        };
-        return [...entries].sort(
-            (a, b) => rank(a[0]) - rank(b[0]) || a[0].localeCompare(b[0]),
-        );
-    }
-    return [...entries].sort(
-        (a, b) => b[1].length - a[1].length || a[0].localeCompare(b[0]),
-    );
-}
-
-function groupList(prs: Pr[], by: GroupBy): [string, Pr[]][] {
-    if (by === "none") return [["", prs]];
-    const map = new Map<string, Pr[]>();
-    for (const p of prs) {
-        const k = groupKey(p, by);
-        (map.get(k) ?? map.set(k, []).get(k)!).push(p);
-    }
-    return orderGroups([...map.entries()], by);
-}
-
-const byRecent = (a: Pr, b: Pr) =>
-    Date.parse(b.updatedAt) - Date.parse(a.updatedAt);
-
-// One scannable line: a small state dot, the title, then muted meta. No pills.
-function TrackedRow({ pr }: { pr: Pr }) {
-    const anchor = pr.reviewState
-        ? REVIEW_STATE_META[pr.reviewState].anchor
-        : "--color-muted";
-    const meta = [
-        `${shortRepo(pr.repo)} #${pr.number}`,
-        pr.author,
-        `${shortAge(pr.updatedAt)} idle`,
-    ]
-        .filter(Boolean)
-        .join(" · ");
-    return (
-        <a
-            href={pr.canonical}
-            target="_blank"
-            rel="noreferrer"
-            className="hover:bg-surface flex items-center gap-3 px-4 py-2"
-        >
-            <span
-                className="h-2 w-2 shrink-0 rounded-full"
-                style={{ background: `var(${anchor})` }}
-                title={stateLabel(pr)}
-            />
-            <div className="min-w-0 flex-1">
-                <div className="text-fg truncate text-sm">
-                    {pr.isDraft && (
-                        <span className="text-muted mr-1.5 text-xs">draft</span>
-                    )}
-                    {pr.title}
-                </div>
-                <div className="text-muted truncate text-xs">{meta}</div>
-            </div>
-        </a>
-    );
-}
-
-function TrackedGroup({
-    name,
-    prs,
-    secondary,
-}: {
-    name: string;
-    prs: Pr[];
-    secondary: GroupBy;
-}) {
-    const [open, setOpen] = useState(true);
-    const subgroups = secondary === "none" ? null : groupList(prs, secondary);
-    return (
-        <section
-            className="border-line overflow-hidden rounded-xl border"
-            style={{ background: "var(--card-bg)" }}
-        >
-            <UnstyledButton
-                type="button"
-                onClick={() => setOpen((v) => !v)}
-                className="hover:bg-surface flex w-full items-center gap-2 px-4 py-2.5 text-left"
-            >
-                {open ? (
-                    <ChevronDown size={15} className="text-muted shrink-0" />
-                ) : (
-                    <ChevronRight size={15} className="text-muted shrink-0" />
-                )}
-                <span className="text-fg text-sm font-semibold">{name}</span>
-                <span className="text-muted text-xs">{prs.length}</span>
-            </UnstyledButton>
-            {open &&
-                (subgroups ? (
-                    <div className="border-line flex flex-col border-t">
-                        {subgroups.map(([subName, subPrs]) => (
-                            <div
-                                key={subName}
-                                className="border-line border-t first:border-t-0"
-                            >
-                                <div className="text-muted flex items-center gap-1.5 px-4 py-1.5 text-[11px] font-medium uppercase tracking-wide">
-                                    {subName}
-                                    <span className="opacity-70">
-                                        {subPrs.length}
-                                    </span>
-                                </div>
-                                {[...subPrs].sort(byRecent).map((pr) => (
-                                    <TrackedRow key={pr.canonical} pr={pr} />
-                                ))}
-                            </div>
-                        ))}
-                    </div>
-                ) : (
-                    <div className="border-line flex flex-col border-t">
-                        {[...prs].sort(byRecent).map((pr) => (
-                            <TrackedRow key={pr.canonical} pr={pr} />
-                        ))}
-                    </div>
-                ))}
-        </section>
-    );
-}
-
-function ArchivedRow({ pr, onRestore }: { pr: Pr; onRestore: () => void }) {
-    const reason = pr.dismissedReason === "stale" ? "Stale" : "Out of scope";
-    const when = pr.dismissedAt
-        ? new Date(pr.dismissedAt).toLocaleDateString()
-        : "";
-    return (
-        <div className="flex items-center gap-3 px-4 py-2">
-            <div className="min-w-0 flex-1">
-                <a
-                    href={pr.canonical}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="text-fg block truncate text-sm hover:underline"
-                >
-                    {pr.title}
-                </a>
-                <div className="text-muted truncate text-xs">
-                    {`${shortRepo(pr.repo)} #${pr.number} · ${reason}, archived ${when}`}
-                </div>
-            </div>
-            <Button variant="default" type="button" onClick={onRestore}>
-                Restore
-            </Button>
-        </div>
-    );
-}
-
-// The first stale sweep needs approval. Until then, show who it would archive.
 function StaleSweepBanner() {
     const queryClient = useQueryClient();
-    const preview = useQuery(stalePreviewQuery).data;
+    const previewQuery = useQuery(stalePreviewQuery);
+    const preview = previewQuery.data;
     const sweep = useMutation({
         mutationFn: (canonicals: string[]) => api.sweepStale(canonicals),
         onSuccess: () => queryClient.invalidateQueries(),
     });
+    if (previewQuery.isError)
+        return (
+            <ErrorBanner
+                title="Couldn't check auto-archive eligibility"
+                error={previewQuery.error}
+                onRetry={() => void previewQuery.refetch()}
+            />
+        );
     if (!preview || preview.approved || preview.candidates.length === 0)
         return null;
     return (
-        <section className="border-line rounded-xl border p-4">
-            <div className="text-fg text-sm font-semibold">
-                {preview.candidates.length} PR
-                {preview.candidates.length === 1 ? "" : "s"} idle for{" "}
-                {preview.days}+ days
-            </div>
-            <p className="text-muted mt-1 text-xs">
-                Argus can archive these. Archived PRs keep their history and
-                come back when they change. After you approve, Argus archives
-                stale PRs on its own.
-            </p>
-            <ul className="text-muted mt-2 max-h-40 overflow-auto text-xs">
-                {preview.candidates.map((c) => (
-                    <li key={c.canonical} className="truncate">
-                        {shortRepo(c.repo)} #{c.number} · {c.title} ·{" "}
-                        {c.idleDays}d idle
-                    </li>
-                ))}
-            </ul>
-            <Button
-                variant="default"
-                type="button"
-                disabled={sweep.isPending}
-                onClick={() =>
-                    sweep.mutate(preview.candidates.map((c) => c.canonical))
-                }
-                className="mt-3"
-            >
-                Archive these and approve auto-archive
-            </Button>
-        </section>
+        <Accordion variant="separated">
+            <Accordion.Item value="auto-archive">
+                <Accordion.Control>
+                    {preview.candidates.length} idle PR
+                    {preview.candidates.length === 1 ? "" : "s"} can be archived
+                </Accordion.Control>
+                <Accordion.Panel>
+                    <Stack gap="sm">
+                        <Text size="sm" c="dimmed">
+                            These PRs have been idle for {preview.days}+ days.
+                            Archived PRs keep their history and come back when
+                            they change. After you approve, Argus archives stale
+                            PRs on its own.
+                        </Text>
+                        <ScrollArea.Autosize mah={160}>
+                            <List size="sm" spacing="xs">
+                                {preview.candidates.map((pr) => (
+                                    <List.Item key={pr.canonical}>
+                                        {shortRepo(pr.repo)} #{pr.number}
+                                        {" · "}
+                                        {pr.title} · {pr.idleDays}d idle
+                                    </List.Item>
+                                ))}
+                            </List>
+                        </ScrollArea.Autosize>
+                        {sweep.isError && (
+                            <ErrorBanner
+                                title="Couldn't approve auto-archive"
+                                error={sweep.error}
+                            />
+                        )}
+                        <Group>
+                            <Button
+                                variant="default"
+                                loading={sweep.isPending}
+                                onClick={() =>
+                                    sweep.mutate(
+                                        preview.candidates.map(
+                                            (pr) => pr.canonical,
+                                        ),
+                                    )
+                                }
+                            >
+                                Archive these and approve auto-archive
+                            </Button>
+                        </Group>
+                    </Stack>
+                </Accordion.Panel>
+            </Accordion.Item>
+        </Accordion>
     );
 }
 
+const PAGE_SIZE = 25;
+
 function TrackedPage() {
     const queryClient = useQueryClient();
-    const [showArchived, setShowArchived] = useState(false);
-    const archived = useQuery(archivedQuery).data ?? [];
+    const prsQuery = useQuery(allPrsQuery);
+    const config = useQuery(configQuery);
+    const [view, setView] = useState<TrackedView>("archived");
+    const [search, setSearch] = useState("");
+    const [currentPage, setPage] = useState(1);
     const restore = useMutation({
-        mutationFn: (canonical: string) => api.restorePr(canonical),
+        mutationFn: async (canonical: string) => {
+            const result = await api.restorePr(canonical);
+            if (!result.restored)
+                throw new Error(
+                    "This PR is no longer available to restore. Refresh the list and try again.",
+                );
+        },
         onSuccess: () => queryClient.invalidateQueries(),
     });
-    const prsQ = useQuery(prsQuery);
-    const prsData = prsQ.data;
-    const prs = useMemo(() => prsData ?? [], [prsData]);
-    const labelsData = useQuery(configQuery).data?.teamLabels;
-    const labels = useMemo(() => labelsData ?? {}, [labelsData]);
-    const [primary, setPrimary] = useState<GroupBy>("repo");
-    const [secondary, setSecondary] = useState<GroupBy>("none");
-    const [q, setQ] = useState("");
+    const filtered = useMemo(
+        () =>
+            filterTrackedPrs(
+                prsQuery.data ?? [],
+                view,
+                search,
+                config.data?.teamLabels ?? {},
+            ),
+        [prsQuery.data, view, search, config.data?.teamLabels],
+    );
+    const pages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+    const page = Math.min(currentPage, pages);
+    const shown = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
 
-    const groups = useMemo(() => {
-        const needle = q.trim().toLowerCase();
-        const filtered = needle
-            ? prs.filter((p) => {
-                  const teamText = p.teams
-                      .map((t) => resolveTeamLabel(t, labels))
-                      .join(" ");
-                  return `${p.title} ${p.repo} #${p.number} ${p.author ?? ""} ${teamText}`
-                      .toLowerCase()
-                      .includes(needle);
-              })
-            : prs;
-        return groupList(filtered, primary);
-    }, [prs, labels, primary, q]);
-
-    const shown = groups.reduce((n, [, list]) => n + list.length, 0);
-    const secondaryOptions = (
-        [
-            { v: "none", label: "None" },
-            { v: "repo", label: "Repo" },
-            { v: "author", label: "Author" },
-            { v: "state", label: "State" },
-        ] as { v: GroupBy; label: string }[]
-    ).filter((o) => o.v !== primary);
-
-    if (prsQ.isPending && !prsQ.data) return <PendingPage />;
-    if (prsQ.isError && !prsQ.data) {
+    if (prsQuery.isPending) return <PendingPage />;
+    if (prsQuery.isError && !prsQuery.data)
         return (
             <LoadErrorPage
-                what="your pull requests"
-                error={prsQ.error}
-                onRetry={() => void prsQ.refetch()}
+                what="tracked pull requests"
+                error={prsQuery.error}
+                onRetry={() => void prsQuery.refetch()}
             />
         );
-    }
 
     return (
-        <div className="mx-auto flex max-w-3xl flex-col gap-4">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-                <div>
-                    <h1 className="text-fg text-lg font-semibold">
+        <Container size="lg" px={0}>
+            <Stack gap="md">
+                <Stack gap={4}>
+                    <Title order={1} size="h3">
                         Tracked PRs
-                    </h1>
-                    <p className="text-muted text-xs">
-                        {shown} PR{shown === 1 ? "" : "s"} Argus is watching
-                        {q.trim() ? " (filtered)" : ""}
-                    </p>
-                </div>
-                <TextInput
-                    leftSection={<Search size={14} />}
-                    aria-label="Filter tracked pull requests"
-                    className="w-44"
-                    placeholder="Filter by title, repo, author…"
-                    value={q}
-                    onChange={(e) => setQ(e.target.value)}
-                />
-            </div>
-
-            {prsQ.isError && (
-                <ErrorBanner
-                    title="Couldn't load PRs"
-                    error={prsQ.error}
-                    onRetry={() => void prsQ.refetch()}
-                />
-            )}
-
-            <StaleSweepBanner />
-
-            <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-xs">
-                <div className="flex items-center gap-2">
-                    <span className="text-muted">Group by</span>
-                    <SegToggle
-                        value={primary}
-                        onChange={(v) => {
-                            setPrimary(v);
-                            if (v === secondary) setSecondary("none");
-                        }}
-                        options={[
-                            { v: "repo", label: "Repo" },
-                            { v: "author", label: "Author" },
-                            { v: "state", label: "State" },
-                        ]}
-                    />
-                </div>
-                <div className="flex items-center gap-2">
-                    <span className="text-muted">then</span>
-                    <SegToggle
-                        value={secondary}
-                        onChange={setSecondary}
-                        options={secondaryOptions}
-                    />
-                </div>
-            </div>
-
-            {groups.length === 0 ? (
-                <p className="text-muted py-10 text-center text-sm">
-                    {prs.length === 0
-                        ? "Nothing tracked yet."
-                        : "No PRs match that filter."}
-                </p>
-            ) : primary === "none" ? (
-                <section
-                    className="border-line overflow-hidden rounded-xl border"
-                    style={{ background: "var(--card-bg)" }}
+                    </Title>
+                    <Text size="sm" c="dimmed">
+                        Find a PR or restore it from the archive.
+                    </Text>
+                </Stack>
+                <Tabs
+                    value={view}
+                    onChange={(value) => {
+                        if (
+                            value === "archived" ||
+                            value === "active" ||
+                            value === "all"
+                        ) {
+                            setView(value);
+                            setPage(1);
+                        }
+                    }}
                 >
-                    <div className="flex flex-col">
-                        {[...groups[0][1]].sort(byRecent).map((pr) => (
-                            <TrackedRow key={pr.canonical} pr={pr} />
-                        ))}
-                    </div>
-                </section>
-            ) : (
-                <div className="flex flex-col gap-3">
-                    {groups.map(([name, list]) => (
-                        <TrackedGroup
-                            key={name}
-                            name={name}
-                            prs={list}
-                            secondary={secondary}
-                        />
-                    ))}
-                </div>
-            )}
-
-            <div className="border-line border-t pt-3">
-                <Button
-                    variant="default"
-                    type="button"
-                    onClick={() => setShowArchived((v) => !v)}
-                >
-                    {showArchived ? (
-                        <ChevronDown size={14} />
-                    ) : (
-                        <ChevronRight size={14} />
-                    )}
-                    Archived
-                    <span className="opacity-70">{archived.length}</span>
-                </Button>
-                {showArchived && (
-                    <section
-                        className="border-line mt-2 overflow-hidden rounded-xl border"
-                        style={{ background: "var(--card-bg)" }}
-                    >
-                        {archived.length === 0 ? (
-                            <p className="text-muted px-4 py-3 text-xs">
-                                Nothing archived.
-                            </p>
-                        ) : (
-                            archived.map((pr) => (
-                                <ArchivedRow
-                                    key={pr.canonical}
-                                    pr={pr}
-                                    onRestore={() =>
-                                        restore.mutate(pr.canonical)
-                                    }
+                    <Tabs.List aria-label="PR view">
+                        <Tabs.Tab value="archived">Archived</Tabs.Tab>
+                        <Tabs.Tab value="active">Active</Tabs.Tab>
+                        <Tabs.Tab value="all">All</Tabs.Tab>
+                    </Tabs.List>
+                    <Tabs.Panel value={view} pt="md">
+                        <Stack gap="md">
+                            <TextInput
+                                aria-label="Search tracked pull requests"
+                                placeholder="Search title, number, repository, or author"
+                                leftSection={<Search size={16} />}
+                                rightSectionPointerEvents="all"
+                                rightSection={
+                                    search ? (
+                                        <CloseButton
+                                            size="sm"
+                                            aria-label="Clear search"
+                                            onClick={() => {
+                                                setSearch("");
+                                                setPage(1);
+                                            }}
+                                        />
+                                    ) : null
+                                }
+                                value={search}
+                                onChange={(event) => {
+                                    setSearch(event.currentTarget.value);
+                                    setPage(1);
+                                }}
+                            />
+                            {prsQuery.isError && (
+                                <ErrorBanner
+                                    title="Couldn't refresh tracked PRs"
+                                    error={prsQuery.error}
+                                    onRetry={() => void prsQuery.refetch()}
                                 />
-                            ))
-                        )}
-                    </section>
-                )}
-            </div>
-        </div>
+                            )}
+                            {config.isError && (
+                                <ErrorBanner
+                                    title="Couldn't load team labels"
+                                    error={config.error}
+                                    onRetry={() => void config.refetch()}
+                                />
+                            )}
+                            {restore.isError && (
+                                <ErrorBanner
+                                    title="Couldn't restore PR"
+                                    error={restore.error}
+                                />
+                            )}
+                            <Table.ScrollContainer minWidth={0}>
+                                <Table
+                                    highlightOnHover
+                                    verticalSpacing="sm"
+                                    aria-label="Tracked pull requests"
+                                >
+                                    <Table.Thead>
+                                        <Table.Tr>
+                                            <Table.Th>Pull request</Table.Th>
+                                            <Table.Th w={1}>Actions</Table.Th>
+                                        </Table.Tr>
+                                    </Table.Thead>
+                                    <Table.Tbody>
+                                        {shown.map((pr) => (
+                                            <Table.Tr key={pr.canonical}>
+                                                <Table.Td>
+                                                    <Anchor
+                                                        size="md"
+                                                        fw={500}
+                                                        c="text"
+                                                        renderRoot={(props) => (
+                                                            <Link
+                                                                to="/pr"
+                                                                search={{
+                                                                    c: pr.canonical,
+                                                                }}
+                                                                {...props}
+                                                            />
+                                                        )}
+                                                        style={{
+                                                            overflowWrap:
+                                                                "anywhere",
+                                                        }}
+                                                    >
+                                                        {pr.title}
+                                                    </Anchor>
+                                                    <Text size="sm">
+                                                        {shortRepo(pr.repo)} #
+                                                        {pr.number}
+                                                        {" · "}
+                                                        {pr.author ??
+                                                            "Unknown author"}
+                                                    </Text>
+                                                    <Group gap="xs" mt={4}>
+                                                        <Badge
+                                                            color={
+                                                                trackedPrStatus(
+                                                                    pr,
+                                                                ) === "Active"
+                                                                    ? "blue"
+                                                                    : "gray"
+                                                            }
+                                                            variant="filled"
+                                                        >
+                                                            {trackedPrStatus(
+                                                                pr,
+                                                            )}
+                                                        </Badge>
+                                                        {isArchivedPr(pr) && (
+                                                            <Text size="sm">
+                                                                {pr.state ===
+                                                                    "closed" &&
+                                                                    "Closed · "}
+                                                                {pr.dismissedReason ===
+                                                                "stale"
+                                                                    ? "Stale"
+                                                                    : "Out of scope"}
+                                                            </Text>
+                                                        )}
+                                                        <Text
+                                                            size="sm"
+                                                            component="time"
+                                                            dateTime={trackedPrDate(
+                                                                pr,
+                                                            )}
+                                                            title={new Date(
+                                                                trackedPrDate(
+                                                                    pr,
+                                                                ),
+                                                            ).toLocaleString()}
+                                                            textWrap="nowrap"
+                                                        >
+                                                            {!pr.dismissedAt &&
+                                                                "Updated "}
+                                                            {new Date(
+                                                                trackedPrDate(
+                                                                    pr,
+                                                                ),
+                                                            ).toLocaleDateString()}
+                                                        </Text>
+                                                    </Group>
+                                                </Table.Td>
+                                                <Table.Td>
+                                                    <Group
+                                                        gap="xs"
+                                                        wrap="nowrap"
+                                                    >
+                                                        {isArchivedPr(pr) &&
+                                                            pr.state !==
+                                                                "closed" && (
+                                                                <Button
+                                                                    size="xs"
+                                                                    variant="default"
+                                                                    aria-label={`Restore ${pr.title}`}
+                                                                    loading={
+                                                                        restore.isPending &&
+                                                                        restore.variables ===
+                                                                            pr.canonical
+                                                                    }
+                                                                    disabled={
+                                                                        restore.isPending
+                                                                    }
+                                                                    onClick={() =>
+                                                                        restore.mutate(
+                                                                            pr.canonical,
+                                                                        )
+                                                                    }
+                                                                >
+                                                                    Restore
+                                                                </Button>
+                                                            )}
+                                                        <Tooltip label="Open in Azure DevOps">
+                                                            <ActionIcon
+                                                                component="a"
+                                                                href={
+                                                                    pr.canonical
+                                                                }
+                                                                target="_blank"
+                                                                rel="noreferrer"
+                                                                variant="subtle"
+                                                                color="gray"
+                                                                aria-label={`Open ${pr.title} in Azure DevOps`}
+                                                            >
+                                                                <ExternalLink
+                                                                    size={16}
+                                                                />
+                                                            </ActionIcon>
+                                                        </Tooltip>
+                                                    </Group>
+                                                </Table.Td>
+                                            </Table.Tr>
+                                        ))}
+                                        {shown.length === 0 && (
+                                            <Table.Tr>
+                                                <Table.Td colSpan={2}>
+                                                    <Text
+                                                        ta="center"
+                                                        c="dimmed"
+                                                        size="sm"
+                                                        py="xl"
+                                                    >
+                                                        {search.trim()
+                                                            ? "No PRs match your search in this view."
+                                                            : view ===
+                                                                "archived"
+                                                              ? "No archived PRs."
+                                                              : view ===
+                                                                  "active"
+                                                                ? "No active PRs."
+                                                                : "No tracked PRs."}
+                                                    </Text>
+                                                </Table.Td>
+                                            </Table.Tr>
+                                        )}
+                                    </Table.Tbody>
+                                </Table>
+                            </Table.ScrollContainer>
+                            <Group justify="space-between">
+                                <Text size="sm" c="dimmed" role="status">
+                                    {filtered.length} PR
+                                    {filtered.length === 1 ? "" : "s"}
+                                </Text>
+                                {pages > 1 && (
+                                    <Pagination
+                                        total={pages}
+                                        value={page}
+                                        onChange={setPage}
+                                        size="sm"
+                                    />
+                                )}
+                            </Group>
+                        </Stack>
+                    </Tabs.Panel>
+                </Tabs>
+                <StaleSweepBanner />
+            </Stack>
+        </Container>
     );
 }

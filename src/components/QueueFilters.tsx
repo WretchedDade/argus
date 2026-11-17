@@ -1,5 +1,13 @@
 import { useState } from "react";
-import { Badge, Button, Group, Popover, Select, Stack } from "@mantine/core";
+import {
+    Badge,
+    Button,
+    FocusTrap,
+    Group,
+    Popover,
+    Select,
+    Stack,
+} from "@mantine/core";
 import { ListFilter } from "lucide-react";
 import type { Pr } from "../lib/api";
 import {
@@ -96,9 +104,12 @@ export function QueueFilters({
     const [opened, setOpened] = useState(false);
     const activeCount = fields.filter(({ key }) => !!value[key]).length;
     return (
-        <section
+        <Group
+            component="section"
             aria-label="Filter review queue"
-            className="ml-auto flex shrink-0 items-center gap-2"
+            gap="xs"
+            ml="auto"
+            style={{ flexShrink: 0 }}
         >
             <Popover
                 opened={opened}
@@ -124,6 +135,7 @@ export function QueueFilters({
                     </Button>
                 </Popover.Target>
                 <Popover.Dropdown aria-label="Filters" maw="calc(100vw - 2rem)">
+                    <FocusTrap.InitialFocus />
                     {opened && (
                         <FilterDraft
                             prs={prs}
@@ -142,6 +154,6 @@ export function QueueFilters({
                     Clear Filters
                 </Button>
             )}
-        </section>
+        </Group>
     );
 }

@@ -1,4 +1,4 @@
-import { Button } from "@mantine/core";
+import { Alert, Badge, Button } from "@mantine/core";
 import { useMemo, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
@@ -223,16 +223,19 @@ function ScorePill({ score }: { score: number }) {
         SCORE_BANDS.find((item) => score >= item.min && score <= item.max) ??
         SCORE_BANDS[0];
     return (
-        <span
-            className="inline-flex h-9 min-w-9 shrink-0 items-center justify-center rounded-lg px-2 text-sm font-semibold tabular-nums"
-            style={{
-                color: `color-mix(in srgb, ${band.color} 20%, var(--argus-tag-text))`,
-                background: `color-mix(in srgb, ${band.color} 15%, transparent)`,
-            }}
+        <Badge
+            component="span"
+            variant="light"
+            color={band.color}
+            radius="md"
+            h={36}
+            miw={36}
+            size="lg"
+            className="shrink-0 tabular-nums"
             aria-label={`Effort score ${score} of 14`}
         >
             {score}
-        </span>
+        </Badge>
     );
 }
 
@@ -240,16 +243,17 @@ function ComponentChips({ effort }: { effort: WeeklyReviewEffort }) {
     return (
         <div className="mt-2 flex flex-wrap gap-1.5">
             {EFFORT_META.filter((item) => effort[item.key] > 0).map((item) => (
-                <span
+                <Badge
+                    component="span"
                     key={item.key}
-                    className="rounded px-1.5 py-0.5 text-[10px] font-medium tabular-nums"
-                    style={{
-                        color: `color-mix(in srgb, ${item.color} 20%, var(--argus-tag-text))`,
-                        background: `color-mix(in srgb, ${item.color} 12%, transparent)`,
-                    }}
+                    size="xs"
+                    radius="sm"
+                    variant="light"
+                    color={item.color}
+                    className="tabular-nums"
                 >
                     {item.label} {effort[item.key]}
-                </span>
+                </Badge>
             ))}
         </div>
     );
@@ -528,7 +532,7 @@ function RecapPage() {
                             />
                         </div>
                         {facts.coverage.scoreKnown < facts.uniquePrCount && (
-                            <p className="mt-4 text-xs text-amber-700 dark:text-amber-300">
+                            <Alert color="yellow" mt="md">
                                 {facts.uniquePrCount -
                                     facts.coverage.scoreKnown}{" "}
                                 PR
@@ -538,7 +542,7 @@ function RecapPage() {
                                     ? " is"
                                     : "s are"}{" "}
                                 waiting for complete size or comment data.
-                            </p>
+                            </Alert>
                         )}
                     </section>
 

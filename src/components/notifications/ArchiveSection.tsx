@@ -23,7 +23,7 @@ export function ArchiveSection({
                 {sessions.length} review session{plural} from merged or stale
                 PRs, ready to clean up.
             </div>
-            <div className="divide-line max-h-[calc(70vh-8rem)] divide-y overflow-y-auto">
+            <div className="divide-line divide-y">
                 {sessions.map((a) => (
                     <div
                         key={a.sessionId}
@@ -48,6 +48,7 @@ export function ArchiveSection({
                     className="w-full py-1.5 text-xs"
                     onClick={() => archive.mutate()}
                     disabled={archive.isPending}
+                    loading={archive.isPending}
                 >
                     {archive.isPending
                         ? "Sending…"

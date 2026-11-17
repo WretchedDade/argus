@@ -1,18 +1,42 @@
-import { Button } from "@mantine/core";
-import type { ButtonHTMLAttributes, ReactNode } from "react";
+import {
+    Box,
+    Button,
+    Group,
+    Text,
+    type ButtonProps,
+    type ElementProps,
+} from "@mantine/core";
+import type { ReactNode } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { api, type Notice } from "../../lib/api";
 import { pushToast } from "../../lib/toast";
 import { IconBadge } from "./IconBadge";
 
-export function PrimaryButton(props: ButtonHTMLAttributes<HTMLButtonElement>) {
-    return <Button variant="filled" type="button" {...props} />;
+type NoticeButtonProps = ButtonProps &
+    ElementProps<"button", keyof ButtonProps>;
+
+export function PrimaryButton(props: NoticeButtonProps) {
+    return (
+        <Button
+            size="xs"
+            flex="0 0 auto"
+            variant="filled"
+            type="button"
+            {...props}
+        />
+    );
 }
 
-export function SecondaryButton(
-    props: ButtonHTMLAttributes<HTMLButtonElement>,
-) {
-    return <Button variant="default" type="button" {...props} />;
+export function SecondaryButton(props: NoticeButtonProps) {
+    return (
+        <Button
+            size="xs"
+            flex="0 0 auto"
+            variant="default"
+            type="button"
+            {...props}
+        />
+    );
 }
 
 // Shared shell for a notice: icon, text, the kind's own actions, and Dismiss.
@@ -33,25 +57,31 @@ export function NoticeRow({
     });
 
     return (
-        <div className="flex items-start gap-3 px-3.5 py-2.5">
+        <Group align="flex-start" wrap="nowrap" gap="sm" px="sm" py="sm">
             <IconBadge tone="teal">{icon}</IconBadge>
-            <div className="min-w-0 flex-1">
-                <div className="text-fg text-sm font-medium">
+            <Box miw={0} flex={1}>
+                <Text size="sm" fw={500}>
                     {notice.title}
-                </div>
-                <div className="text-muted mt-1 whitespace-pre-line break-words text-xs leading-relaxed">
+                </Text>
+                <Text
+                    c="dimmed"
+                    mt={4}
+                    size="xs"
+                    style={{ whiteSpace: "pre-line", overflowWrap: "anywhere" }}
+                >
                     {notice.detail}
-                </div>
-                <div className="mt-2.5 flex gap-2 text-xs">
+                </Text>
+                <Group mt="sm" gap="xs">
                     {children}
                     <SecondaryButton
                         onClick={() => dismiss.mutate()}
                         disabled={dismiss.isPending}
+                        loading={dismiss.isPending}
                     >
                         Dismiss
                     </SecondaryButton>
-                </div>
-            </div>
-        </div>
+                </Group>
+            </Box>
+        </Group>
     );
 }

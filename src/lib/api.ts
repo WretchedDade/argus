@@ -213,6 +213,10 @@ export const api = {
         PrsResponseSchema.parse(
             await apiJson<unknown>(await client.prs.$get(), "/api/prs"),
         ).prs,
+    allPrs: async () =>
+        PrsResponseSchema.parse(
+            await apiJson<unknown>(await client.prs.all.$get(), "/api/prs/all"),
+        ).prs,
     health: async () =>
         apiJson<InferResponseType<typeof client.health.$get>>(
             await client.health.$get(),
@@ -452,6 +456,11 @@ export const prsQuery = queryOptions({
 export const archivedQuery = queryOptions({
     queryKey: ["archived"],
     queryFn: api.archivedPrs,
+    refetchInterval: 15_000,
+});
+export const allPrsQuery = queryOptions({
+    queryKey: ["all-prs"],
+    queryFn: api.allPrs,
     refetchInterval: 15_000,
 });
 export const stalePreviewQuery = queryOptions({

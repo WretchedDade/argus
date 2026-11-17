@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
+import { Anchor, Group, Text } from "@mantine/core";
 import { healthQuery } from "../lib/api";
 import { timeAgo } from "../lib/format";
 import { AuthControl } from "./AuthControl";
@@ -14,34 +15,42 @@ export function StatusCluster() {
     const running = !!poller?.running;
 
     return (
-        <div className="text-muted flex items-center gap-3 text-xs">
+        <Group gap="sm" c="dimmed" fz="xs">
             <AuthControl />
             {poller &&
                 !poller.authOk &&
                 health.data?.auth?.provider !== "broker" && (
-                    <span className="text-[var(--mantine-color-orange-text)]">
+                    <Text span size="xs" c="orange">
                         az login needed
-                    </span>
+                    </Text>
                 )}
             {running && poller?.currentRunId ? (
-                <Link
-                    to="/activity/$runId"
-                    params={{ runId: String(poller.currentRunId) }}
-                    className="flex items-center gap-1.5 hover:underline"
+                <Anchor
+                    renderRoot={(props) => (
+                        <Link
+                            {...props}
+                            to="/activity/$runId"
+                            params={{ runId: String(poller.currentRunId) }}
+                        />
+                    )}
+                    size="xs"
+                    c="dimmed"
                 >
-                    <OcellusDot watching />
-                    watching…
-                </Link>
+                    <Group component="span" gap={6} wrap="nowrap">
+                        <OcellusDot watching />
+                        watching…
+                    </Group>
+                </Anchor>
             ) : (
-                <span className="flex items-center gap-1.5">
+                <Group component="span" gap={6} wrap="nowrap">
                     <OcellusDot watching={running} />
                     {running
                         ? "watching…"
                         : poller?.lastRunAt
                           ? `last watch ${timeAgo(poller.lastRunAt)}`
                           : "on watch"}
-                </span>
+                </Group>
             )}
-        </div>
+        </Group>
     );
 }

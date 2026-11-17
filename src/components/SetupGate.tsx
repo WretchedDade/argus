@@ -1,7 +1,6 @@
-import { Button, Radio, TextInput } from "@mantine/core";
+import { Button, Fieldset, Radio, Stack, TextInput } from "@mantine/core";
 import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Loader2 } from "lucide-react";
 import {
     configApi,
     configQuery,
@@ -134,6 +133,7 @@ function SetupForm({ cfg }: { cfg: ArgusConfig }) {
                             Sign-in method
                         </div>
                         <SegToggle
+                            aria-label="Sign-in method"
                             value={adoAuth}
                             onChange={setAdoAuth}
                             options={[
@@ -154,6 +154,7 @@ function SetupForm({ cfg }: { cfg: ArgusConfig }) {
                                 Where to keep your history
                             </div>
                             <SegToggle
+                                aria-label="History storage location"
                                 value={dbLocation}
                                 onChange={setDbLocation}
                                 options={[
@@ -176,157 +177,130 @@ function SetupForm({ cfg }: { cfg: ArgusConfig }) {
                         </div>
                     )}
 
-                    <label className="block">
-                        <div className="text-fg text-sm font-medium">
-                            Identity
-                        </div>
-                        <TextInput
-                            placeholder={
-                                detected
-                                    ? `auto: ${detected}`
-                                    : "auto from signed-in account"
-                            }
-                            value={me}
-                            onChange={(e) => setMe(e.target.value)}
-                        />
-                        <div className="text-muted mt-1 text-xs">
-                            {detected
+                    <TextInput
+                        label="Identity"
+                        description={
+                            detected
                                 ? `Signed in as ${detected} account. Leave blank to use it.`
-                                : "Detected from your signed-in account. Leave blank to auto-detect, or set an override email."}
-                        </div>
-                    </label>
+                                : "Detected from your signed-in account. Leave blank to auto-detect, or set an override email."
+                        }
+                        inputWrapperOrder={[
+                            "label",
+                            "input",
+                            "description",
+                            "error",
+                        ]}
+                        placeholder={
+                            detected
+                                ? `auto: ${detected}`
+                                : "auto from signed-in account"
+                        }
+                        value={me}
+                        onChange={(e) => setMe(e.target.value)}
+                    />
 
                     <div className="grid grid-cols-2 gap-3">
-                        <label className="block">
-                            <div className="text-fg text-sm font-medium">
-                                Org URL
-                            </div>
-                            <TextInput
-                                placeholder="https://dev.azure.com/your-org"
-                                value={orgUrl}
-                                onChange={(e) => setOrgUrl(e.target.value)}
-                            />
-                        </label>
-                        <label className="block">
-                            <div className="text-fg text-sm font-medium">
-                                Org slug
-                            </div>
-                            <TextInput
-                                placeholder="your-org"
-                                value={orgSlug}
-                                onChange={(e) => setOrgSlug(e.target.value)}
-                            />
-                        </label>
+                        <TextInput
+                            label="Org URL"
+                            placeholder="https://dev.azure.com/your-org"
+                            value={orgUrl}
+                            onChange={(e) => setOrgUrl(e.target.value)}
+                        />
+                        <TextInput
+                            label="Org slug"
+                            placeholder="your-org"
+                            value={orgSlug}
+                            onChange={(e) => setOrgSlug(e.target.value)}
+                        />
                     </div>
 
-                    <label className="block">
-                        <div className="text-fg text-sm font-medium">
-                            Project
-                        </div>
-                        <TextInput
-                            placeholder="YourProject"
-                            value={project}
-                            onChange={(e) => setProject(e.target.value)}
-                        />
-                    </label>
+                    <TextInput
+                        label="Project"
+                        placeholder="YourProject"
+                        value={project}
+                        onChange={(e) => setProject(e.target.value)}
+                    />
+                    <TextInput
+                        label="Your reviewer groups (optional)"
+                        placeholder="*Content Lifecycle Engg*, *ASN UI stewards*"
+                        value={teams}
+                        onChange={(e) => setTeams(e.target.value)}
+                        inputWrapperOrder={[
+                            "label",
+                            "input",
+                            "description",
+                            "error",
+                        ]}
+                        description={
+                            <>
+                                Comma-separated globs matched against the ADO
+                                team reviewer names you belong to
+                                (case-insensitive, <code>*</code> = wildcard).
+                                For example, if you are on the group "MCAPS
+                                E&amp;O WWL LPT - Content Lifecycle Engg", enter{" "}
+                                <code>*Content Lifecycle Engg*</code>. A PR
+                                counts as yours when one of these groups is a
+                                reviewer. Leave this blank to track only PRs
+                                where you are a direct reviewer or the author.
+                                You can add groups in Settings once PRs load.
+                            </>
+                        }
+                    />
 
-                    <label className="block">
-                        <div className="text-fg text-sm font-medium">
-                            Your reviewer groups{" "}
-                            <span className="text-muted font-normal">
-                                (optional)
-                            </span>
-                        </div>
-                        <TextInput
-                            placeholder="*Content Lifecycle Engg*, *ASN UI stewards*"
-                            value={teams}
-                            onChange={(e) => setTeams(e.target.value)}
-                        />
-                        <div className="text-muted mt-1 text-xs">
-                            Comma-separated globs matched against the ADO team
-                            reviewer names you belong to (case-insensitive,{" "}
-                            <code>*</code> = wildcard). For example, if you are
-                            on the group "MCAPS E&amp;O WWL LPT - Content
-                            Lifecycle Engg", enter{" "}
-                            <code>*Content Lifecycle Engg*</code>. A PR counts
-                            as yours when one of these groups is a reviewer.
-                            Leave this blank to track only PRs where you are a
-                            direct reviewer or the author. You can add groups in
-                            Settings once PRs load.
-                        </div>
-                    </label>
-
-                    <div className="border-line mt-1 flex flex-col gap-2 rounded-lg border p-3">
-                        <div className="text-fg text-sm font-medium">
-                            PR review skill
-                        </div>
+                    <Fieldset legend="PR review skill" p="sm">
                         <div className="text-muted text-xs">
                             The board's Review buttons spawn a session that runs
                             a <code>pr-review</code> skill. Install the bundled
                             baseline, or bring your own.
                         </div>
-                        <label className="mt-1 flex items-start gap-2">
-                            <Radio
-                                className="mt-0.5"
-                                checked={installSkill}
-                                onChange={() => setInstallSkill(true)}
-                            />
-                            <span className="text-sm">
-                                <span className="text-fg font-medium">
-                                    Install the baseline skill
-                                </span>
-                                <span className="text-muted block text-xs">
-                                    Copies a neutral pr-review skill into your
-                                    skills directory. Skipped if you already
-                                    have one.
-                                </span>
-                            </span>
-                        </label>
-                        <label className="flex items-start gap-2">
-                            <Radio
-                                className="mt-0.5"
-                                checked={!installSkill}
-                                onChange={() => setInstallSkill(false)}
-                            />
-                            <span className="text-sm">
-                                <span className="text-fg font-medium">
-                                    I'll use my own
-                                </span>
-                                <span className="text-muted block text-xs">
-                                    Leaves your skills directory untouched.
-                                </span>
-                            </span>
-                        </label>
-                        {!installSkill && (
-                            <label className="mt-1 block pl-6">
-                                <div className="text-fg text-sm font-medium">
-                                    Skill name
-                                </div>
-                                <TextInput
-                                    placeholder="pr-review"
-                                    value={skillName}
-                                    onChange={(e) =>
-                                        setSkillName(e.target.value)
-                                    }
+                        <Radio.Group
+                            name="review-skill"
+                            aria-label="PR review skill"
+                            value={installSkill ? "baseline" : "custom"}
+                            onChange={(value) =>
+                                setInstallSkill(value === "baseline")
+                            }
+                        >
+                            <Stack gap="sm" mt="sm">
+                                <Radio
+                                    value="baseline"
+                                    label="Install the baseline skill"
+                                    description="Copies a neutral pr-review skill into your skills directory. Skipped if you already have one."
                                 />
-                                <div className="text-muted mt-1 text-xs">
-                                    The <code>name</code> from your skill's
-                                    frontmatter. The Review buttons tell the
-                                    agent to run this skill.
-                                </div>
-                            </label>
+                                <Radio
+                                    value="custom"
+                                    label="I'll use my own"
+                                    description="Leaves your skills directory untouched."
+                                />
+                            </Stack>
+                        </Radio.Group>
+                        {!installSkill && (
+                            <TextInput
+                                mt="sm"
+                                label="Skill name"
+                                description="The name from your skill's frontmatter. The Review buttons tell the agent to run this skill."
+                                inputWrapperOrder={[
+                                    "label",
+                                    "input",
+                                    "description",
+                                    "error",
+                                ]}
+                                placeholder="pr-review"
+                                value={skillName}
+                                onChange={(e) => setSkillName(e.target.value)}
+                            />
                         )}
-                    </div>
+                    </Fieldset>
                 </div>
 
                 <Button
                     variant="filled"
                     type="button"
                     disabled={!canSave}
+                    loading={saving}
                     onClick={() => void submit()}
                     className="mt-6 w-full"
                 >
-                    {saving && <Loader2 size={15} className="animate-spin" />}
                     Start watching
                 </Button>
             </div>

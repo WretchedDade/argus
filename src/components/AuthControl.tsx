@@ -38,18 +38,24 @@ export function AuthControl() {
                 type="button"
                 onClick={() => action.mutate()}
                 disabled={action.isPending}
-
+                loading={action.isPending}
+                leftSection={<LogIn size={13} />}
                 title={
                     action.error instanceof Error
                         ? action.error.message
                         : (auth.error ?? "Sign in with your Windows account")
                 }
             >
-                <LogIn size={13} />
                 {action.isPending ? "Signing in…" : "Sign in"}
             </Button>
             {action.error instanceof Error ? (
-                <Text size="xs" c="red" maw={288} title={action.error.message}>
+                <Text
+                    role="alert"
+                    size="xs"
+                    c="red"
+                    maw={288}
+                    title={action.error.message}
+                >
                     {action.error.message}
                 </Text>
             ) : null}
