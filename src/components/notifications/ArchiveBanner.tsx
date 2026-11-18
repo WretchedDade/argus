@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Alert, Group } from "@mantine/core";
 import { useQuery } from "@tanstack/react-query";
 import { Archive } from "lucide-react";
 import { archivableQuery } from "../../lib/api";
@@ -40,34 +41,25 @@ export function ArchiveBanner() {
     const n = sessions.length;
     const plural = n === 1 ? "" : "s";
     return (
-        <div
+        <Alert
             role="status"
-            className="border-line mb-4 flex flex-wrap items-center gap-3 rounded-lg border px-3.5 py-2.5 text-sm"
-            style={{ background: "var(--card-bg)" }}
+            title={`${n} review session${plural} ready to archive.`}
+            icon={<Archive size={16} />}
+            mb="md"
         >
-            <span className="icon-badge-gold flex h-6 w-6 shrink-0 items-center justify-center rounded-full">
-                <Archive size={12} />
-            </span>
-            <div className="min-w-0 flex-1">
-                <span className="font-semibold">
-                    {n} review session{plural} ready to archive.
-                </span>{" "}
-                <span className="text-muted">
-                    Their PRs merged or went stale. Argus can clean them up for
-                    you.
-                </span>
-            </div>
-            <div className="flex gap-2 text-xs">
+            Their PRs merged or went stale. Argus can clean them up for you.
+            <Group gap="xs" mt="sm">
                 <PrimaryButton
                     onClick={() => archive.mutate()}
                     disabled={archive.isPending}
+                    loading={archive.isPending}
                 >
                     {archive.isPending
                         ? "Sending…"
                         : `Archive ${n} session${plural}`}
                 </PrimaryButton>
                 <SecondaryButton onClick={dismiss}>Not now</SecondaryButton>
-            </div>
-        </div>
+            </Group>
+        </Alert>
     );
 }

@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { ThemeIcon } from "@mantine/core";
 
 export function IconBadge({
     tone,
@@ -8,10 +9,14 @@ export function IconBadge({
     children: ReactNode;
 }) {
     return (
-        <span
-            className={`icon-badge-${tone} mt-px flex h-6 w-6 shrink-0 items-center justify-center rounded-full`}
+        <ThemeIcon
+            size={24}
+            radius="xl"
+            variant="light"
+            color={tone === "gold" ? "orange" : undefined}
+            className="shrink-0"
         >
             {children}
-        </span>
+        </ThemeIcon>
     );
 }

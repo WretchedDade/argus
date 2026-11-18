@@ -1,3 +1,4 @@
+import { Box, Loader, TextInput } from "@mantine/core";
 import { useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { Search } from "lucide-react";
@@ -49,12 +50,10 @@ export function PrSearch() {
     };
 
     return (
-        <form onSubmit={submit} className="relative flex items-center">
-            <Search
-                size={13}
-                className="pointer-events-none absolute left-2 text-white/50"
-            />
-            <input
+        <Box component="form" onSubmit={submit}>
+            <TextInput
+                size="xs"
+                leftSection={<Search size={13} />}
                 type="text"
                 inputMode="numeric"
                 value={value}
@@ -62,8 +61,14 @@ export function PrSearch() {
                 placeholder="PR #"
                 aria-label="Search PR by number"
                 disabled={busy}
-                className="w-28 rounded-md border border-white/15 bg-white/10 py-1 pl-7 pr-2 text-sm text-white placeholder:text-white/45 focus:border-white/30 focus:outline-none"
+                aria-busy={busy}
+                rightSection={
+                    busy ? (
+                        <Loader size="xs" aria-label="Finding pull request" />
+                    ) : undefined
+                }
+                w={112}
             />
-        </form>
+        </Box>
     );
 }

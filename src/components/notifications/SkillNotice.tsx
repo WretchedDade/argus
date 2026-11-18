@@ -46,6 +46,7 @@ export function SkillNotice({
                 <PrimaryButton
                     onClick={() => mergeWithCopilot.mutate()}
                     disabled={busy}
+                    loading={mergeWithCopilot.isPending}
                 >
                     {mergeWithCopilot.isPending
                         ? "Sending…"
@@ -56,6 +57,7 @@ export function SkillNotice({
                 <SecondaryButton
                     onClick={() => useNewVersion.mutate()}
                     disabled={busy}
+                    loading={useNewVersion.isPending}
                 >
                     {useNewVersion.isPending
                         ? "Replacing…"

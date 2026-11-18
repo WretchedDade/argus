@@ -1,254 +1,390 @@
+import {
+    Accordion,
+    Alert,
+    Anchor,
+    Badge,
+    CloseButton,
+    Code,
+    Container,
+    Group,
+    List,
+    Loader,
+    NativeSelect,
+    Paper,
+    Stack,
+    Text,
+    TextInput,
+    Timeline,
+    Title,
+} from "@mantine/core";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
+import { useState } from "react";
+import { ArrowLeft, Search } from "lucide-react";
 import { runQuery, type ActivityEntry, type RunEvent } from "../lib/api";
 import { clockTime, durationMs } from "../lib/format";
 import { runStatusMeta } from "../lib/runStatus";
-import { StatChip } from "../components/StatChip";
+import {
+    activityLevelColor,
+    filterTraceEntries,
+    runChangeLabel,
+    runChangeSummary,
+    type TraceLevel,
+} from "../lib/activity";
+import { warmQuery } from "../lib/query-defaults";
+import {
+    ErrorBanner,
+    LoadErrorPage,
+    PendingPage,
+} from "../components/ErrorBanner";
 
 export const Route = createFileRoute("/activity/$runId")({
     loader: ({ context, params }) =>
-        context.queryClient.ensureQueryData(runQuery(Number(params.runId))),
+        warmQuery(context.queryClient, runQuery(Number(params.runId))),
     component: RunDetail,
 });
 
-function voteLabel(v: number): string {
-    if (v >= 10) return "approved";
-    if (v >= 5) return "approved w/ suggestions";
-    if (v <= -10) return "rejected";
-    if (v <= -5) return "waiting on author";
-    return "vote reset";
-}
-
-function changeLabel(c: RunEvent): string {
-    switch (c.type) {
-        case "added":
-            return "added to queue";
-        case "commit_pushed":
-            return `new commit ${String(c.payload?.sha ?? "").slice(0, 8)}`;
-        case "vote_changed":
-            return voteLabel(Number(c.payload?.vote ?? 0));
-        case "draft_changed":
-            return c.payload?.is_draft ? "marked draft" : "marked ready";
-        case "closed":
-            return `closed (${String(c.payload?.reason ?? "")})`;
-        case "removed":
-            return "removed";
-        default:
-            return c.type;
-    }
-}
-
-function ChangeRow({ c, color }: { c: RunEvent; color: string }) {
+function StructuredData({ value }: { value: Record<string, unknown> }) {
     return (
-        <a
-            href={c.canonical}
-            target="_blank"
-            rel="noreferrer"
-            className="flex items-center gap-3 px-3 py-1.5 text-xs transition-colors hover:bg-[color-mix(in_srgb,var(--peacock-teal)_9%,transparent)]"
+        <Code
+            block
+            style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}
         >
-            <span className="text-muted shrink-0 tabular-nums">
-                {c.repo} #{c.number}
-            </span>
-            <span className="min-w-0 flex-1 truncate">{c.title}</span>
-            <span
-                className="shrink-0"
-                style={{
-                    color: `color-mix(in srgb, ${color} 60%, var(--color-fg))`,
-                }}
-            >
-                {changeLabel(c)}
-            </span>
-        </a>
+            {JSON.stringify(value, null, 2)}
+        </Code>
     );
 }
 
-function ChangeSection({
-    title,
-    color,
-    items,
-}: {
-    title: string;
-    color: string;
-    items: RunEvent[];
-}) {
-    if (items.length === 0) return null;
+function TraceData({ entry }: { entry: ActivityEntry }) {
+    if (!entry.data) return null;
     return (
-        <div className="mt-4">
-            <div className="text-muted mb-1.5 text-xs font-medium uppercase tracking-wide">
-                {title} ({items.length})
-            </div>
-            <div className="divide-line border-line divide-y overflow-hidden rounded-lg border">
-                {items.map((c) => (
-                    <ChangeRow key={c.id} c={c} color={color} />
-                ))}
-            </div>
-        </div>
+        <Accordion
+            variant="default"
+            chevronSize={14}
+            defaultValue={
+                activityLevelColor(entry.level) === "gray" ? null : "data"
+            }
+            keepMounted
+        >
+            <Accordion.Item value="data">
+                <Accordion.Control px={0} py={4}>
+                    <Text size="sm">Structured data</Text>
+                </Accordion.Control>
+                <Accordion.Panel>
+                    <StructuredData value={entry.data} />
+                </Accordion.Panel>
+            </Accordion.Item>
+        </Accordion>
     );
 }
 
-function TraceItem({ entry, last }: { entry: ActivityEntry; last: boolean }) {
-    const err = entry.level === "error";
-    const dot = err ? "var(--true-color-red, #cf222e)" : "var(--peacock-teal)";
+function PrChanges({ changes }: { changes: RunEvent[] }) {
     return (
-        <li className="relative pb-2.5 pl-6 last:pb-0">
-            {!last && (
-                <span className="bg-line absolute top-3 left-[5px] h-full w-px" />
-            )}
-            <span
-                className="absolute top-1.5 left-0 h-2.5 w-2.5 rounded-full"
-                style={{ background: dot }}
-            />
-            <span className="text-muted mr-2 text-xs tabular-nums">
-                {clockTime(entry.ts)}
-            </span>
-            <span
-                className={`text-xs ${err ? "text-[var(--true-color-red,#cf222e)]" : ""}`}
-            >
-                {entry.msg}
-            </span>
-        </li>
+        <Accordion variant="separated" keepMounted>
+            <Accordion.Item value="changes">
+                <Accordion.Control>
+                    PR changes ({changes.length})
+                </Accordion.Control>
+                <Accordion.Panel>
+                    <List listStyleType="none" spacing="md">
+                        {changes.map((change) => (
+                            <List.Item key={change.id}>
+                                <Stack gap="xs">
+                                    <Anchor
+                                        href={change.canonical}
+                                        target="_blank"
+                                        rel="noreferrer"
+                                        size="sm"
+                                        c="text"
+                                        fw={500}
+                                        style={{ overflowWrap: "anywhere" }}
+                                    >
+                                        {change.title}
+                                    </Anchor>
+                                    <Text size="sm">
+                                        {change.repo} #{change.number}
+                                        {" · "}
+                                        {runChangeLabel(change)}
+                                    </Text>
+                                    <Text
+                                        size="sm"
+                                        component="time"
+                                        dateTime={change.ts}
+                                        title={change.ts}
+                                        c="dimmed"
+                                    >
+                                        {clockTime(change.ts)}
+                                    </Text>
+                                    {change.payload && (
+                                        <StructuredData
+                                            value={change.payload}
+                                        />
+                                    )}
+                                </Stack>
+                            </List.Item>
+                        ))}
+                    </List>
+                </Accordion.Panel>
+            </Accordion.Item>
+        </Accordion>
     );
 }
 
 function RunDetail() {
     const { runId } = Route.useParams();
-    const q = useQuery(runQuery(Number(runId)));
-    const run = q.data?.run;
-    const entries = q.data?.entries ?? [];
-    const changes = q.data?.changes ?? [];
+    const query = useQuery(runQuery(Number(runId)));
+    const [search, setSearch] = useState("");
+    const [level, setLevel] = useState<TraceLevel>("all");
+    const run = query.data?.run;
+    const entries = query.data?.entries ?? [];
+    const changes = query.data?.changes ?? [];
+    const visible = filterTraceEntries(entries, level, search);
     const running = !!run && !run.finishedAt;
-
-    const added = changes.filter((c) => c.type === "added");
-    const updated = changes.filter((c) =>
-        ["commit_pushed", "vote_changed", "draft_changed"].includes(c.type),
-    );
-    const closed = changes.filter((c) =>
-        ["closed", "removed"].includes(c.type),
-    );
+    const status = run ? runStatusMeta(run) : null;
 
     return (
-        <div className="mx-auto max-w-3xl">
-            <Link
-                to="/activity"
-                className="text-muted hover:text-fg mb-3 inline-flex items-center gap-1 text-sm"
-            >
-                <span>←</span> Runs
-            </Link>
-
-            {run ? (
-                <>
-                    <div className="border-line bg-surface rounded-lg border p-4">
-                        <div className="flex items-center gap-2">
-                            <span
-                                className={`inline-block h-2.5 w-2.5 rounded-full ${running ? "watch-pulse" : ""}`}
-                                style={{ background: runStatusMeta(run).color }}
-                            />
-                            <span className="font-medium">Run #{run.id}</span>
-                            <span className="text-muted text-sm">
-                                {clockTime(run.startedAt)}
-                                {run.finishedAt
-                                    ? ` · ${durationMs(run.startedAt, run.finishedAt)}`
-                                    : ""}
-                            </span>
-                            {running && (
-                                <span
-                                    className="ml-auto text-xs"
-                                    style={{ color: "var(--peacock-teal)" }}
+        <Container size="md" px={0}>
+            <Stack gap="lg">
+                <Group>
+                    <Anchor
+                        size="sm"
+                        renderRoot={(props) => (
+                            <Link to="/activity" {...props} />
+                        )}
+                    >
+                        <Group component="span" gap={4}>
+                            <ArrowLeft size={14} /> All runs
+                        </Group>
+                    </Anchor>
+                </Group>
+                {query.isError && query.data && (
+                    <ErrorBanner
+                        title="Couldn't refresh this run"
+                        error={query.error}
+                        onRetry={() => void query.refetch()}
+                    />
+                )}
+                {query.isPending ? (
+                    <PendingPage />
+                ) : query.isError && !query.data ? (
+                    <LoadErrorPage
+                        what="this poll run"
+                        error={query.error}
+                        onRetry={() => void query.refetch()}
+                        showActivityLink={false}
+                    />
+                ) : run && status ? (
+                    <>
+                        <Paper withBorder p="md">
+                            <Stack gap="sm">
+                                <Group justify="space-between">
+                                    <Title order={1} size="h3">
+                                        Run #{run.id}
+                                    </Title>
+                                    <Badge
+                                        color={status.color}
+                                        variant="filled"
+                                    >
+                                        {status.label}
+                                    </Badge>
+                                </Group>
+                                <Text
+                                    size="sm"
+                                    component="time"
+                                    dateTime={run.startedAt}
+                                    title={run.startedAt}
                                 >
-                                    live
-                                </span>
-                            )}
-                        </div>
-                        {run.error ? (
-                            <p className="mt-2 text-sm text-[var(--true-color-red,#cf222e)]">
-                                {run.error}
-                            </p>
-                        ) : run.finishedAt ? (
-                            <div className="mt-3 flex flex-wrap items-center gap-1.5">
-                                <span className="text-muted text-xs">
-                                    {run.mine ?? "–"} matched ·{" "}
-                                    {run.tracked ?? "–"} tracked
-                                </span>
-                                <StatChip
-                                    label="added"
-                                    value={run.added ?? 0}
-                                    color="var(--peacock-gold)"
+                                    Started{" "}
+                                    {new Date(run.startedAt).toLocaleString(
+                                        undefined,
+                                        { timeZoneName: "short" },
+                                    )}
+                                    {run.finishedAt &&
+                                        ` · ${durationMs(run.startedAt, run.finishedAt)}`}
+                                </Text>
+                                {run.error && (
+                                    <Alert color="red" title="Poll failed">
+                                        <Text
+                                            size="sm"
+                                            style={{
+                                                whiteSpace: "pre-wrap",
+                                                overflowWrap: "anywhere",
+                                            }}
+                                        >
+                                            {run.error}
+                                        </Text>
+                                    </Alert>
+                                )}
+                                {!run.ok && run.finishedAt && !run.error && (
+                                    <Alert color="red" title="Poll failed">
+                                        No error message was recorded. Check the
+                                        trace below.
+                                    </Alert>
+                                )}
+                                {run.finishedAt && (
+                                    <>
+                                        <Text size="sm">
+                                            Matched:{" "}
+                                            {run.mine ?? "not recorded"} ·
+                                            Tracked:{" "}
+                                            {run.tracked ?? "not recorded"}
+                                        </Text>
+                                        <Text size="sm">
+                                            {runChangeSummary(run)}
+                                        </Text>
+                                    </>
+                                )}
+                                {running && (
+                                    <Group gap="xs" role="status">
+                                        <Loader size="xs" />
+                                        <Text size="sm">
+                                            Run in progress. This page updates
+                                            automatically.
+                                        </Text>
+                                    </Group>
+                                )}
+                            </Stack>
+                        </Paper>
+                        <Stack gap="md">
+                            <Group justify="space-between">
+                                <Title order={2} size="h4">
+                                    Trace
+                                </Title>
+                                <Text size="sm" c="dimmed" role="status">
+                                    {visible.length} of {entries.length} entries
+                                </Text>
+                            </Group>
+                            <Group gap="sm" align="flex-end">
+                                <TextInput
+                                    flex={1}
+                                    miw={180}
+                                    aria-label="Search trace"
+                                    placeholder="Search messages or structured data"
+                                    leftSection={<Search size={16} />}
+                                    value={search}
+                                    onChange={(event) =>
+                                        setSearch(event.currentTarget.value)
+                                    }
+                                    rightSectionPointerEvents="all"
+                                    rightSection={
+                                        search ? (
+                                            <CloseButton
+                                                size="sm"
+                                                aria-label="Clear trace search"
+                                                onClick={() => setSearch("")}
+                                            />
+                                        ) : null
+                                    }
                                 />
-                                <StatChip
-                                    label="updated"
-                                    value={run.updated ?? 0}
-                                    color="var(--peacock-teal)"
-                                />
-                                <StatChip
-                                    label="events"
-                                    value={run.events ?? 0}
-                                    color="var(--peacock-emerald)"
-                                />
-                                <StatChip
-                                    label="closed"
-                                    value={run.closed ?? 0}
-                                    color="var(--peacock-blue)"
-                                />
-                            </div>
-                        ) : null}
-                    </div>
-
-                    <ChangeSection
-                        title="Added"
-                        color="var(--peacock-gold)"
-                        items={added}
-                    />
-                    <ChangeSection
-                        title="Updated"
-                        color="var(--peacock-teal)"
-                        items={updated}
-                    />
-                    <ChangeSection
-                        title="Closed"
-                        color="var(--peacock-blue)"
-                        items={closed}
-                    />
-                    {run.finishedAt && changes.length === 0 && (
-                        <p className="text-muted mt-4 text-sm">
-                            No PR changes this run.
-                        </p>
-                    )}
-
-                    <div className="text-muted mt-5 mb-1.5 text-xs font-medium uppercase tracking-wide">
-                        Trace
-                    </div>
-                    <ol className="border-line bg-surface rounded-lg border px-4 py-3">
-                        {entries.map((e, i) => (
-                            <TraceItem
-                                key={e.id}
-                                entry={e}
-                                last={i === entries.length - 1 && !running}
-                            />
-                        ))}
-                        {running && (
-                            <li className="relative pl-6">
-                                <span
-                                    className="watch-pulse absolute top-1.5 left-0 h-2.5 w-2.5 rounded-full"
-                                    style={{
-                                        background: "var(--peacock-teal)",
+                                <NativeSelect
+                                    size="sm"
+                                    aria-label="Filter trace by level"
+                                    value={level}
+                                    onChange={(event) => {
+                                        const value = event.currentTarget.value;
+                                        if (
+                                            value === "all" ||
+                                            value === "issues" ||
+                                            value === "errors"
+                                        )
+                                            setLevel(value);
                                     }}
+                                    data={[
+                                        { value: "all", label: "All levels" },
+                                        {
+                                            value: "issues",
+                                            label: "Warnings and errors",
+                                        },
+                                        {
+                                            value: "errors",
+                                            label: "Errors only",
+                                        },
+                                    ]}
                                 />
-                                <span
-                                    className="text-xs"
-                                    style={{ color: "var(--peacock-teal)" }}
+                            </Group>
+                            {visible.length > 0 ? (
+                                <Timeline
+                                    active={visible.length - 1}
+                                    bulletSize={16}
+                                    lineWidth={1}
                                 >
-                                    watching…
-                                </span>
-                            </li>
+                                    {visible.map((entry) => (
+                                        <Timeline.Item
+                                            key={entry.id}
+                                            color={activityLevelColor(
+                                                entry.level,
+                                            )}
+                                            title={
+                                                <Group gap="xs">
+                                                    <Badge
+                                                        variant={
+                                                            activityLevelColor(
+                                                                entry.level,
+                                                            ) === "gray"
+                                                                ? "outline"
+                                                                : "filled"
+                                                        }
+                                                        color={activityLevelColor(
+                                                            entry.level,
+                                                        )}
+                                                        size="sm"
+                                                    >
+                                                        {entry.level}
+                                                    </Badge>
+                                                    <Text
+                                                        size="sm"
+                                                        component="time"
+                                                        dateTime={entry.ts}
+                                                        title={entry.ts}
+                                                        c="dimmed"
+                                                    >
+                                                        {clockTime(entry.ts)}
+                                                    </Text>
+                                                </Group>
+                                            }
+                                        >
+                                            <Stack gap="xs" mt={4}>
+                                                <Text
+                                                    size="sm"
+                                                    style={{
+                                                        whiteSpace: "pre-wrap",
+                                                        overflowWrap:
+                                                            "anywhere",
+                                                    }}
+                                                >
+                                                    {entry.msg}
+                                                </Text>
+                                                <TraceData entry={entry} />
+                                            </Stack>
+                                        </Timeline.Item>
+                                    ))}
+                                </Timeline>
+                            ) : (
+                                <Text size="sm" c="dimmed">
+                                    {entries.length > 0
+                                        ? "No trace entries match these filters."
+                                        : running
+                                          ? "Waiting for trace entries..."
+                                          : "No trace entries were recorded."}
+                                </Text>
+                            )}
+                        </Stack>
+                        {changes.length > 0 ? (
+                            <PrChanges changes={changes} />
+                        ) : (
+                            <Text size="sm" c="dimmed">
+                                {running
+                                    ? "No PR changes recorded yet."
+                                    : "No PR changes were recorded."}
+                            </Text>
                         )}
-                        {entries.length === 0 && !running && (
-                            <p className="text-muted text-sm">No trace.</p>
-                        )}
-                    </ol>
-                </>
-            ) : (
-                <p className="text-muted text-sm">Run not found.</p>
-            )}
-        </div>
+                    </>
+                ) : (
+                    <Alert title="Run not found" color="gray">
+                        No stored run has this ID.
+                    </Alert>
+                )}
+            </Stack>
+        </Container>
     );
 }

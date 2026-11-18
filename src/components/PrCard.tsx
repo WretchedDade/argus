@@ -1,54 +1,113 @@
-import { useId, useRef, useState } from "react";
-import { createPortal } from "react-dom";
-import { Button } from "@headlessui/react";
+import { useId, useState } from "react";
+import {
+    ActionIcon,
+    Anchor,
+    Avatar,
+    Badge,
+    Button,
+    Card,
+    Center,
+    Group,
+    HoverCard,
+    List,
+    Loader,
+    Menu,
+    OverflowList,
+    Popover,
+    ScrollArea,
+    Spoiler,
+    Stack,
+    Text,
+    Title,
+    Tooltip,
+} from "@mantine/core";
 import { Link } from "@tanstack/react-router";
 import {
     AlarmClock,
     AlarmClockOff,
     Ban,
     Bot,
-    Building2,
-    Check,
     ChevronDown,
-    Clock,
+    ChevronUp,
     ExternalLink,
-    GitPullRequest,
     ListChecks,
-    Loader2,
-    MessageSquareText,
+    MessageSquare,
     RefreshCw,
     RotateCcw,
-    X,
 } from "lucide-react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { api, type Pr, type ReviewActionMode } from "../lib/api";
-import { resolveTeamLabel, shortAge, timeUntil } from "../lib/format";
-import { teamBadgeStyle } from "../lib/teamColor";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { api, prDetailQuery, type Pr, type ReviewActionMode } from "../lib/api";
+import { resolveTeamLabel, shortAge, timeAgo, timeUntil } from "../lib/format";
+import { teamAnchor } from "../lib/teamColor";
 import { isSnoozed, REVIEW_STATE_META } from "../lib/triage";
 import { pushToast } from "../lib/toast";
 import { usePending } from "../lib/usePending";
 import { MarkdownPreview } from "./MarkdownPreview";
+import { ErrorBanner } from "./ErrorBanner";
 
-// The accent hue for a row: its review state, or teal ("your move") when unset.
-function accentVar(pr: Pr): string {
-    return pr.reviewState
-        ? REVIEW_STATE_META[pr.reviewState].anchor
-        : "--color-teal-500";
+function AuthorAvatar({
+    author,
+    variant = "filled",
+}: {
+    author: Pr["author"];
+    variant?: "filled" | "light";
+}) {
+    return (
+        <Avatar
+            name={author || undefined}
+            color={author ? "initials" : "gray"}
+            size={28}
+            variant={variant}
+            alt={author || "Unknown author"}
+            role="img"
+            aria-label={author || "Unknown author"}
+        />
+    );
 }
 
-function StatePill({ pr, small = false }: { pr: Pr; small?: boolean }) {
-    if (!pr.reviewState) return null;
-    const meta = REVIEW_STATE_META[pr.reviewState];
+function PrTitle({
+    pr,
+    titleId,
+    compact = false,
+    detail = false,
+}: {
+    pr: Pr;
+    titleId: string;
+    compact?: boolean;
+    detail?: boolean;
+}) {
     return (
-        <span
-            className={`shrink-0 rounded-full font-medium ${small ? "px-1.5 py-0 text-[10px]" : "px-2 py-0.5 text-[11px]"}`}
-            style={{
-                background: `color-mix(in srgb, var(${meta.anchor}) 16%, transparent)`,
-                color: `color-mix(in srgb, var(${meta.anchor}) 62%, var(--color-fg))`,
-            }}
+        <Title
+            id={titleId}
+            order={detail ? 1 : 3}
+            size={compact ? "xs" : "sm"}
+            fw={compact ? 400 : 500}
+            flex={1}
+            miw={0}
+            style={{ overflowWrap: "anywhere" }}
         >
-            {meta.label}
-        </span>
+            {detail ? (
+                pr.title
+            ) : (
+                <Anchor
+                    inherit
+                    c="inherit"
+                    underline="hover"
+                    truncate={compact}
+                    title={compact ? pr.title : undefined}
+                    style={compact ? { display: "block" } : undefined}
+                    renderRoot={(props) => (
+                        <Link
+                            to="/pr"
+                            search={{ c: pr.canonical }}
+                            {...props}
+                        />
+                    )}
+                >
+                    {pr.title}
+                </Anchor>
+            )}
+        </Title>
     );
 }
 
@@ -66,72 +125,47 @@ function SizeChip({ files }: { files: number | null }) {
     if (files == null) return null;
     const b = SIZE_BUCKETS.find((x) => files <= x.max)!;
     return (
-        <span
-            className="ml-1 inline-flex shrink-0 items-center gap-1 rounded border px-1.5 py-0 text-[10px] font-medium"
-            style={{
-                borderColor: `color-mix(in srgb, var(${b.anchor}) 40%, var(--color-line))`,
-                color: `color-mix(in srgb, var(${b.anchor}) 60%, var(--color-fg))`,
-            }}
+        <Badge
+            component="span"
+            className="shrink-0"
+            size="sm"
+            radius="sm"
+            variant="light"
+            color={`var(${b.anchor})`}
             title={`${files} file${files === 1 ? "" : "s"} changed`}
         >
-            {b.label} · {files}f
-        </span>
+            {b.label} · {files} file{files === 1 ? "" : "s"}
+        </Badge>
     );
 }
 
-function TeamDots({
-    teams,
-    labels,
-}: {
-    teams: string[];
-    labels: Record<string, string>;
-}) {
-    return (
-        <>
-            {teams.map((t) => (
-                <span
-                    key={t}
-                    className="shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium"
-                    style={teamBadgeStyle(t)}
-                >
-                    {resolveTeamLabel(t, labels)}
-                </span>
-            ))}
-        </>
-    );
-}
-
-// Visual-only actions swallow the click so they don't trigger the card's
-// stretched navigation link. (Wiring for most is still deferred.)
+// Keep action clicks separate from PR navigation.
 const swallow = (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
 };
 
-// A small hover tooltip. Uses a named group so it only reacts to its own button,
-// not the card's `group` (which would fire every tooltip at once).
 function Tip({
     label,
     children,
-    id,
     wide = false,
 }: {
     label: string;
-    children: React.ReactNode;
-    id?: string;
+    children: React.ReactElement;
     wide?: boolean;
 }) {
     return (
-        <span className={`group/tip inline-flex ${wide ? "" : "relative"}`}>
+        <Tooltip
+            label={label}
+            withArrow
+            openDelay={250}
+            events={{ hover: true, focus: true, touch: false }}
+            multiline={wide}
+            w={wide ? 288 : undefined}
+            maw="calc(100vw - 2rem)"
+        >
             {children}
-            <span
-                id={id}
-                role="tooltip"
-                className={`pr-card border-line text-fg pointer-events-none absolute bottom-full z-50 mb-1.5 rounded-md border px-2 py-1 text-xs opacity-0 shadow-md transition-opacity duration-100 group-hover/tip:opacity-100 group-focus-within/tip:opacity-100 ${wide ? "left-0 w-72 max-w-full whitespace-normal" : "left-1/2 -translate-x-1/2 whitespace-nowrap"}`}
-            >
-                {label}
-            </span>
-        </span>
+        </Tooltip>
     );
 }
 
@@ -140,29 +174,30 @@ function ActionBtn({
     label,
     onClick,
     spinning = false,
+    variant = "subtle",
 }: {
     icon: typeof Ban;
     label: string;
     onClick?: () => void;
     spinning?: boolean;
+    variant?: "subtle" | "default";
 }) {
     return (
         <Tip label={label}>
-            <button
+            <ActionIcon
+                variant={variant}
+                color="gray"
                 type="button"
                 aria-label={label}
                 disabled={spinning}
+                loading={spinning}
                 onClick={(e) => {
                     swallow(e);
                     onClick?.();
                 }}
-                className="text-muted hover:text-fg rounded-md p-1.5 transition-colors hover:bg-[color-mix(in_srgb,var(--color-fg)_8%,transparent)]"
             >
-                <Icon
-                    size={14}
-                    className={spinning ? "animate-spin" : undefined}
-                />
-            </button>
+                <Icon size={14} />
+            </ActionIcon>
         </Tip>
     );
 }
@@ -188,22 +223,7 @@ const SNOOZE_OPTIONS: [Parameters<typeof snoozeUntil>[0], string][] = [
 function SnoozeMenu({ pr }: { pr: Pr }) {
     const qc = useQueryClient();
     const [open, setOpen] = useState(false);
-    const [pos, setPos] = useState<{ bottom: number; right: number } | null>(
-        null,
-    );
-    const btnRef = useRef<HTMLButtonElement>(null);
     const wake = usePending();
-
-    const toggle = () => {
-        if (!open && btnRef.current) {
-            const r = btnRef.current.getBoundingClientRect();
-            setPos({
-                bottom: window.innerHeight - r.top + 6,
-                right: window.innerWidth - r.right,
-            });
-        }
-        setOpen((o) => !o);
-    };
 
     const snooze = async (kind: Parameters<typeof snoozeUntil>[0]) => {
         setOpen(false);
@@ -241,106 +261,112 @@ function SnoozeMenu({ pr }: { pr: Pr }) {
             }
         });
 
-    const itemCls =
-        "text-fg block w-full px-3 py-1.5 text-left hover:bg-[color-mix(in_srgb,var(--color-fg)_8%,transparent)]";
-
     // Already snoozed: the snooze action is meaningless, so offer a wake instead.
     if (isSnoozed(pr)) {
         return (
             <Tip label="Wake now">
-                <button
+                <ActionIcon
+                    variant="default"
+                    color="gray"
                     type="button"
                     aria-label="Wake now"
                     disabled={wake.pending}
+                    loading={wake.pending}
                     onClick={(e) => {
                         swallow(e);
                         clearSnooze();
                     }}
-                    className="text-muted hover:text-fg inline-flex items-center rounded-md p-1.5 transition-colors hover:bg-[color-mix(in_srgb,var(--color-fg)_8%,transparent)] disabled:opacity-60"
                 >
-                    {wake.pending ? (
-                        <Loader2 size={14} className="animate-spin" />
-                    ) : (
-                        <AlarmClockOff size={14} />
-                    )}
-                </button>
+                    <AlarmClockOff size={14} />
+                </ActionIcon>
             </Tip>
         );
     }
 
     return (
-        <>
-            <Tip label="Snooze">
-                <button
-                    ref={btnRef}
-                    type="button"
+        <Menu
+            opened={open}
+            onChange={setOpen}
+            position="top-end"
+            withinPortal
+            shadow="md"
+        >
+            <Menu.Target>
+                <ActionIcon
+                    variant="default"
+                    color="gray"
                     aria-label="Snooze"
-                    onClick={(e) => {
-                        swallow(e);
-                        toggle();
-                    }}
-                    className="text-muted hover:text-fg inline-flex items-center rounded-md p-1.5 transition-colors hover:bg-[color-mix(in_srgb,var(--color-fg)_8%,transparent)]"
+                    onClick={(event) => event.stopPropagation()}
                 >
                     <AlarmClock size={14} />
-                    <ChevronDown size={11} className="-ml-0.5" />
-                </button>
+                </ActionIcon>
+            </Menu.Target>
+            <Menu.Dropdown onClick={(event) => event.stopPropagation()}>
+                {SNOOZE_OPTIONS.map(([kind, label]) => (
+                    <Menu.Item key={kind} onClick={() => void snooze(kind)}>
+                        {label}
+                    </Menu.Item>
+                ))}
+                <Menu.Divider />
+                <Menu.Item onClick={() => void snoozeFte()}>
+                    Until an FTE approves
+                </Menu.Item>
+            </Menu.Dropdown>
+        </Menu>
+    );
+}
+
+function PrQuickActions({
+    pr,
+    variant = "subtle",
+}: {
+    pr: Pr;
+    variant?: "subtle" | "default";
+}) {
+    const qc = useQueryClient();
+    const [refreshing, setRefreshing] = useState(false);
+    const refresh = async () => {
+        if (refreshing) return;
+        setRefreshing(true);
+        try {
+            await api.refreshPr(pr.canonical);
+            pushToast("Refreshed");
+            void qc.invalidateQueries({ queryKey: ["prs"] });
+        } catch {
+            pushToast("Refresh failed", "error");
+        } finally {
+            setRefreshing(false);
+        }
+    };
+    return (
+        <>
+            <ActionBtn
+                icon={RefreshCw}
+                label="Refresh"
+                onClick={refresh}
+                spinning={refreshing}
+                variant={variant}
+            />
+            <Tip label="Open in Azure DevOps">
+                <ActionIcon
+                    component="a"
+                    variant={variant}
+                    color="gray"
+                    href={pr.canonical}
+                    target="_blank"
+                    rel="noreferrer"
+                    onClick={(event) => event.stopPropagation()}
+                    aria-label="Open in Azure DevOps"
+                >
+                    <ExternalLink size={14} />
+                </ActionIcon>
             </Tip>
-            {open &&
-                pos &&
-                createPortal(
-                    <>
-                        <div
-                            className="fixed inset-0 z-50"
-                            onClick={(e) => {
-                                e.preventDefault();
-                                e.stopPropagation();
-                                setOpen(false);
-                            }}
-                        />
-                        <div
-                            className="border-line fixed z-50 w-44 overflow-hidden rounded-md border py-1 text-xs shadow-md"
-                            style={{
-                                bottom: pos.bottom,
-                                right: pos.right,
-                                background: "var(--card-bg)",
-                            }}
-                        >
-                            {SNOOZE_OPTIONS.map(([k, label]) => (
-                                <button
-                                    key={k}
-                                    type="button"
-                                    onClick={(e) => {
-                                        swallow(e);
-                                        void snooze(k);
-                                    }}
-                                    className={itemCls}
-                                >
-                                    {label}
-                                </button>
-                            ))}
-                            <div className="border-line my-1 border-t" />
-                            <button
-                                type="button"
-                                onClick={(e) => {
-                                    swallow(e);
-                                    void snoozeFte();
-                                }}
-                                className={itemCls}
-                            >
-                                Until an FTE approves
-                            </button>
-                        </div>
-                    </>,
-                    document.body,
-                )}
         </>
     );
 }
 
 export function ActionBar({ pr }: { pr: Pr }) {
     const qc = useQueryClient();
-    const helpId = useId();
-    const [refreshing, setRefreshing] = useState(false);
     const scope = usePending();
     const reviewReq = useMutation({
         mutationFn: (mode: ReviewActionMode) => api.review(pr.canonical, mode),
@@ -366,349 +392,708 @@ export function ActionBar({ pr }: { pr: Pr }) {
             }
         });
 
-    const refresh = async () => {
-        if (refreshing) return;
-        setRefreshing(true);
-        try {
-            await api.refreshPr(pr.canonical);
-            pushToast("Refreshed");
-            void qc.invalidateQueries({ queryKey: ["prs"] });
-        } catch {
-            pushToast("Refresh failed", "error");
-        } finally {
-            setRefreshing(false);
-        }
-    };
-
     return (
-        <div className="relative z-20 flex flex-wrap items-center gap-1.5 border-t border-line pt-2.5">
+        <Group gap="xs">
             <Tip
-                id={`${helpId}-for-me`}
                 label="Copilot reviews first. You add findings and approve comments and the vote."
                 wide
             >
                 <Button
+                    size="xs"
+                    className="shrink-0"
+                    variant="filled"
                     type="button"
-                    aria-describedby={`${helpId}-for-me`}
                     disabled={reviewReq.isPending}
+                    loading={
+                        reviewReq.isPending && reviewReq.variables === "for-me"
+                    }
                     onClick={(e) => {
                         swallow(e);
                         reviewReq.mutate("for-me");
                     }}
-                    className="inline-flex items-center gap-1.5 rounded-md bg-[color-mix(in_srgb,var(--peacock-teal)_80%,black)] px-2.5 py-1 text-xs font-semibold text-white transition-colors data-hover:bg-[color-mix(in_srgb,var(--peacock-teal)_65%,black)] data-active:bg-[color-mix(in_srgb,var(--peacock-teal)_55%,black)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent disabled:cursor-not-allowed disabled:opacity-70"
                 >
-                    {reviewReq.isPending && (
-                        <Loader2 size={12} className="animate-spin" />
-                    )}
                     Review for me
                 </Button>
             </Tip>
 
             <Tip
-                id={`${helpId}-with-me`}
                 label="You lead step by step. Copilot fills the gaps. You approve comments and the vote."
                 wide
             >
                 <Button
+                    size="xs"
+                    className="shrink-0"
+                    variant="default"
                     type="button"
-                    aria-describedby={`${helpId}-with-me`}
                     disabled={reviewReq.isPending}
+                    loading={
+                        reviewReq.isPending && reviewReq.variables === "with-me"
+                    }
                     onClick={(e) => {
                         swallow(e);
                         reviewReq.mutate("with-me");
                     }}
-                    className="text-muted data-hover:text-fg data-hover:border-accent inline-flex items-center gap-1 rounded-md border border-line px-2 py-1 text-xs font-semibold transition-colors data-hover:bg-[color-mix(in_srgb,var(--peacock-teal)_14%,var(--card-bg))] data-active:bg-[color-mix(in_srgb,var(--peacock-teal)_24%,var(--card-bg))] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent disabled:cursor-not-allowed disabled:opacity-70"
                 >
                     Review with me
                 </Button>
             </Tip>
             <Tip
-                id={`${helpId}-delegate`}
                 label="Copilot can approve without asking, but only with zero findings. It posts no comments."
                 wide
             >
                 <Button
+                    size="xs"
+                    className="shrink-0"
+                    variant="default"
+                    leftSection={<Bot size={12} />}
                     type="button"
-                    aria-describedby={`${helpId}-delegate`}
                     disabled={reviewReq.isPending}
+                    loading={
+                        reviewReq.isPending &&
+                        reviewReq.variables === "delegate"
+                    }
                     onClick={(e) => {
                         swallow(e);
                         reviewReq.mutate("delegate");
                     }}
-                    className="text-muted data-hover:text-fg data-hover:border-accent inline-flex items-center gap-1 rounded-md border border-line px-2 py-1 text-xs font-semibold transition-colors data-hover:bg-[color-mix(in_srgb,var(--peacock-teal)_14%,var(--card-bg))] data-active:bg-[color-mix(in_srgb,var(--peacock-teal)_24%,var(--card-bg))] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent disabled:cursor-not-allowed disabled:opacity-70"
                 >
-                    <Bot size={12} />
                     Delegate
                 </Button>
             </Tip>
 
-            <div className="ml-auto flex items-center gap-0.5">
+            <ActionIcon.Group ml="auto" aria-label="PR actions">
                 <SnoozeMenu pr={pr} />
-                <ActionBtn
-                    icon={RefreshCw}
-                    label="Refresh"
-                    onClick={refresh}
-                    spinning={refreshing}
-                />
-                <Tip label="Open in Azure DevOps">
-                    <a
-                        href={pr.canonical}
-                        target="_blank"
-                        rel="noreferrer"
-                        onClick={(e) => e.stopPropagation()}
-                        aria-label="Open in Azure DevOps"
-                        className="text-muted hover:text-fg inline-flex rounded-md p-1.5 transition-colors hover:bg-[color-mix(in_srgb,var(--color-fg)_8%,transparent)]"
-                    >
-                        <ExternalLink size={14} />
-                    </a>
-                </Tip>
+                <PrQuickActions pr={pr} variant="default" />
                 <ActionBtn
                     icon={Ban}
                     label="Out of scope"
                     onClick={markOutOfScope}
                     spinning={scope.pending}
+                    variant="default"
                 />
-            </div>
-        </div>
+            </ActionIcon.Group>
+        </Group>
     );
 }
 
-// Other reviewers' votes, grouped by kind and shown as tinted chips (concerns
-// first). Gives visibility into who's already weighed in even when it's still
-// your turn — handy when an FTE-snooze wakes.
-const VOTE_META: Record<
-    number,
-    { label: string; anchor: string; Icon: typeof Check }
-> = {
-    10: { label: "Approved by", anchor: "--color-green-500", Icon: Check },
+const VOTE_META: Record<number, { label: string; color: string }> = {
+    10: { label: "Approved", color: "green" },
     5: {
-        label: "Suggestions from",
-        anchor: "--color-emerald-500",
-        Icon: MessageSquareText,
+        label: "Approved with suggestions",
+        color: "green",
     },
     [-5]: {
-        label: "Waiting on author:",
-        anchor: "--color-orange-500",
-        Icon: Clock,
+        label: "Waiting for author",
+        color: "yellow",
     },
-    [-10]: { label: "Rejected by", anchor: "--color-rose-500", Icon: X },
+    [-10]: { label: "Rejected", color: "red" },
 };
 const VOTE_ORDER = [-10, -5, 5, 10];
 
-export function VoteChips({
+export function VoteAvatars({
     votes,
 }: {
     votes: { name: string; vote: number }[];
 }) {
-    if (votes.length === 0) return null;
-    const groups = VOTE_ORDER.map((v) => ({
-        v,
-        names: votes.filter((x) => x.vote === v).map((x) => x.name),
-    })).filter((g) => g.names.length > 0);
-    if (groups.length === 0) return null;
+    const reviewers = VOTE_ORDER.flatMap((v) =>
+        votes.filter((reviewer) => reviewer.vote === v),
+    );
+    if (reviewers.length === 0) return null;
     return (
-        <div className="mt-2.5 flex flex-wrap gap-1.5">
-            {groups.map(({ v, names }) => {
-                const m = VOTE_META[v];
+        <Avatar.Group
+            spacing={0}
+            ms="auto"
+            role="group"
+            aria-label="Reviewer votes"
+            style={{
+                flexWrap: "wrap",
+                gap: "var(--mantine-spacing-xs)",
+            }}
+        >
+            {reviewers.map(({ vote, name }, index) => {
+                const m = VOTE_META[vote];
+                const label = `${name || "Unknown reviewer"}: ${m.label}`;
                 return (
-                    <span
-                        key={v}
-                        className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs font-medium"
-                        style={{
-                            background: `color-mix(in srgb, var(${m.anchor}) 15%, transparent)`,
-                            color: `color-mix(in srgb, var(${m.anchor}) 70%, var(--color-fg))`,
-                        }}
-                    >
-                        <span
-                            className="flex h-4 w-4 shrink-0 items-center justify-center rounded-full text-white"
-                            style={{ background: `var(${m.anchor})` }}
-                        >
-                            <m.Icon size={11} />
-                        </span>
-                        {m.label} {names.join(", ")}
-                    </span>
+                    <Tip key={`${vote}:${name}:${index}`} label={label} wide>
+                        <Avatar
+                            name={name || undefined}
+                            color={m.color}
+                            size={28}
+                            variant="filled"
+                            role="img"
+                            aria-label={label}
+                            tabIndex={0}
+                        />
+                    </Tip>
                 );
             })}
-        </div>
+        </Avatar.Group>
     );
 }
 
-// Roomy card for action buckets; compact one-liner for parked/reviewed buckets.
-export function PrCard({
+function ReviewHistoryContent({ canonical }: { canonical: string }) {
+    const history = useQuery(prDetailQuery(canonical));
+    const reviews =
+        history.data?.events.filter(
+            (event) =>
+                event.type === "reviewed" ||
+                event.type === "review_provisional",
+        ) ?? [];
+    return (
+        <Stack gap="sm" style={{ overflowWrap: "anywhere" }}>
+            <Title order={4} size="sm">
+                Review history
+            </Title>
+            {history.isError && (
+                <ErrorBanner
+                    title="Could not load review history"
+                    error={history.error}
+                    onRetry={() => void history.refetch()}
+                />
+            )}
+            {history.isPending && (
+                <Group gap="xs" role="status" aria-busy="true">
+                    <Loader size="xs" />
+                    <Text size="xs" c="var(--argus-tag-text)">
+                        Loading review history
+                    </Text>
+                </Group>
+            )}
+            {reviews.length > 0 ? (
+                <List size="xs" spacing="xs">
+                    {reviews.map((event) => (
+                        <List.Item key={event.id}>
+                            <Text size="xs">
+                                {event.type === "review_provisional"
+                                    ? "Delegate found issues; no vote cast"
+                                    : "Reviewed"}
+                            </Text>
+                            <Text
+                                component="time"
+                                dateTime={event.ts}
+                                title={new Date(event.ts).toLocaleString()}
+                                size="xs"
+                                c="var(--argus-tag-text)"
+                            >
+                                {timeAgo(event.ts)}
+                            </Text>
+                        </List.Item>
+                    ))}
+                </List>
+            ) : history.isSuccess ? (
+                <Text size="xs" c="var(--argus-tag-text)">
+                    No recorded review events.
+                </Text>
+            ) : null}
+        </Stack>
+    );
+}
+
+function ReviewHistory({
     pr,
-    labels,
-    variant = "full",
-    onRestore,
+    withState = false,
 }: {
     pr: Pr;
-    labels: Record<string, string>;
-    variant?: "full" | "compact";
-    onRestore?: () => void | Promise<void>;
+    withState?: boolean;
 }) {
-    const accent = accentVar(pr);
-    const restore = usePending();
-    const snoozed = isSnoozed(pr);
-
-    if (variant === "compact") {
-        return (
-            <Link
-                to="/pr"
-                search={{ c: pr.canonical }}
-                className="pr-card group relative flex items-center gap-2 overflow-hidden rounded-md border py-1.5 pl-3 pr-2 text-xs opacity-85 transition hover:opacity-100"
-                style={{
-                    borderColor: `color-mix(in srgb, var(${accent}) 42%, var(--color-line))`,
-                    background: `color-mix(in srgb, var(${accent}) 13%, var(--card-bg))`,
-                }}
-            >
-                <span
-                    className="absolute inset-y-0 left-0 w-[3px]"
-                    style={{ background: `var(${accent})` }}
-                />
-                {pr.isDraft && (
-                    <span className="border-line text-muted shrink-0 rounded border px-1 text-[9px] uppercase tracking-wide">
-                        draft
-                    </span>
-                )}
-                {pr.isVendor && (
-                    <span className="border-line text-muted shrink-0 rounded border px-1 text-[9px] uppercase tracking-wide">
-                        vendor
-                    </span>
-                )}
-                <span className="text-fg min-w-0 flex-1 truncate">
-                    {pr.title}
-                </span>
-                <span className="text-muted shrink-0">
-                    {pr.repo} #{pr.number}
-                </span>
-                <SizeChip files={pr.changedFiles} />
-                <StatePill pr={pr} small />
-                {pr.reviewState === "covered" && (
-                    <span
-                        className="text-muted max-w-[14rem] shrink-0 truncate"
-                        title="Approvals on this PR, and when it became covered"
-                    >
-                        approved by{" "}
-                        {pr.otherVotes
-                            .filter((v) => v.vote >= 5)
-                            .map((v) => v.name)
-                            .join(", ") || "a teammate"}
-                        {pr.coveredAt ? ` · ${shortAge(pr.coveredAt)}` : ""}
-                    </span>
-                )}
-                <span
-                    className="text-muted inline-flex shrink-0 items-center gap-1"
-                    title="Completed reviews by me"
+    const meta = REVIEW_STATE_META[pr.reviewState ?? "needs"];
+    const countLabel = `${pr.reviewCount} review${pr.reviewCount === 1 ? "" : "s"}`;
+    return (
+        <Popover
+            position="bottom-start"
+            width={360}
+            shadow="md"
+            trapFocus
+            returnFocus
+        >
+            <Popover.Target>
+                <Button
+                    type="button"
+                    size="xs"
+                    variant="subtle"
+                    color={withState ? `var(${meta.anchor})` : "gray"}
+                    c={withState ? undefined : "var(--argus-tag-text)"}
+                    aria-label={`${withState ? `${meta.label}. ` : ""}Review history: ${pr.reviewCount} completed review${pr.reviewCount === 1 ? "" : "s"}`}
+                    leftSection={<ListChecks size={14} />}
+                    rightSection={<ChevronDown size={12} />}
                 >
-                    <ListChecks size={11} />
-                    {pr.reviewCount}
-                </span>
-                {snoozed && pr.snoozeMode === "fte" ? (
-                    <span className="text-muted inline-flex shrink-0 items-center gap-1">
-                        <AlarmClock size={11} /> until FTE
-                    </span>
-                ) : snoozed && pr.snoozedUntil ? (
-                    <span className="text-muted inline-flex shrink-0 items-center gap-1">
-                        <AlarmClock size={11} /> {timeUntil(pr.snoozedUntil)}
-                    </span>
-                ) : (
-                    <span className="text-muted shrink-0 tabular-nums">
-                        {shortAge(pr.updatedAt)}
-                    </span>
-                )}
-                {onRestore && (
-                    <button
-                        type="button"
-                        aria-label="Back to review"
-                        disabled={restore.pending}
-                        onClick={(e) => {
-                            e.preventDefault();
-                            e.stopPropagation();
-                            restore.run(async () => {
-                                await onRestore();
-                            });
-                        }}
-                        className="text-muted hover:text-fg relative z-20 shrink-0 rounded p-0.5 disabled:opacity-60"
-                    >
-                        <RotateCcw
-                            size={13}
-                            className={
-                                restore.pending ? "animate-spin" : undefined
-                            }
-                        />
-                    </button>
-                )}
-            </Link>
+                    {withState ? (
+                        <Group component="span" gap={6} wrap="nowrap">
+                            <Text component="span" inherit fw={500}>
+                                {meta.label}
+                            </Text>
+                            <Text
+                                component="span"
+                                inherit
+                                fw={400}
+                                c="var(--argus-tag-text)"
+                            >
+                                · {countLabel}
+                            </Text>
+                        </Group>
+                    ) : (
+                        <>My reviews: {pr.reviewCount}</>
+                    )}
+                </Button>
+            </Popover.Target>
+            <Popover.Dropdown
+                maw="calc(100vw - 2rem)"
+                aria-label="Review history"
+            >
+                <ScrollArea.Autosize
+                    mah="50vh"
+                    type="auto"
+                    offsetScrollbars="y"
+                >
+                    <ReviewHistoryContent canonical={pr.canonical} />
+                </ScrollArea.Autosize>
+            </Popover.Dropdown>
+        </Popover>
+    );
+}
+
+interface PrCardProps {
+    pr: Pr;
+    labels: Record<string, string>;
+    onRestore?: () => void | Promise<void>;
+}
+
+export function PrCard({
+    variant = "full",
+    ...props
+}: PrCardProps & { variant?: "full" | "compact" }) {
+    return variant === "compact" ? (
+        <CompactPrCard {...props} />
+    ) : (
+        <FullPrCard {...props} />
+    );
+}
+
+function CompactPrCard({ pr, labels, onRestore }: PrCardProps) {
+    const titleId = useId();
+    const [expanded, setExpanded] = useState(false);
+    const [focusExpand, setFocusExpand] = useState(false);
+    const restore = usePending();
+    const meta = REVIEW_STATE_META[pr.reviewState ?? "needs"];
+    const anchor = pr.isDraft ? "--mantine-color-gray-6" : meta.anchor;
+
+    if (expanded) {
+        return (
+            <FullPrCard
+                pr={pr}
+                labels={labels}
+                onRestore={onRestore}
+                onCollapse={() => {
+                    setExpanded(false);
+                    setFocusExpand(true);
+                }}
+            />
         );
     }
 
     return (
-        <div
-            className={`pr-card border-line group relative flex min-h-[150px] flex-col justify-between gap-3 rounded-xl border pl-4 pr-3.5 pt-4 pb-4 shadow-sm transition-[transform,box-shadow] hover:-translate-y-px hover:shadow-md${pr.isDraft ? " opacity-65 hover:opacity-100" : ""}`}
+        <Card
+            component="article"
+            className="pr-card-compact"
+            aria-labelledby={titleId}
+            aria-description={`${pr.isDraft ? "Draft. " : ""}Review status: ${meta.label}`}
+            withBorder
+            padding="xs"
+            bg={`color-mix(in srgb, var(${anchor}) 14%, var(--page-base))`}
+            style={{
+                borderColor: `color-mix(in srgb, var(${anchor}) 30%, var(--mantine-color-default-border))`,
+            }}
         >
-            <Link
-                to="/pr"
-                search={{ c: pr.canonical }}
-                aria-label={pr.title}
-                className="absolute inset-0 z-10"
-            />
-
-            <div className="flex flex-col gap-1.5">
-                <div className="flex items-center justify-between gap-3">
-                    <div className="text-muted flex min-w-0 items-center gap-1.5 text-xs">
-                        <GitPullRequest size={12} className="shrink-0" />
-                        <span className="text-fg truncate font-semibold">
-                            {pr.repo}
-                        </span>
-                        <span className="shrink-0">#{pr.number}</span>
-                        {pr.isDraft && (
-                            <span className="border-line text-muted ml-1 shrink-0 rounded border px-1.5 py-0 text-[10px] uppercase tracking-wide">
-                                draft
-                            </span>
-                        )}
-                        {pr.isVendor && (
-                            <span className="border-line text-muted ml-1 inline-flex shrink-0 items-center gap-0.5 rounded border px-1.5 py-0 text-[10px] uppercase tracking-wide">
-                                <Building2 size={9} />
-                                vendor
-                            </span>
-                        )}
-                        <SizeChip files={pr.changedFiles} />
-                    </div>
-                    <StatePill pr={pr} />
-                </div>
-
-                <h3 className="text-fg line-clamp-2 text-[15px] font-semibold leading-tight">
-                    {pr.title}
-                </h3>
-
-                {pr.description && <MarkdownPreview text={pr.description} />}
-
-                <VoteChips votes={pr.otherVotes} />
-            </div>
-
-            <div className="flex flex-col gap-2.5">
-                <div className="text-muted flex items-center gap-2.5 text-[11px]">
-                    {pr.author && (
-                        <span className="truncate">by {pr.author}</span>
+            <Group component="header" gap="xs" wrap="nowrap">
+                <AuthorAvatar author={pr.author} variant="light" />
+                <PrTitle pr={pr} titleId={titleId} compact />
+                <ActionIcon.Group
+                    aria-label="PR actions"
+                    style={{ flexShrink: 0 }}
+                >
+                    <PrQuickActions pr={pr} variant="default" />
+                    <Tip label="Expand PR card">
+                        <ActionIcon
+                            type="button"
+                            variant="default"
+                            color="gray"
+                            aria-label="Expand PR card"
+                            aria-expanded={false}
+                            autoFocus={focusExpand}
+                            disabled={restore.pending}
+                            onClick={() => setExpanded(true)}
+                        >
+                            <ChevronDown size={14} />
+                        </ActionIcon>
+                    </Tip>
+                    {onRestore && (
+                        <ActionBtn
+                            icon={RotateCcw}
+                            label="Back to review"
+                            variant="default"
+                            spinning={restore.pending}
+                            onClick={() =>
+                                restore.run(async () => {
+                                    await onRestore();
+                                })
+                            }
+                        />
                     )}
-                    <span className="inline-flex shrink-0 items-center gap-1">
-                        <Clock size={11} />
-                        {shortAge(pr.updatedAt)}
-                    </span>
-                    <span
-                        className="inline-flex shrink-0 items-center gap-1"
-                        title="Completed reviews by me"
+                </ActionIcon.Group>
+            </Group>
+        </Card>
+    );
+}
+
+export function PrDetailCard(props: PrCardProps) {
+    return <FullPrCard {...props} detail />;
+}
+
+export function AuthoredPrCard({
+    pr,
+    labels,
+}: Pick<PrCardProps, "pr" | "labels">) {
+    const titleId = useId();
+    const meta = pr.authorMeta;
+    const hasVotes = pr.otherVotes.some(({ vote }) => Boolean(VOTE_META[vote]));
+    const createdAt = pr.prCreatedAt ?? pr.updatedAt;
+    return (
+        <Card
+            component="article"
+            aria-labelledby={titleId}
+            withBorder
+            padding="lg"
+        >
+            <Card.Section component="header" inheritPadding withBorder py="lg">
+                <PrCardHeader pr={pr} labels={labels} titleId={titleId} />
+            </Card.Section>
+            <Card.Section component="footer" inheritPadding withBorder py="lg">
+                <Group gap="md">
+                    <Text
+                        size="xs"
+                        c="var(--argus-tag-text)"
+                        title={new Date(createdAt).toLocaleString()}
                     >
-                        <ListChecks size={11} />
-                        My reviews: {pr.reviewCount}
-                    </span>
-                    {pr.teams.length > 0 && (
-                        <div className="ml-auto flex items-center gap-1">
-                            <TeamDots teams={pr.teams} labels={labels} />
-                        </div>
+                        {shortAge(createdAt)} old
+                    </Text>
+                    {meta &&
+                        meta.activeComments + meta.resolvedComments > 0 && (
+                            <Group gap={4} role="group" aria-label="Comments">
+                                <MessageSquare size={12} aria-hidden />
+                                <Text size="xs" c="var(--argus-tag-text)">
+                                    {meta.activeComments} active
+                                    {meta.resolvedComments > 0
+                                        ? ` · ${meta.resolvedComments} resolved`
+                                        : ""}
+                                </Text>
+                            </Group>
+                        )}
+                    {hasVotes ? (
+                        <VoteAvatars votes={pr.otherVotes} />
+                    ) : (
+                        <Text size="xs" c="var(--argus-tag-text)" ml="auto">
+                            No reviewers have voted yet
+                        </Text>
                     )}
-                </div>
-                <ActionBar pr={pr} />
-            </div>
-        </div>
+                    <ActionIcon.Group aria-label="PR actions">
+                        <PrQuickActions pr={pr} variant="default" />
+                    </ActionIcon.Group>
+                </Group>
+            </Card.Section>
+        </Card>
+    );
+}
+
+function PrCardHeader({
+    pr,
+    labels,
+    titleId,
+    detail = false,
+    children,
+}: Pick<PrCardProps, "pr" | "labels"> & {
+    titleId: string;
+    detail?: boolean;
+    children?: React.ReactNode;
+}) {
+    const snoozed = isSnoozed(pr);
+    const tags = [
+        ...(pr.isDraft
+            ? [{ key: "draft", label: "Draft", color: "gray" }]
+            : []),
+        ...(pr.isVendor
+            ? [{ key: "vendor", label: "Vendor", color: "gray" }]
+            : []),
+        ...(detail && pr.outOfScope
+            ? [{ key: "out-of-scope", label: "Out of scope", color: "gray" }]
+            : []),
+        ...pr.teams.map((team) => ({
+            key: `team:${team}`,
+            label: resolveTeamLabel(team, labels),
+            color: teamAnchor(team),
+        })),
+    ];
+    const snoozeLabel =
+        pr.snoozeMode === "fte"
+            ? "Snoozed until an FTE approves"
+            : pr.snoozedUntil
+              ? `Snoozed ${timeUntil(pr.snoozedUntil)}`
+              : null;
+    return (
+        <Stack gap="md">
+            <Stack gap="md">
+                <Group justify="space-between" align="flex-start" gap="xs">
+                    <Group flex="1 1 16rem" miw={0} gap="xs" wrap="nowrap">
+                        <AuthorAvatar author={pr.author} />
+                        <PrTitle pr={pr} titleId={titleId} detail={detail} />
+                    </Group>
+                    <SizeChip files={pr.changedFiles} />
+                    {children}
+                </Group>
+                <Group gap="md">
+                    <Text
+                        size="xs"
+                        c="var(--argus-tag-text)"
+                        style={{ overflowWrap: "anywhere" }}
+                    >
+                        {pr.repo} #{pr.number}
+                    </Text>
+                    <Text
+                        size="xs"
+                        c="var(--argus-tag-text)"
+                        title={new Date(pr.updatedAt).toLocaleString()}
+                    >
+                        Updated {shortAge(pr.updatedAt)} ago
+                    </Text>
+                </Group>
+            </Stack>
+            {tags.length > 0 && (
+                <OverflowList
+                    data={tags}
+                    getItemKey={(tag) => tag.key}
+                    gap={4}
+                    renderItem={(tag) => (
+                        <Badge
+                            key={tag.key}
+                            component="span"
+                            variant="filled"
+                            color={tag.color}
+                            size="sm"
+                            radius="sm"
+                            title={tag.label}
+                        >
+                            {tag.label}
+                        </Badge>
+                    )}
+                    renderOverflow={(items) => (
+                        <Center>
+                            <HoverCard
+                                width={280}
+                                position="bottom-end"
+                                role="tooltip"
+                                events={{ touch: true }}
+                            >
+                                <HoverCard.Target>
+                                    <Badge
+                                        component="button"
+                                        type="button"
+                                        size="sm"
+                                        radius="sm"
+                                        variant="light"
+                                        color="gray"
+                                        aria-label={`${items.length} more PR labels`}
+                                    >
+                                        +{items.length} more
+                                    </Badge>
+                                </HoverCard.Target>
+                                <HoverCard.Dropdown>
+                                    <Stack gap="xs">
+                                        {items.map((tag) => (
+                                            <Text
+                                                key={tag.key}
+                                                size="xs"
+                                                style={{
+                                                    overflowWrap: "anywhere",
+                                                }}
+                                            >
+                                                {tag.label}
+                                            </Text>
+                                        ))}
+                                    </Stack>
+                                </HoverCard.Dropdown>
+                            </HoverCard>
+                        </Center>
+                    )}
+                />
+            )}
+            {snoozed && snoozeLabel && (
+                <Group gap={4}>
+                    <AlarmClock size={12} aria-hidden />
+                    <Text size="xs" c="var(--argus-tag-text)">
+                        {snoozeLabel}
+                    </Text>
+                </Group>
+            )}
+        </Stack>
+    );
+}
+
+function FullPrCard({
+    pr,
+    labels,
+    onRestore,
+    onCollapse,
+    detail = false,
+}: PrCardProps & {
+    onCollapse?: () => void;
+    detail?: boolean;
+}) {
+    const id = useId();
+    const titleId = `${id}-title`;
+    const contentId = `${id}-content`;
+    const restore = usePending();
+    const padding = onCollapse ? "md" : "lg";
+    const description = <MarkdownPreview text={pr.description} clamp={false} />;
+    return (
+        <Card
+            component="article"
+            aria-labelledby={titleId}
+            withBorder
+            padding={padding}
+        >
+            <Card.Section
+                component="header"
+                inheritPadding
+                withBorder
+                py={padding}
+            >
+                <PrCardHeader
+                    pr={pr}
+                    labels={labels}
+                    titleId={titleId}
+                    detail={detail}
+                >
+                    {onCollapse && (
+                        <Group gap={2} wrap="nowrap">
+                            <Tip label="Collapse PR card">
+                                <ActionIcon
+                                    type="button"
+                                    variant="subtle"
+                                    color="gray"
+                                    aria-label="Collapse PR card"
+                                    aria-expanded
+                                    aria-controls={contentId}
+                                    autoFocus
+                                    disabled={restore.pending}
+                                    onClick={onCollapse}
+                                >
+                                    <ChevronUp size={14} />
+                                </ActionIcon>
+                            </Tip>
+                            {onRestore && (
+                                <Tip label="Back to review">
+                                    <ActionIcon
+                                        type="button"
+                                        variant="subtle"
+                                        color="gray"
+                                        aria-label="Back to review"
+                                        disabled={restore.pending}
+                                        loading={restore.pending}
+                                        onClick={() =>
+                                            restore.run(async () => {
+                                                await onRestore();
+                                            })
+                                        }
+                                    >
+                                        <RotateCcw size={14} />
+                                    </ActionIcon>
+                                </Tip>
+                            )}
+                        </Group>
+                    )}
+                </PrCardHeader>
+            </Card.Section>
+            <Card.Section
+                component="section"
+                aria-label="PR details"
+                id={contentId}
+                inheritPadding
+                withBorder
+                py="md"
+                bg="var(--mantine-color-default-hover)"
+            >
+                <Stack gap="md">
+                    {pr.description && (
+                        <Text
+                            component="div"
+                            lineClamp={detail ? undefined : 4}
+                            aria-label="PR description"
+                            style={{ overflowWrap: "anywhere" }}
+                        >
+                            {detail ? (
+                                <Spoiler
+                                    maxHeight={160}
+                                    showLabel="Show more"
+                                    hideLabel="Show less"
+                                    showAriaLabel="Show full description"
+                                    hideAriaLabel="Collapse description"
+                                >
+                                    {description}
+                                </Spoiler>
+                            ) : (
+                                description
+                            )}
+                        </Text>
+                    )}
+                    {pr.reviewState === "covered" && (
+                        <Text size="xs" c="var(--argus-tag-text)">
+                            Covered{" "}
+                            {pr.coveredAt
+                                ? timeAgo(pr.coveredAt)
+                                : "by a teammate"}
+                        </Text>
+                    )}
+                    <Group justify="space-between" gap="md">
+                        <ReviewHistory pr={pr} withState />
+                        <VoteAvatars votes={pr.otherVotes} />
+                    </Group>
+                </Stack>
+            </Card.Section>
+            <Card.Section
+                component="footer"
+                inheritPadding
+                withBorder
+                py={padding}
+            >
+                <Stack gap="md">
+                    {onRestore && !onCollapse && (
+                        <Group justify="flex-end">
+                            <Button
+                                type="button"
+                                size="xs"
+                                variant="default"
+                                aria-label="Back to review"
+                                leftSection={<RotateCcw size={13} />}
+                                disabled={restore.pending}
+                                loading={restore.pending}
+                                onClick={() =>
+                                    restore.run(async () => {
+                                        await onRestore();
+                                    })
+                                }
+                            >
+                                Back to review
+                            </Button>
+                        </Group>
+                    )}
+                    {onCollapse ? (
+                        <Group justify="flex-end" gap={2}>
+                            <PrQuickActions pr={pr} />
+                        </Group>
+                    ) : (
+                        <ActionBar pr={pr} />
+                    )}
+                </Stack>
+            </Card.Section>
+        </Card>
     );
 }

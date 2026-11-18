@@ -1,10 +1,14 @@
 import type { PollRun } from "./api";
 
-// Visual status for a run: still going, finished ok, or failed.
-export function runStatusMeta(run: PollRun): { label: string; color: string } {
+export function runStatusMeta(run: PollRun): {
+    label: "Running" | "Failed" | "Completed";
+    color: "blue" | "red" | "green";
+} {
     if (!run.finishedAt)
-        return { label: "running", color: "var(--peacock-teal)" };
-    if (!run.ok)
-        return { label: "failed", color: "var(--true-color-red, #cf222e)" };
-    return { label: "ok", color: "var(--peacock-emerald)" };
+        return {
+            label: "Running",
+            color: "blue",
+        };
+    if (!run.ok) return { label: "Failed", color: "red" };
+    return { label: "Completed", color: "green" };
 }

@@ -1,3 +1,13 @@
+import {
+    Alert,
+    Button,
+    Code,
+    Fieldset,
+    Group,
+    Stack,
+    Text,
+    TextInput,
+} from "@mantine/core";
 import { useId, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, healthQuery, type AuthRegistration } from "../lib/api";
@@ -19,30 +29,30 @@ export function RegistrationShare() {
     }).data;
     if (!reg?.clientId || !reg.tenantId) return null;
     return (
-        <div>
-            <div className="text-fg text-sm font-medium">
+        <Stack gap="sm">
+            <Text size="sm" fw={500}>
                 Share Windows account setup
-            </div>
-            <div className="text-muted mt-1 text-xs">
+            </Text>
+            <Text size="sm" c="dimmed">
                 These IDs are not secret. Send them to a teammate. They enter
                 clientId in Application (client) ID and tenantId in Directory
                 (tenant) ID on the Azure DevOps sign-in screen.
-            </div>
-            <pre className="border-line mt-2 overflow-x-auto rounded-md border p-2 text-xs">
-                {asJson(reg)}
-            </pre>
-            <button
-                type="button"
-                className="border-line mt-2 rounded-md border px-3 py-1 text-xs"
-                onClick={() =>
-                    void navigator.clipboard
-                        .writeText(asJson(reg))
-                        .then(() => pushToast("Setup copied"))
-                }
-            >
-                Copy
-            </button>
-        </div>
+            </Text>
+            <Code block>{asJson(reg)}</Code>
+            <Group>
+                <Button
+                    variant="default"
+                    type="button"
+                    onClick={() =>
+                        void navigator.clipboard
+                            .writeText(asJson(reg))
+                            .then(() => pushToast("Setup copied"))
+                    }
+                >
+                    Copy
+                </Button>
+            </Group>
+        </Stack>
     );
 }
 
@@ -53,6 +63,7 @@ export function RegistrationImport() {
         queryKey: ["auth-registration"],
         queryFn: api.authRegistration,
     });
+    const health = useQuery(healthQuery);
     const id = useId();
     const clientInput = useRef<HTMLInputElement>(null);
     const tenantInput = useRef<HTMLInputElement>(null);
@@ -61,23 +72,31 @@ export function RegistrationImport() {
     const values = draft ?? registration.data ?? { clientId: "", tenantId: "" };
     const [errors, setErrors] = useState<RegistrationErrors>({});
     const [refreshError, setRefreshError] = useState(false);
+    const refresh = useMutation({
+        mutationFn: api.refresh,
+        onSuccess: ({ summary, skipped }) => {
+            if (summary === null && !skipped) setRefreshError(true);
+        },
+        onError: () => setRefreshError(true),
+        onSettled: () => {
+            void qc.invalidateQueries();
+        },
+    });
     const save = useMutation({
         mutationFn: (reg: RegistrationValues) => api.saveAuthRegistration(reg),
-        onSuccess: async (reg) => {
+        onSuccess: (reg) => {
             qc.setQueryData(["auth-registration"], reg);
             setDraft(null);
             pushToast("Setup saved");
-            try {
-                const { summary, skipped } = await api.refresh();
-                if (summary === null && !skipped) setRefreshError(true);
-            } catch {
-                setRefreshError(true);
-            }
+            refresh.mutate();
         },
-        onSettled: () => qc.invalidateQueries(),
+        onSettled: () => {
+            void qc.invalidateQueries();
+        },
     });
+    const polling = !!health.data?.poller.running || refresh.isPending;
     const submit = () => {
-        if (save.isPending || !registration.data) return;
+        if (save.isPending || polling || !registration.data) return;
         const nextErrors = validateRegistration(values);
         setErrors(nextErrors);
         setRefreshError(false);
@@ -92,8 +111,9 @@ export function RegistrationImport() {
         });
     };
     return (
-        <fieldset
-            className="flex min-w-0 flex-col gap-2"
+        <Fieldset
+            legend="Windows account setup"
+            variant="unstyled"
             aria-busy={save.isPending || registration.isPending}
             aria-describedby={`${id}-help`}
             onKeyDown={(e) => {
@@ -108,49 +128,47 @@ export function RegistrationImport() {
                 }
             }}
         >
-            <legend className="text-fg mb-2 text-sm font-medium">
-                Windows account setup
-            </legend>
-            <p id={`${id}-help`} className="text-muted text-xs">
-                Enter the two non-secret IDs from your Entra app registration.
-                Save setup saves only these IDs, not your sign-in method.
-            </p>
-            {registration.isPending && (
-                <p role="status" className="text-muted text-xs">
-                    Loading setup…
-                </p>
-            )}
-            {registration.isError && (
-                <p role="alert" className="text-xs text-red-500">
-                    Could not load setup.{" "}
-                    <button
-                        type="button"
-                        onClick={() => void registration.refetch()}
-                        className="underline"
-                    >
-                        Try again
-                    </button>
-                </p>
-            )}
-            {registration.data?.fromEnv && (
-                <p role="note" className="text-muted text-xs">
-                    One or both IDs come from DEVSTART_ADO_CLIENT_ID or
-                    DEVSTART_ADO_TENANT_ID. Environment values override the
-                    saved file. Saving here does not change those environment
-                    values.
-                </p>
-            )}
-            {(
-                [
-                    ["clientId", "Application (client) ID", clientInput],
-                    ["tenantId", "Directory (tenant) ID", tenantInput],
-                ] as const
-            ).map(([key, label, ref]) => (
-                <div key={key}>
-                    <label htmlFor={`${id}-${key}`} className="text-sm">
-                        {label} (required)
-                    </label>
-                    <input
+            <Stack gap="sm">
+                <Text id={`${id}-help`} size="sm" c="dimmed">
+                    Enter the two non-secret IDs from your Entra app
+                    registration. Save setup saves only these IDs, not your
+                    sign-in method.
+                </Text>
+                {registration.isPending && (
+                    <Text role="status" size="sm" c="dimmed">
+                        Loading setup…
+                    </Text>
+                )}
+                {registration.isError && (
+                    <Alert color="red">
+                        Could not load setup.{" "}
+                        <Button
+                            variant="default"
+                            type="button"
+                            onClick={() => void registration.refetch()}
+                        >
+                            Try again
+                        </Button>
+                    </Alert>
+                )}
+                {registration.data?.fromEnv && (
+                    <Text role="note" size="sm" c="dimmed">
+                        One or both IDs come from DEVSTART_ADO_CLIENT_ID or
+                        DEVSTART_ADO_TENANT_ID. Environment values override the
+                        saved file. Saving here does not change those
+                        environment values.
+                    </Text>
+                )}
+                {(
+                    [
+                        ["clientId", "Application (client) ID", clientInput],
+                        ["tenantId", "Directory (tenant) ID", tenantInput],
+                    ] as const
+                ).map(([key, label, ref]) => (
+                    <TextInput
+                        key={key}
+                        label={label}
+                        withAsterisk
                         ref={ref}
                         id={`${id}-${key}`}
                         type="text"
@@ -160,9 +178,10 @@ export function RegistrationImport() {
                         autoComplete="off"
                         spellCheck={false}
                         value={values[key]}
-                        aria-invalid={!!errors[key]}
-                        aria-describedby={
-                            errors[key] ? `${id}-${key}-error` : undefined
+                        error={
+                            errors[key] ? (
+                                <span role="alert">{errors[key]}</span>
+                            ) : undefined
                         }
                         onChange={(e) => {
                             const value = e.target.value;
@@ -177,45 +196,39 @@ export function RegistrationImport() {
                             setRefreshError(false);
                             save.reset();
                         }}
-                        className="border-line mt-1 w-full rounded-md border bg-transparent p-2 font-mono text-xs"
                     />
-                    {errors[key] && (
-                        <p
-                            id={`${id}-${key}-error`}
-                            role="alert"
-                            className="mt-1 text-xs text-red-500"
-                        >
-                            {errors[key]}
-                        </p>
-                    )}
-                </div>
-            ))}
-            {save.error && (
-                <p className="text-xs text-red-500" role="alert">
-                    {save.error.message}
-                </p>
-            )}
-            <button
-                type="button"
-                disabled={!registration.data}
-                aria-disabled={save.isPending}
-                onClick={submit}
-                className="border-line self-start rounded-md border px-3 py-1 text-xs disabled:opacity-50"
-            >
-                {save.isPending ? "Saving…" : "Save setup"}
-            </button>
-            {save.isSuccess && (
-                <p role="status" className="text-muted text-xs">
-                    Setup saved. Environment overrides, if present, still apply.
-                </p>
-            )}
+                ))}
+                {save.error && <Alert color="red">{save.error.message}</Alert>}
+                <Group>
+                    <Button
+                        variant="default"
+                        type="button"
+                        disabled={!registration.data || polling}
+                        title={
+                            polling
+                                ? "Wait for the current poll to finish"
+                                : undefined
+                        }
+                        loading={save.isPending}
+                        onClick={submit}
+                    >
+                        {save.isPending ? "Saving…" : "Save setup"}
+                    </Button>
+                </Group>
+                {save.isSuccess && (
+                    <Text role="status" size="sm" c="dimmed">
+                        Setup saved. Environment overrides, if present, still
+                        apply.
+                    </Text>
+                )}
+            </Stack>
             {refreshError && (
-                <p role="alert" className="text-xs text-red-500">
+                <Alert color="red">
                     Setup was saved, but Azure DevOps could not be refreshed.
                     Check again from the sign-in screen or refresh Argus.
-                </p>
+                </Alert>
             )}
-        </fieldset>
+        </Fieldset>
     );
 }
 
@@ -229,41 +242,45 @@ export function AccountPanel() {
         onSettled: () => qc.invalidateQueries(),
     });
     if (!auth?.configured) return null;
-    const btn =
-        "border-line rounded-md border px-3 py-1 text-xs disabled:opacity-50";
     return (
-        <div>
-            <div className="text-fg text-sm font-medium">Account</div>
-            <div className="text-muted mt-1 text-xs">
+        <Stack gap="sm">
+            <Text size="sm" fw={500}>
+                Account
+            </Text>
+            <Text size="sm" c="dimmed">
                 {auth.account
                     ? `Signed in as ${auth.account.username}`
                     : "Not signed in"}
-            </div>
+            </Text>
             {auth.account && (
-                <div className="mt-2 flex gap-2">
-                    <button
+                <Group gap="sm">
+                    <Button
+                        variant="default"
                         type="button"
-                        className={btn}
+
                         disabled={act.isPending}
+                        loading={act.isPending && act.variables === "switch"}
                         onClick={() => act.mutate("switch")}
                     >
                         Switch account
-                    </button>
-                    <button
+                    </Button>
+                    <Button
+                        variant="default"
                         type="button"
-                        className={btn}
+
                         disabled={act.isPending}
+                        loading={act.isPending && act.variables === "out"}
                         onClick={() => act.mutate("out")}
                     >
                         Sign out
-                    </button>
-                </div>
+                    </Button>
+                </Group>
             )}
             {act.error && (
-                <p className="mt-1 text-xs text-red-500" role="alert">
+                <Alert color="red" mt={4}>
                     {act.error.message}
-                </p>
+                </Alert>
             )}
-        </div>
+        </Stack>
     );
 }

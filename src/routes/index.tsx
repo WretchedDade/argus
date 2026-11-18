@@ -20,7 +20,7 @@ function Board() {
     const filters = Route.useSearch();
     const navigate = Route.useNavigate();
     return (
-        <div className="mx-auto max-w-3xl pl-10">
+        <div className="mx-auto max-w-3xl">
             <TriageQueue
                 filters={filters}
                 onFiltersChange={(search) => {

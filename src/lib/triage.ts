@@ -64,7 +64,7 @@ export const REVIEW_STATE_META: Record<PrReviewState, ReviewStateMeta> = {
     needs: { label: "Needs Review", anchor: "--color-teal-500" },
     covered: { label: "Covered", anchor: "--color-sky-500" },
     suggestions: { label: "Suggestions", anchor: "--color-emerald-500" },
-    waiting: { label: "Waiting on Author", anchor: "--color-orange-500" },
+    waiting: { label: "Waiting on Author", anchor: "--color-yellow-500" },
     approved: { label: "Approved", anchor: "--color-green-500" },
     rejected: { label: "Rejected", anchor: "--color-rose-500" },
 };

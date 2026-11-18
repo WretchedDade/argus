@@ -68,13 +68,16 @@ const APP_VERSION = (
     }
 ).version;
 
+const previewNotices = process.env.ARGUS_FAKE_NOTICES === "1";
+const previewVersion =
+    process.env.ARGUS_FAKE_RELEASE ?? (previewNotices ? "99.0.0" : undefined);
 // ARGUS_FAKE_RELEASE=9.9.9 shows an update notice without a published release.
-let latestRelease: ReleaseInfo | null = process.env.ARGUS_FAKE_RELEASE
+let latestRelease: ReleaseInfo | null = previewVersion
     ? {
-          version: process.env.ARGUS_FAKE_RELEASE,
+          version: previewVersion,
           url: "https://github.com/WretchedDade/argus/releases",
-          zipUrl: `https://github.com/WretchedDade/argus/releases/download/v${process.env.ARGUS_FAKE_RELEASE}/argus-v${process.env.ARGUS_FAKE_RELEASE}-windows.zip`,
-          checksumUrl: `https://github.com/WretchedDade/argus/releases/download/v${process.env.ARGUS_FAKE_RELEASE}/argus-v${process.env.ARGUS_FAKE_RELEASE}-windows.zip.sha256`,
+          zipUrl: `https://github.com/WretchedDade/argus/releases/download/v${previewVersion}/argus-v${previewVersion}-windows.zip`,
+          checksumUrl: `https://github.com/WretchedDade/argus/releases/download/v${previewVersion}/argus-v${previewVersion}-windows.zip.sha256`,
       }
     : null;
 const fakeRelease = latestRelease;
@@ -127,15 +130,32 @@ const ctx: ServerContext = {
         buildNotices({
             appVersion: APP_VERSION,
             release: latestRelease,
-            checkForUpdates: getConfig().checkForUpdates,
-            skill: process.env.ARGUS_FAKE_SKILL_UPDATE
+            checkForUpdates: previewNotices || getConfig().checkForUpdates,
+            skill:
+                previewNotices || process.env.ARGUS_FAKE_SKILL_UPDATE
+                    ? {
+                          bundledHash: "fake",
+                          bundledPath: "extension\\skills\\pr-review",
+                          installedPath: "~\\.copilot\\skills\\pr-review",
+                      }
+                    : null,
+            legacyDb: previewNotices
                 ? {
-                      bundledHash: "fake",
-                      bundledPath: "extension\\skills\\pr-review",
-                      installedPath: "~\\.copilot\\skills\\pr-review",
+                      path: "preview\\OneDrive\\argus.db",
+                      localPath: "preview\\local\\argus.db",
+                      choiceFile: "preview\\storage.json",
                   }
                 : null,
-        }),
+        }).map((notice) =>
+            previewNotices
+                ? {
+                      ...notice,
+                      id: `preview:${notice.id}`,
+                      title: `Preview: ${notice.title}`,
+                      detail: `Synthetic preview only. Copilot actions are unavailable in standalone mode.\n${notice.detail}`,
+                  }
+                : notice,
+        ),
 };
 
 const instance: Instance = {

@@ -1,21 +1,24 @@
+import { Button, Stack, Text, Timeline, Title } from "@mantine/core";
 import { useEffect } from "react";
 import { createFileRoute, useRouter } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { AlarmClock, ArrowLeft, Ban, ExternalLink } from "lucide-react";
+import { ArrowLeft } from "lucide-react";
 import {
     api,
     configQuery,
     prDetailQuery,
-    type Pr,
     type PrEvent,
     type PrReviewState,
 } from "../lib/api";
-import { MarkdownPreview } from "../components/MarkdownPreview";
-import { ActionBar, VoteChips } from "../components/PrCard";
-import { resolveTeamLabel, timeAgo } from "../lib/format";
-import { teamBadgeStyle } from "../lib/teamColor";
+import { PrDetailCard } from "../components/PrCard";
+import {
+    ErrorBanner,
+    LoadErrorPage,
+    PendingPage,
+} from "../components/ErrorBanner";
+import { timeAgo } from "../lib/format";
 import { claimPrRefresh, releasePrRefresh } from "../lib/query-defaults";
-import { isSnoozed, REVIEW_STATE_META } from "../lib/triage";
+import { REVIEW_STATE_META } from "../lib/triage";
 
 export const Route = createFileRoute("/pr")({
     validateSearch: (s: Record<string, unknown>): { c: string } => ({
@@ -96,58 +99,6 @@ function eventLabel(e: PrEvent): string {
     }
 }
 
-function Badge({ children }: { children: React.ReactNode }) {
-    return (
-        <span className="border-line text-muted shrink-0 rounded border px-1.5 py-0 text-[10px] uppercase tracking-wide">
-            {children}
-        </span>
-    );
-}
-
-function StatePill({ pr }: { pr: Pr }) {
-    if (!pr.reviewState) return null;
-    const meta = REVIEW_STATE_META[pr.reviewState];
-    return (
-        <span
-            className="shrink-0 rounded-full px-2 py-0.5 text-xs font-medium"
-            style={{
-                background: `color-mix(in srgb, var(${meta.anchor}) 16%, transparent)`,
-                color: `color-mix(in srgb, var(${meta.anchor}) 62%, var(--color-fg))`,
-            }}
-        >
-            {meta.label}
-        </span>
-    );
-}
-
-// A small tinted status pill for the detail header.
-function Chip({
-    anchor,
-    children,
-}: {
-    anchor: string;
-    children: React.ReactNode;
-}) {
-    return (
-        <span
-            className="inline-flex shrink-0 items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium"
-            style={{
-                background: `color-mix(in srgb, var(${anchor}) 15%, transparent)`,
-                color: `color-mix(in srgb, var(${anchor}) 64%, var(--color-fg))`,
-            }}
-        >
-            {children}
-        </span>
-    );
-}
-
-function snoozeLabel(pr: Pr): string {
-    if (pr.snoozeMode === "fte") return "Snoozed until an FTE approves";
-    if (pr.snoozedUntil)
-        return `Snoozed until ${new Date(pr.snoozedUntil).toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}`;
-    return "";
-}
-
 function PrDetailPage() {
     const { c } = Route.useSearch();
     const q = useQuery(prDetailQuery(c));
@@ -183,138 +134,97 @@ function PrDetailPage() {
         )
         .sort((a, b) => Date.parse(b.ts) - Date.parse(a.ts));
 
+    if (q.isPending) return <PendingPage />;
+    if (q.isError && !pr) {
+        return (
+            <LoadErrorPage
+                what="this pull request"
+                error={q.error}
+                onRetry={() => void q.refetch()}
+            />
+        );
+    }
+
     return (
-        <div className="mx-auto flex max-w-5xl flex-col gap-5">
-            <button
+        <Stack maw={1024} mx="auto" gap="lg">
+            <Button
+                variant="default"
                 type="button"
                 onClick={goBack}
-                className="text-muted hover:text-fg inline-flex w-fit items-center gap-1 text-sm"
+                w="fit-content"
+                leftSection={<ArrowLeft size={14} />}
             >
-                <ArrowLeft size={14} /> Board
-            </button>
+                Board
+            </Button>
 
+            {q.isError && (
+                <ErrorBanner
+                    title="Could not refresh this pull request"
+                    error={q.error}
+                    onRetry={() => void q.refetch()}
+                />
+            )}
             {!pr ? (
-                <p className="text-muted text-sm">
-                    {q.isLoading ? "Loading…" : "PR not found."}
-                </p>
+                <Text size="sm" c="dimmed">
+                    PR not found.
+                </Text>
             ) : (
                 <>
-                    <div className="pr-card border-line flex flex-col gap-4 rounded-xl border p-6 shadow-sm">
-                        <div className="flex items-center justify-between gap-3">
-                            <div className="text-muted flex min-w-0 items-center gap-1.5 text-sm">
-                                <span className="text-fg font-semibold">
-                                    {pr.repo}
-                                </span>
-                                <span>#{pr.number}</span>
-                                {pr.isDraft && <Badge>draft</Badge>}
-                                {pr.isVendor && <Badge>vendor</Badge>}
-                            </div>
-                            <a
-                                href={pr.canonical}
-                                target="_blank"
-                                rel="noreferrer"
-                                className="inline-flex shrink-0 items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-semibold text-white"
-                                style={{ background: "var(--peacock-teal)" }}
-                            >
-                                <ExternalLink size={14} /> Open in Azure DevOps
-                            </a>
-                        </div>
+                    <PrDetailCard pr={pr} labels={labels} />
 
-                        <h1 className="text-fg text-lg font-semibold leading-snug">
-                            {pr.title}
-                        </h1>
-
-                        <div className="flex flex-wrap items-center gap-2">
-                            <StatePill pr={pr} />
-                            {isSnoozed(pr) && (
-                                <Chip anchor="--color-amber-500">
-                                    <AlarmClock size={11} /> {snoozeLabel(pr)}
-                                </Chip>
-                            )}
-                            {pr.outOfScope && (
-                                <Chip anchor="--color-slate-400">
-                                    <Ban size={11} /> Out of scope
-                                </Chip>
-                            )}
-                            {pr.teams.map((t) => (
-                                <span
-                                    key={t}
-                                    className="rounded-full px-2 py-0.5 text-[11px] font-medium"
-                                    style={teamBadgeStyle(t)}
-                                >
-                                    {resolveTeamLabel(t, labels)}
-                                </span>
-                            ))}
-                        </div>
-
-                        <div className="text-muted flex flex-wrap items-center gap-x-1.5 text-xs">
-                            {pr.author && (
-                                <>
-                                    <span>by {pr.author}</span>
-                                    <span aria-hidden>·</span>
-                                </>
-                            )}
-                            <span>updated {timeAgo(pr.updatedAt)}</span>
-                        </div>
-
-                        {pr.otherVotes.length > 0 && (
-                            <div className="border-line border-t pt-3">
-                                <div className="text-muted mb-1 text-xs font-semibold uppercase tracking-wide">
-                                    Reviewer votes
-                                </div>
-                                <VoteChips votes={pr.otherVotes} />
-                            </div>
-                        )}
-
-                        <ActionBar pr={pr} />
-
-                        {pr.description && (
-                            <div className="border-line border-t pt-3">
-                                <MarkdownPreview
-                                    text={pr.description}
-                                    clamp={false}
-                                />
-                            </div>
-                        )}
-                    </div>
-
-                    <section>
-                        <h2 className="text-muted mb-2 text-xs font-semibold uppercase tracking-wide">
+                    <Stack
+                        component="section"
+                        gap="sm"
+                        aria-labelledby="pr-history-heading"
+                    >
+                        <Title
+                            id="pr-history-heading"
+                            order={2}
+                            size="sm"
+                            fw={600}
+                        >
                             History
-                        </h2>
+                        </Title>
                         {events.length === 0 ? (
-                            <p className="text-muted text-sm">
+                            <Text size="sm" c="dimmed">
                                 No recorded events yet.
-                            </p>
+                            </Text>
                         ) : (
-                            <ol className="border-line relative ml-2 flex flex-col gap-3 border-l pl-4">
+                            <Timeline
+                                active={events.length - 1}
+                                bulletSize={10}
+                                lineWidth={1}
+                                role="list"
+                                aria-label="PR history"
+                            >
                                 {events.map((e) => (
-                                    <li key={e.id} className="relative">
-                                        <span
-                                            className="absolute -left-[21px] top-1.5 h-2 w-2 rounded-full"
-                                            style={{
-                                                background:
-                                                    "var(--peacock-teal)",
-                                            }}
-                                        />
-                                        <div className="text-fg text-sm">
-                                            {eventLabel(e)}
-                                        </div>
-                                        <div
-                                            className="text-muted text-xs"
+                                    <Timeline.Item
+                                        key={e.id}
+                                        role="listitem"
+                                        title={
+                                            <Text size="sm">
+                                                {eventLabel(e)}
+                                            </Text>
+                                        }
+                                    >
+                                        <Text
+                                            component="time"
+                                            dateTime={e.ts}
+                                            size="xs"
+                                            c="dimmed"
                                             title={new Date(
                                                 e.ts,
                                             ).toLocaleString()}
                                         >
                                             {timeAgo(e.ts)}
-                                        </div>
-                                    </li>
+                                        </Text>
+                                    </Timeline.Item>
                                 ))}
-                            </ol>
+                            </Timeline>
                         )}
-                    </section>
+                    </Stack>
                 </>
             )}
-        </div>
+        </Stack>
     );
 }

@@ -7,11 +7,21 @@ import {
 import type { QueryClient } from "@tanstack/react-query";
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
+import {
+    ActionIcon,
+    Badge,
+    Box,
+    Button,
+    Container,
+    Group,
+    Menu,
+    Stack,
+    Text,
+} from "@mantine/core";
 import { ChevronDown, Settings as SettingsIcon } from "lucide-react";
 import { configQuery, healthQuery, prsQuery } from "../lib/api";
 import { needsYouCount } from "../lib/triage";
 import { useUpdateToasts } from "../lib/useUpdate";
-import { BrandMark } from "../components/BrandMark";
 import { NotificationsBell } from "../components/NotificationsBell";
 import { ArchiveBanner } from "../components/notifications/ArchiveBanner";
 import { PrSearch } from "../components/PrSearch";
@@ -20,6 +30,7 @@ import { StatusCluster } from "../components/StatusCluster";
 import { AuthGate } from "../components/AuthGate";
 import { SetupGate } from "../components/SetupGate";
 import { Toaster } from "../components/Toaster";
+import { BrandMark } from "../components/BrandMark";
 
 export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
     {
@@ -36,92 +47,52 @@ const tabs = [
 // Secondary views grouped under one dropdown to keep the primary nav lean.
 const menuTabs = [
     { to: "/insights", label: "Insights" },
-    { to: "/recap", label: "Recap" },
     { to: "/activity", label: "Activity" },
 ] as const;
 
 function TabCount({ n, tone }: { n: number; tone: "attention" | "neutral" }) {
     if (n <= 0) return null;
     return (
-        <span
-            className="ml-1.5 inline-flex min-w-[1.1rem] items-center justify-center rounded-full px-1 text-[11px] font-semibold leading-4"
-            style={
-                tone === "attention"
-                    ? { background: "var(--peacock-gold)", color: "#3a2c00" }
-                    : { background: "rgba(255,255,255,0.25)", color: "#fff" }
-            }
+        <Badge
+            size="sm"
+            variant="light"
+            color={tone === "attention" ? undefined : "gray"}
+            ml={6}
         >
             {n}
-        </span>
+        </Badge>
     );
 }
 
-// Dropdown grouping the secondary views (Insights / Recap / Activity). The
-// trigger shows the active child's name when you're on one, else "Insights".
+// The trigger shows the active secondary view, or "Insights".
 function NavMenu() {
-    const [open, setOpen] = useState(false);
     const { pathname } = useLocation();
     const active = menuTabs.find((t) => pathname.startsWith(t.to));
     return (
-        <div className="relative">
-            <button
-                type="button"
-                onClick={() => setOpen((o) => !o)}
-                className="inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-md px-2.5 py-1 text-sm transition-colors hover:text-white"
-                style={
-                    active
-                        ? {
-                              background: "rgba(255,255,255,0.22)",
-                              color: "#fff",
-                          }
-                        : { color: "rgba(255,255,255,0.8)" }
-                }
-            >
-                {active ? active.label : "Insights"}
-                <ChevronDown
-                    size={14}
-                    className={
-                        open
-                            ? "rotate-180 transition-transform"
-                            : "transition-transform"
-                    }
-                />
-            </button>
-            {open && (
-                <>
-                    <div
-                        className="fixed inset-0 z-40"
-                        onClick={() => setOpen(false)}
-                    />
-                    <div
-                        className="border-line absolute left-0 top-full z-50 mt-1.5 w-40 overflow-hidden rounded-lg border shadow-lg"
-                        style={{ background: "var(--card-bg)" }}
-                    >
-                        {menuTabs.map((t) => (
-                            <Link
-                                key={t.to}
-                                to={t.to}
-                                onClick={() => setOpen(false)}
-                                className="text-fg hover:bg-surface block px-3 py-2 text-sm"
-                                activeProps={{
-                                    style: {
-                                        background:
-                                            "color-mix(in srgb, var(--color-fg) 8%, transparent)",
-                                        fontWeight: 600,
-                                    },
-                                }}
-                            >
-                                {t.label}
-                            </Link>
-                        ))}
-                    </div>
-                </>
-            )}
-        </div>
+        <Menu shadow="md" position="bottom-start" withinPortal>
+            <Menu.Target>
+                <Button
+                    size="xs"
+                    variant={active ? "light" : "subtle"}
+                    color={active ? undefined : "gray"}
+                    rightSection={<ChevronDown size={14} />}
+                >
+                    {active ? active.label : "Insights"}
+                </Button>
+            </Menu.Target>
+            <Menu.Dropdown>
+                {menuTabs.map((t) => (
+                    <Menu.Item component={Link} key={t.to} to={t.to}>
+                        {t.label}
+                    </Menu.Item>
+                ))}
+            </Menu.Dropdown>
+        </Menu>
     );
 }
 
 function RootLayout() {
+    const { pathname } = useLocation();
     const health = useQuery(healthQuery).data;
     const prs = useQuery(prsQuery).data ?? [];
     const recencyDays = useQuery(configQuery).data?.recencyDays ?? 7;
@@ -169,68 +140,100 @@ function RootLayout() {
     };
 
     return (
-        <div className="app-bg text-fg min-h-screen">
-            <div className="app-shell">
-                <header className="app-header sticky top-0 z-30 flex flex-col gap-3.5 px-4 py-2.5">
-                    <div className="flex items-center gap-3">
-                        <div className="flex shrink-0 items-center gap-2.5">
-                            <BrandMark size={30} />
-                            <span className="text-lg font-semibold tracking-tight">
-                                Argus
-                            </span>
-                        </div>
-                        <div className="ml-auto flex shrink-0 items-center gap-3">
-                            <StatusCluster />
-                            <NotificationsBell />
-                            <Link
-                                to="/settings"
-                                className="text-white/80 hover:text-white"
-                                title="Settings"
-                                aria-label="Settings"
+        <Box mih="100vh" bg="var(--page-base)">
+            <Stack
+                component="header"
+                pos="sticky"
+                top={0}
+                gap={14}
+                px="md"
+                pt={18}
+                pb={10}
+                bg="var(--mantine-color-body)"
+                style={{
+                    zIndex: 30,
+                    borderBottom:
+                        "1px solid var(--mantine-color-default-border)",
+                }}
+            >
+                <Group justify="space-between" gap="sm">
+                    <Group gap={10} wrap="nowrap">
+                        <BrandMark size={30} />
+                        <Text size="lg" fw={600}>
+                            Argus
+                        </Text>
+                    </Group>
+                    <Group gap="sm" ml="auto">
+                        <StatusCluster />
+                        <NotificationsBell />
+                        <ActionIcon
+                            component={Link}
+                            to="/settings"
+                            variant="subtle"
+                            color="gray"
+                            title="Settings"
+                            aria-label="Settings"
+                        >
+                            <SettingsIcon size={18} />
+                        </ActionIcon>
+                    </Group>
+                </Group>
+                <Group justify="space-between" gap="xs">
+                    <Group
+                        component="nav"
+                        aria-label="Primary navigation"
+                        gap={4}
+                        flex="1 1 320px"
+                        miw={0}
+                    >
+                        {tabs.map((t) => (
+                            <Button
+                                component={Link}
+                                size="xs"
+                                key={t.to}
+                                to={t.to}
+                                activeOptions={{ exact: t.exact }}
+                                variant={
+                                    (
+                                        t.exact
+                                            ? pathname === t.to
+                                            : pathname.startsWith(t.to)
+                                    )
+                                        ? "light"
+                                        : "subtle"
+                                }
+                                color={
+                                    (
+                                        t.exact
+                                            ? pathname === t.to
+                                            : pathname.startsWith(t.to)
+                                    )
+                                        ? undefined
+                                        : "gray"
+                                }
                             >
-                                <SettingsIcon size={18} />
-                            </Link>
-                        </div>
-                    </div>
-                    <div className="flex items-center gap-2">
-                        <nav className="flex min-w-0 flex-1 flex-wrap items-center gap-1">
-                            {tabs.map((t) => (
-                                <Link
-                                    key={t.to}
-                                    to={t.to}
-                                    activeOptions={{ exact: t.exact }}
-                                    className="inline-flex shrink-0 items-center whitespace-nowrap rounded-md px-2.5 py-1 text-sm text-white/80 transition-colors hover:text-white"
-                                    activeProps={{
-                                        className: "text-white",
-                                        style: {
-                                            background:
-                                                "rgba(255,255,255,0.22)",
-                                        },
-                                    }}
-                                >
-                                    {t.label}
-                                    {counts[t.to] && (
-                                        <TabCount
-                                            n={counts[t.to]!.n}
-                                            tone={counts[t.to]!.tone}
-                                        />
-                                    )}
-                                </Link>
-                            ))}
-                            <NavMenu />
-                        </nav>
-                        <div className="flex shrink-0 items-center gap-2">
-                            <PrSearch />
-                            <RefreshButton />
-                        </div>
-                    </div>
-                </header>
-                <main className="p-4">
-                    <ArchiveBanner />
-                    <Outlet />
-                </main>
-            </div>
+                                {t.label}
+                                {counts[t.to] && (
+                                    <TabCount
+                                        n={counts[t.to]!.n}
+                                        tone={counts[t.to]!.tone}
+                                    />
+                                )}
+                            </Button>
+                        ))}
+                        <NavMenu />
+                    </Group>
+                    <Group gap="xs" ml="auto">
+                        <PrSearch />
+                        <RefreshButton />
+                    </Group>
+                </Group>
+            </Stack>
+            <Container component="main" fluid p="md" miw={0}>
+                <ArchiveBanner />
+                <Outlet />
+            </Container>
             <Toaster />
-        </div>
+        </Box>
     );
 }

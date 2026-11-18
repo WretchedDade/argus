@@ -13,7 +13,7 @@ export function OcellusMark({ size = 24 }: { size?: number }) {
                 cx="12"
                 cy="12"
                 r="10.5"
-                stroke="var(--peacock-emerald)"
+                stroke="var(--mantine-color-green-6)"
                 strokeWidth="1.4"
                 strokeOpacity="0.55"
             />
@@ -21,18 +21,28 @@ export function OcellusMark({ size = 24 }: { size?: number }) {
                 cx="12"
                 cy="12"
                 r="8"
-                stroke="var(--peacock-teal)"
+                stroke="var(--mantine-primary-color-filled)"
                 strokeWidth="1.6"
             />
             <circle
                 cx="12"
                 cy="12"
                 r="5"
-                stroke="var(--peacock-blue)"
+                stroke="var(--mantine-color-blue-6)"
                 strokeWidth="1.6"
             />
-            <circle cx="12" cy="12" r="2.6" fill="var(--peacock-gold)" />
-            <circle cx="12" cy="12" r="1" fill="var(--peacock-indigo)" />
+            <circle
+                cx="12"
+                cy="12"
+                r="2.6"
+                fill="var(--mantine-color-orange-6)"
+            />
+            <circle
+                cx="12"
+                cy="12"
+                r="1"
+                fill="var(--mantine-color-violet-6)"
+            />
         </svg>
     );
 }
@@ -59,7 +69,9 @@ export function OcellusDot({
                 cy="6"
                 r="4.5"
                 stroke={
-                    watching ? "var(--peacock-gold)" : "rgba(255,255,255,0.55)"
+                    watching
+                        ? "var(--mantine-primary-color-filled)"
+                        : "currentColor"
                 }
                 strokeWidth="1.4"
             />
@@ -67,7 +79,11 @@ export function OcellusDot({
                 cx="6"
                 cy="6"
                 r="1.8"
-                fill={watching ? "#ffffff" : "rgba(255,255,255,0.55)"}
+                fill={
+                    watching
+                        ? "var(--mantine-primary-color-filled)"
+                        : "currentColor"
+                }
             />
         </svg>
     );

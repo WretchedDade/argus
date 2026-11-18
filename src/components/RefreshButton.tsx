@@ -1,3 +1,4 @@
+import { Button } from "@mantine/core";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, healthQuery, type Health } from "../lib/api";
 
@@ -16,7 +17,13 @@ export function RefreshButton() {
             );
         },
         onSettled: () => {
-            for (const key of ["prs", "activity", "runs", "health"]) {
+            for (const key of [
+                "prs",
+                "all-prs",
+                "activity",
+                "runs",
+                "health",
+            ]) {
                 void qc.invalidateQueries({ queryKey: [key] });
             }
         },
@@ -25,13 +32,21 @@ export function RefreshButton() {
     const running = !!health.data?.poller?.running || refresh.isPending;
 
     return (
-        <button
+        <Button
+            size="xs"
+            variant="default"
             type="button"
             onClick={() => refresh.mutate()}
             disabled={running}
-            className="shrink-0 rounded-md bg-white px-2.5 py-1 text-xs font-semibold text-[var(--peacock-indigo)] shadow-sm hover:bg-white/90 disabled:opacity-60"
+            loading={refresh.isPending}
+            title={
+                running && !refresh.isPending
+                    ? "A poll is already running"
+                    : undefined
+            }
+            className="shrink-0"
         >
             Refresh
-        </button>
+        </Button>
     );
 }

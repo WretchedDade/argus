@@ -1,112 +1,223 @@
+import {
+    Anchor,
+    Badge,
+    Container,
+    Group,
+    NativeSelect,
+    Stack,
+    Table,
+    Text,
+    Title,
+} from "@mantine/core";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
-import { runsQuery, type PollRun } from "../lib/api";
-import { clockTime, durationMs, timeAgo } from "../lib/format";
+import { useState } from "react";
+import { runsQuery } from "../lib/api";
+import { durationMs } from "../lib/format";
 import { runStatusMeta } from "../lib/runStatus";
-import { StatChip } from "../components/StatChip";
+import { runChangeSummary } from "../lib/activity";
+import { warmQuery } from "../lib/query-defaults";
+import {
+    ErrorBanner,
+    LoadErrorPage,
+    PendingPage,
+} from "../components/ErrorBanner";
 
 export const Route = createFileRoute("/activity/")({
-    loader: ({ context }) => context.queryClient.ensureQueryData(runsQuery),
+    loader: ({ context }) => warmQuery(context.queryClient, runsQuery),
     component: RunsList,
 });
 
-function RunRow({ run }: { run: PollRun }) {
-    const status = runStatusMeta(run);
-    const running = !run.finishedAt;
-    return (
-        <Link
-            to="/activity/$runId"
-            params={{ runId: String(run.id) }}
-            className="flex items-center gap-3 px-3 py-2 transition-colors hover:bg-[color-mix(in_srgb,var(--peacock-teal)_9%,transparent)]"
-        >
-            <span
-                className={`inline-block h-2 w-2 shrink-0 rounded-full ${running ? "watch-pulse" : ""}`}
-                style={{ background: status.color }}
-            />
-            <span className="text-muted shrink-0 text-xs tabular-nums">
-                {clockTime(run.startedAt)} · {timeAgo(run.startedAt)}
-            </span>
-            <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1.5">
-                {run.error ? (
-                    <span className="truncate text-sm text-[var(--true-color-red,#cf222e)]">
-                        {run.error}
-                    </span>
-                ) : running ? (
-                    <span
-                        className="text-sm"
-                        style={{ color: "var(--peacock-teal)" }}
-                    >
-                        watching…
-                    </span>
-                ) : (
-                    <>
-                        <StatChip
-                            label="added"
-                            value={run.added ?? 0}
-                            color="var(--peacock-gold)"
-                        />
-                        <StatChip
-                            label="updated"
-                            value={run.updated ?? 0}
-                            color="var(--peacock-teal)"
-                        />
-                        <StatChip
-                            label="events"
-                            value={run.events ?? 0}
-                            color="var(--peacock-emerald)"
-                        />
-                        <StatChip
-                            label="closed"
-                            value={run.closed ?? 0}
-                            color="var(--peacock-blue)"
-                        />
-                    </>
-                )}
-            </div>
-            <span className="text-muted shrink-0 text-xs tabular-nums">
-                {run.finishedAt
-                    ? durationMs(run.startedAt, run.finishedAt)
-                    : ""}
-            </span>
-            <span className="text-muted shrink-0 text-xs">›</span>
-        </Link>
-    );
-}
-
 function RunsList() {
     const runs = useQuery(runsQuery);
-    const active = runs.data?.find((r) => !r.finishedAt);
+    const [status, setStatus] = useState("all");
+    const active = runs.data?.find((run) => !run.finishedAt);
+    const visible = (runs.data ?? []).filter(
+        (run) => status === "all" || runStatusMeta(run).label === status,
+    );
+
+    if (runs.isPending) return <PendingPage />;
+    if (!runs.data)
+        return (
+            <LoadErrorPage
+                what="poll runs"
+                error={runs.error}
+                onRetry={() => void runs.refetch()}
+                showActivityLink={false}
+            />
+        );
 
     return (
-        <div className="mx-auto max-w-3xl">
-            <div className="mb-2 flex items-center justify-between">
-                <h2 className="text-sm font-medium">Poll runs</h2>
-                {active && (
-                    <Link
-                        to="/activity/$runId"
-                        params={{ runId: String(active.id) }}
-                        className="flex items-center gap-1.5 text-xs"
-                        style={{ color: "var(--peacock-teal)" }}
-                    >
-                        <span
-                            className="watch-pulse inline-block h-2 w-2 rounded-full"
-                            style={{ background: "var(--peacock-teal)" }}
-                        />
-                        watching now
-                    </Link>
+        <Container size="md" px={0}>
+            <Stack gap="md">
+                <Group justify="space-between" align="flex-start">
+                    <Stack gap={4}>
+                        <Title order={1} size="h3">
+                            Activity
+                        </Title>
+                        <Text size="sm" c="dimmed">
+                            Recent poll runs and diagnostic traces. Updates
+                            every 5 seconds.
+                        </Text>
+                    </Stack>
+                    {active && (
+                        <Anchor
+                            size="sm"
+                            renderRoot={(props) => (
+                                <Link
+                                    to="/activity/$runId"
+                                    params={{ runId: String(active.id) }}
+                                    {...props}
+                                />
+                            )}
+                        >
+                            View running poll #{active.id}
+                        </Anchor>
+                    )}
+                </Group>
+                {runs.isError && (
+                    <ErrorBanner
+                        title="Couldn't refresh poll runs"
+                        error={runs.error}
+                        onRetry={() => void runs.refetch()}
+                    />
                 )}
-            </div>
-            {runs.data && runs.data.length > 0 ? (
-                <div className="divide-line border-line divide-y overflow-hidden rounded-lg border">
-                    {runs.data.map((r) => (
-                        <RunRow key={r.id} run={r} />
-                    ))}
-                </div>
-            ) : (
-                <p className="text-muted text-sm">
-                    No runs yet. Hit Refresh to start one.
-                </p>
-            )}
-        </div>
+                <Group justify="space-between">
+                    <Text size="sm">
+                        {runs.data.length} recent run
+                        {runs.data.length === 1 ? "" : "s"}
+                    </Text>
+                    <NativeSelect
+                        size="sm"
+                        aria-label="Filter runs by status"
+                        value={status}
+                        onChange={(event) =>
+                            setStatus(event.currentTarget.value)
+                        }
+                        data={[
+                            { value: "all", label: "All runs" },
+                            { value: "Failed", label: "Failed" },
+                            { value: "Running", label: "Running" },
+                            { value: "Completed", label: "Completed" },
+                        ]}
+                    />
+                </Group>
+                <Table.ScrollContainer minWidth={0}>
+                    <Table verticalSpacing="sm" highlightOnHover>
+                        <Table.Thead>
+                            <Table.Tr>
+                                <Table.Th>Run</Table.Th>
+                                <Table.Th>Result</Table.Th>
+                            </Table.Tr>
+                        </Table.Thead>
+                        <Table.Tbody>
+                            {visible.map((run) => {
+                                const meta = runStatusMeta(run);
+                                return (
+                                    <Table.Tr key={run.id}>
+                                        <Table.Td>
+                                            <Anchor
+                                                size="sm"
+                                                c="text"
+                                                fw={500}
+                                                renderRoot={(props) => (
+                                                    <Link
+                                                        to="/activity/$runId"
+                                                        params={{
+                                                            runId: String(
+                                                                run.id,
+                                                            ),
+                                                        }}
+                                                        {...props}
+                                                    />
+                                                )}
+                                            >
+                                                Run #{run.id}
+                                            </Anchor>
+                                            <Text
+                                                size="sm"
+                                                component="time"
+                                                dateTime={run.startedAt}
+                                                title={run.startedAt}
+                                            >
+                                                {new Date(
+                                                    run.startedAt,
+                                                ).toLocaleString(undefined, {
+                                                    timeZoneName: "short",
+                                                })}
+                                            </Text>
+                                            {run.finishedAt && (
+                                                <Text size="sm" c="dimmed">
+                                                    {durationMs(
+                                                        run.startedAt,
+                                                        run.finishedAt,
+                                                    )}
+                                                </Text>
+                                            )}
+                                        </Table.Td>
+                                        <Table.Td>
+                                            <Stack gap={4}>
+                                                <Group>
+                                                    <Badge
+                                                        variant="filled"
+                                                        color={meta.color}
+                                                    >
+                                                        {meta.label}
+                                                    </Badge>
+                                                </Group>
+                                                <Text size="sm">
+                                                    {run.finishedAt
+                                                        ? runChangeSummary(run)
+                                                        : "Polling Azure DevOps..."}
+                                                </Text>
+                                                {run.error && (
+                                                    <Text
+                                                        size="sm"
+                                                        c="red"
+                                                        style={{
+                                                            overflowWrap:
+                                                                "anywhere",
+                                                            whiteSpace:
+                                                                "pre-wrap",
+                                                        }}
+                                                    >
+                                                        {run.error}
+                                                    </Text>
+                                                )}
+                                                {!run.ok &&
+                                                    run.finishedAt &&
+                                                    !run.error && (
+                                                        <Text size="sm">
+                                                            No error message
+                                                            recorded. Open the
+                                                            trace for details.
+                                                        </Text>
+                                                    )}
+                                            </Stack>
+                                        </Table.Td>
+                                    </Table.Tr>
+                                );
+                            })}
+                            {visible.length === 0 && (
+                                <Table.Tr>
+                                    <Table.Td colSpan={2}>
+                                        <Text
+                                            size="sm"
+                                            c="dimmed"
+                                            ta="center"
+                                            py="xl"
+                                        >
+                                            {runs.data.length === 0
+                                                ? "No runs yet. Use Refresh in the header to start a poll."
+                                                : "No recent runs match this status."}
+                                        </Text>
+                                    </Table.Td>
+                                </Table.Tr>
+                            )}
+                        </Table.Tbody>
+                    </Table>
+                </Table.ScrollContainer>
+            </Stack>
+        </Container>
     );
 }

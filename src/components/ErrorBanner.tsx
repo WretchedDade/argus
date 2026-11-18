@@ -1,4 +1,17 @@
-import { AlertTriangle, Loader2, RefreshCw } from "lucide-react";
+import {
+    Alert,
+    Anchor,
+    Button,
+    Code,
+    Group,
+    List,
+    Loader,
+    Stack,
+    Text,
+    ThemeIcon,
+    Title,
+} from "@mantine/core";
+import { AlertTriangle, RefreshCw } from "lucide-react";
 import { Link } from "@tanstack/react-router";
 import { describeLoadFailure, errorMessage } from "../lib/errors";
 
@@ -13,30 +26,25 @@ export function ErrorBanner({
     onRetry?: () => void;
 }) {
     return (
-        <div
-            role="alert"
-            className="border-line mb-3 flex items-center gap-3 rounded-lg border px-3 py-2 text-sm"
-            style={{ background: "var(--card-bg)" }}
+        <Alert
+            color="red"
+            title={title}
+            icon={<AlertTriangle size={16} />}
+            mb="sm"
         >
-            <AlertTriangle size={16} className="text-red-500 shrink-0" />
-            <div className="min-w-0 flex-1">
-                <div className="text-fg font-medium">{title}</div>
+            <Group justify="space-between" gap="sm">
                 {error !== undefined && (
-                    <div className="text-muted truncate text-xs">
+                    <Text size="sm" style={{ overflowWrap: "anywhere" }}>
                         {errorMessage(error)}
-                    </div>
+                    </Text>
                 )}
-            </div>
-            {onRetry && (
-                <button
-                    type="button"
-                    onClick={onRetry}
-                    className="border-line rounded-md border px-2.5 py-1 text-xs font-semibold"
-                >
-                    Retry
-                </button>
-            )}
-        </div>
+                {onRetry && (
+                    <Button variant="default" type="button" onClick={onRetry}>
+                        Retry
+                    </Button>
+                )}
+            </Group>
+        </Alert>
     );
 }
 
@@ -54,70 +62,60 @@ export function LoadErrorPage({
 }) {
     const f = describeLoadFailure(error, what);
     return (
-        <div
-            role="alert"
-            className="mx-auto flex max-w-xl flex-col gap-4 py-12"
-        >
-            <div className="flex items-center gap-3">
-                <span
-                    className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl"
-                    style={{
-                        background:
-                            "color-mix(in srgb, var(--color-fg) 8%, transparent)",
-                    }}
-                >
-                    <AlertTriangle size={22} className="text-red-500" />
-                </span>
-                <h1 className="text-fg text-xl font-semibold tracking-tight">
+        <Stack role="alert" maw={576} mx="auto" py={48} gap="md">
+            <Group wrap="nowrap">
+                <ThemeIcon size={44} variant="light" color="red">
+                    <AlertTriangle size={22} />
+                </ThemeIcon>
+                <Title order={1} size="h3">
                     {f.headline}
-                </h1>
-            </div>
-            <p className="text-fg text-sm">{f.reason}</p>
+                </Title>
+            </Group>
+            <Text size="sm">{f.reason}</Text>
             <div>
-                <div className="text-fg mb-1 text-sm font-medium">
+                <Text size="sm" fw={500} mb={4}>
                     Things to try
-                </div>
-                <ul className="text-muted list-disc space-y-1 pl-5 text-sm">
+                </Text>
+                <List size="sm" c="dimmed" spacing={4}>
                     {f.steps.map((s) => (
-                        <li key={s}>{s}</li>
+                        <List.Item key={s}>{s}</List.Item>
                     ))}
-                </ul>
+                </List>
             </div>
-            <div
-                className="border-line text-muted rounded-md border px-3 py-2 font-mono text-xs"
-                style={{ background: "var(--card-bg)" }}
-            >
-                {f.technical}
-            </div>
-            <div className="flex items-center gap-3">
-                <button
+            <Code block>{f.technical}</Code>
+            <Group gap="sm">
+                <Button
+                    variant="filled"
                     type="button"
                     onClick={onRetry}
-                    className="app-header inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold text-white"
+                    leftSection={<RefreshCw size={14} />}
                 >
-                    <RefreshCw size={14} />
                     Retry
-                </button>
+                </Button>
                 {showActivityLink && (
-                    <Link
-                        to="/activity"
-                        className="text-muted hover:text-fg text-sm underline"
+                    <Anchor
+                        renderRoot={(props) => (
+                            <Link to="/activity" {...props} />
+                        )}
+                        size="sm"
                     >
                         Open activity log
-                    </Link>
+                    </Anchor>
                 )}
-            </div>
-        </div>
+            </Group>
+        </Stack>
     );
 }
 
 // Shown while a slow route loader runs.
 export function PendingPage() {
     return (
-        <div className="text-muted flex flex-col items-center justify-center gap-3 py-32 text-sm">
-            <Loader2 size={40} className="animate-spin" />
-            Loading…
-        </div>
+        <Stack role="status" aria-busy="true" align="center" gap="sm" py={128}>
+            <Loader size={40} aria-hidden />
+            <Text size="sm" c="dimmed">
+                Loading…
+            </Text>
+        </Stack>
     );
 }
 

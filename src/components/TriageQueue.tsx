@@ -1,16 +1,17 @@
+import {
+    Alert,
+    Collapse,
+    Group,
+    Skeleton,
+    Stack,
+    Text,
+    Title,
+    UnstyledButton,
+    VisuallyHidden,
+} from "@mantine/core";
 import { useState } from "react";
 import { ErrorBanner, LoadErrorPage } from "./ErrorBanner";
-import {
-    AlarmClock,
-    AlertTriangle,
-    Ban,
-    ChevronDown,
-    ChevronRight,
-    FileEdit,
-    Hourglass,
-    ListChecks,
-    UserCheck,
-} from "lucide-react";
+import { AlertTriangle, ChevronDown, ChevronRight } from "lucide-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, configQuery, healthQuery, prsQuery, type Pr } from "../lib/api";
 import { PrCard } from "./PrCard";
@@ -27,6 +28,62 @@ import {
     matchesQueueFilters,
     type QueueFilters as Filters,
 } from "../lib/queue-filters";
+
+function SectionHeading({
+    id,
+    label,
+    count,
+    hint,
+    expanded,
+    onToggle,
+}: {
+    id: string;
+    label: string;
+    count: number;
+    hint?: string;
+    expanded?: boolean;
+    onToggle?: () => void;
+}) {
+    const heading = (
+        <Group component="span" gap="xs" wrap="nowrap">
+            {onToggle &&
+                (expanded ? (
+                    <ChevronDown size={14} aria-hidden />
+                ) : (
+                    <ChevronRight size={14} aria-hidden />
+                ))}
+            <Text component="span" inherit>
+                {label}
+            </Text>
+            <Text component="span" size="xs" c="dimmed" fw={400}>
+                {count}
+            </Text>
+        </Group>
+    );
+    return (
+        <Group component="header" gap="xs" align="baseline" py={4}>
+            <Title id={`${id}-heading`} order={2} size="sm" fw={600}>
+                {onToggle ? (
+                    <UnstyledButton
+                        type="button"
+                        onClick={onToggle}
+                        aria-expanded={expanded}
+                        aria-controls={`${id}-content`}
+                    >
+                        {heading}
+                    </UnstyledButton>
+                ) : (
+                    heading
+                )}
+            </Title>
+            {hint && (
+                <Text size="xs" c="dimmed">
+                    {hint}
+                </Text>
+            )}
+        </Group>
+    );
+}
 
 function CollapsedSection({
     id,
@@ -48,38 +105,20 @@ function CollapsedSection({
     const [open, setOpen] = useState(false);
     const shown = collapsible ? open : true;
     return (
-        <section id={id} className="scroll-mt-20 flex flex-col gap-2">
-            {collapsible ? (
-                <button
-                    type="button"
-                    onClick={() => setOpen((v) => !v)}
-                    className="text-muted hover:text-fg flex w-full items-center gap-2 py-1 text-left transition-colors"
-                >
-                    {open ? (
-                        <ChevronDown size={14} />
-                    ) : (
-                        <ChevronRight size={14} />
-                    )}
-                    <span className="text-xs font-semibold uppercase tracking-wide">
-                        {label}
-                    </span>
-                    <span className="text-xs opacity-70">{items.length}</span>
-                    {hint && (
-                        <span className="text-xs opacity-60">· {hint}</span>
-                    )}
-                </button>
-            ) : (
-                <div className="flex items-baseline gap-2">
-                    <h2 className="text-fg text-sm font-semibold">{label}</h2>
-                    <span className="text-muted text-xs">{items.length}</span>
-                    {hint && (
-                        <span className="text-muted text-xs opacity-70">
-                            · {hint}
-                        </span>
-                    )}
-                </div>
-            )}
-            {shown && (
+        <section
+            id={id}
+            aria-labelledby={`${id}-heading`}
+            className="scroll-mt-20 flex flex-col gap-2"
+        >
+            <SectionHeading
+                id={id}
+                label={label}
+                count={items.length}
+                hint={hint}
+                expanded={shown}
+                onToggle={collapsible ? () => setOpen((v) => !v) : undefined}
+            />
+            <Collapse id={`${id}-content`} expanded={shown}>
                 <div
                     className={
                         collapsible
@@ -101,56 +140,19 @@ function CollapsedSection({
                         />
                     ))}
                 </div>
-            )}
+            </Collapse>
         </section>
-    );
-}
-
-interface RailEntry {
-    id: string;
-    label: string;
-    Icon: typeof ListChecks;
-}
-
-function SectionRail({ entries }: { entries: RailEntry[] }) {
-    if (entries.length < 2) return null;
-    const jump = (id: string) =>
-        document
-            .getElementById(id)
-            ?.scrollIntoView({ behavior: "smooth", block: "start" });
-    return (
-        <nav className="fixed left-3 top-1/2 z-40 flex -translate-y-1/2 flex-col gap-1.5">
-            {entries.map((e) => (
-                <button
-                    key={e.id}
-                    type="button"
-                    aria-label={e.label}
-                    onClick={() => jump(e.id)}
-                    className="group pr-card border-line text-muted hover:text-fg relative rounded-full border p-2 shadow-sm transition-colors"
-                >
-                    <e.Icon size={16} />
-                    <span
-                        role="tooltip"
-                        className="pr-card border-line text-fg pointer-events-none absolute left-full top-1/2 z-50 ml-2 -translate-y-1/2 whitespace-nowrap rounded-md border px-2 py-1 text-xs opacity-0 shadow-md transition-opacity duration-100 group-hover:opacity-100"
-                    >
-                        {e.label}
-                    </span>
-                </button>
-            ))}
-        </nav>
     );
 }
 
 function BoardSkeleton() {
     return (
-        <div className="flex flex-col gap-3">
+        <Stack role="status" aria-busy="true" gap="sm">
+            <VisuallyHidden>Loading pull requests…</VisuallyHidden>
             {[0, 1, 2].map((i) => (
-                <div
-                    key={i}
-                    className="pr-card border-line h-[150px] animate-pulse rounded-xl border opacity-60"
-                />
+                <Skeleton key={i} h={150} radius="md" />
             ))}
-        </div>
+        </Stack>
     );
 }
 
@@ -165,18 +167,9 @@ function PollBanner({
         ? "Not signed in to Azure DevOps. Sign in (or run `az login`), then Refresh."
         : `Last poll failed: ${error}`;
     return (
-        <div
-            className="flex items-center gap-2 rounded-md border px-3 py-2 text-sm"
-            style={{
-                borderColor:
-                    "color-mix(in srgb, #d64545 45%, var(--color-line))",
-                background: "color-mix(in srgb, #d64545 10%, transparent)",
-                color: "color-mix(in srgb, #d64545 60%, var(--color-fg))",
-            }}
-        >
-            <AlertTriangle size={15} className="shrink-0" />
-            <span>{msg}</span>
-        </div>
+        <Alert color="red" icon={<AlertTriangle size={16} />}>
+            {msg}
+        </Alert>
     );
 }
 
@@ -267,67 +260,60 @@ export function TriageQueue({
     const active = notCovered.filter((p) => !isStale(p, recencyDays));
     const stale = notCovered.filter((p) => isStale(p, recencyDays));
     const needs = active.filter((p) => needsAction(p)).length;
-    const rail: RailEntry[] = [];
-    if (active.length > 0)
-        rail.push({
-            id: "sec-review",
-            label: "Review queue",
-            Icon: ListChecks,
-        });
-    if (covered.length > 0)
-        rail.push({ id: "sec-covered", label: "Covered", Icon: UserCheck });
-    if (drafts.length > 0)
-        rail.push({ id: "sec-drafts", label: "Drafts", Icon: FileEdit });
-    if (snoozed.length > 0)
-        rail.push({ id: "sec-snoozed", label: "Snoozed", Icon: AlarmClock });
-    if (stale.length > 0)
-        rail.push({ id: "sec-stale", label: "Stale", Icon: Hourglass });
-    if (outOfScope.length > 0)
-        rail.push({ id: "sec-scope", label: "Out of scope", Icon: Ban });
-
     return (
         <div className="flex flex-col gap-6">
-            <SectionRail entries={rail} />
             {banner}
-            <div className="flex flex-wrap items-center justify-between gap-3">
-                <div role="status" className="text-muted text-sm tabular-nums">
-                    {review.length === 0 ? (
-                        allReview.length === 0 ? (
-                            "Nothing to review right now."
-                        ) : (
-                            "No PRs match these filters. Change or clear the filters to see more PRs."
-                        )
-                    ) : (
-                        <>
-                            {needs > 0 ? (
-                                <>
-                                    <span className="text-fg font-semibold">
-                                        {needs}
-                                    </span>{" "}
-                                    need{needs === 1 ? "s" : ""} you
-                                </>
+            <section
+                id="sec-review"
+                aria-labelledby="sec-review-heading"
+                className="flex scroll-mt-20 flex-col gap-3"
+            >
+                <Group component="header" justify="space-between" gap="sm">
+                    <Group gap="xs" align="baseline">
+                        <Title
+                            id="sec-review-heading"
+                            order={2}
+                            size="sm"
+                            fw={600}
+                        >
+                            Review queue
+                        </Title>
+                        <Text
+                            role="status"
+                            size="sm"
+                            c="dimmed"
+                            style={{ fontVariantNumeric: "tabular-nums" }}
+                        >
+                            {review.length === 0 ? (
+                                allReview.length === 0 ? (
+                                    "Nothing to review right now."
+                                ) : (
+                                    "No PRs match these filters. Change or clear the filters to see more PRs."
+                                )
                             ) : (
-                                "nothing needs you"
+                                <>
+                                    {active.length} in queue
+                                    <Text component="span" mx="xs" aria-hidden>
+                                        ·
+                                    </Text>
+                                    <Text component="span" c="text">
+                                        {needs} awaiting your review
+                                    </Text>
+                                </>
                             )}
-                            <span className="mx-1.5">·</span>
-                            {active.length} open
-                        </>
-                    )}
-                </div>
-                {filterControls}
-            </div>
-
-            {active.length > 0 && (
-                <section
-                    id="sec-review"
-                    aria-label="Review queue"
-                    className="flex scroll-mt-20 flex-col gap-3"
-                >
-                    {[...active].sort(byQueuePriority).map((pr) => (
-                        <PrCard key={pr.canonical} pr={pr} labels={labels} />
-                    ))}
-                </section>
-            )}
+                        </Text>
+                    </Group>
+                    {filterControls}
+                </Group>
+                {[...active].sort(byQueuePriority).map((pr) => (
+                    <PrCard
+                        key={pr.canonical}
+                        pr={pr}
+                        labels={labels}
+                        variant={needsAction(pr) ? "full" : "compact"}
+                    />
+                ))}
+            </section>
 
             {covered.length > 0 && (
                 <CollapsedSection
