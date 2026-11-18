@@ -31,9 +31,12 @@ The fastest loop is the standalone runner. It runs Argus in your browser with a 
 
 ```powershell
 npm ci
+npm run build:client
 $env:ARGUS_DB_FILE = Join-Path $PWD "data\standalone.db"
 npm run standalone
 ```
+
+Run `npm run build:client` before the first standalone start. This also generates `src/routeTree.gen.ts`.
 
 - After a **client** change (`src/`): run `npm run build:client` (or keep `npm run dev` running, which is a watch build), then refresh the browser.
 - After a **server** change (`server/`): stop the runner and start it again.
@@ -57,6 +60,8 @@ For a bug fix, write the test first. It must fail on the old code and pass on th
 
 ## Format and check types
 
+Run `npm run build` before these checks on a clean clone, and after adding, removing, or renaming routes. Typecheck and lint need the generated route tree.
+
 ```powershell
 npm run format        # fix formatting
 npm run format:check  # check formatting
@@ -72,6 +77,7 @@ The pre-commit hook formats staged files with Prettier and fixes lint errors wit
 CI runs the same checks on every pull request. Run all of them before you push:
 
 ```powershell
+npm run build
 npm run format:check
 npm run typecheck
 npm run lint
@@ -92,7 +98,7 @@ Keep a pull request under about 400 changed lines. Split larger work.
 
 The pull request template lists the checks. Before you open the pull request:
 
-1. Run the three checks above.
+1. Run the checks above.
 2. Decide the version change (see [Release rules](#release-rules)).
 3. Write the title and set the label.
 
