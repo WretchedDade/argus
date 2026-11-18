@@ -11,7 +11,7 @@ import {
     type WeeklyReviewPr,
 } from "../lib/api";
 import { shortRepo } from "../lib/format";
-import { countReviewSittings } from "../lib/review-rhythm";
+import { computeRhythm } from "../lib/review-rhythm";
 import { pushToast } from "../lib/toast";
 import { SegToggle } from "../components/SegToggle";
 
@@ -62,20 +62,6 @@ export const Route = createFileRoute("/recap")({
     component: RecapPage,
 });
 
-type RhythmItem = {
-    at: string;
-    repo: string;
-    team: string | null;
-    number: number;
-    title: string;
-    verdict: string | null;
-};
-type BalanceDay = {
-    key: string;
-    inflow: number;
-    throughput: number;
-    level: number;
-};
 type EffortKey = Exclude<keyof WeeklyReviewEffort, "score">;
 
 const EFFORT_META: {
@@ -126,52 +112,6 @@ const SCORE_BANDS = [
     { label: "Heavy", min: 7, max: 9, color: "var(--mantine-color-orange-6)" },
     { label: "Intense", min: 10, max: 14, color: "#c75b5b" },
 ];
-
-function dayKey(ms: number): string {
-    const date = new Date(ms);
-    return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
-}
-
-function computeRhythm(
-    items: RhythmItem[],
-    days: BalanceDay[],
-    heavyLine: number,
-    win: { start: number; end: number },
-) {
-    const inWindow = items.filter((item) => {
-        const time = Date.parse(item.at);
-        return time >= win.start && time < win.end;
-    });
-    const byDay = new Map<string, number[]>();
-    for (const item of inWindow) {
-        const date = new Date(item.at);
-        const key = dayKey(date.getTime());
-        (byDay.get(key) ?? byDay.set(key, []).get(key)!).push(
-            date.getHours() * 60 + date.getMinutes(),
-        );
-    }
-    let sittings = 0;
-    let busiest: { key: string; count: number } | null = null;
-    for (const [key, minutes] of byDay) {
-        sittings += countReviewSittings(minutes);
-        if (!busiest || minutes.length > busiest.count)
-            busiest = { key, count: minutes.length };
-    }
-    const windowDays = days.filter((day) => {
-        const time = Date.parse(day.key);
-        return time >= win.start && time < win.end;
-    });
-    const activeDays = windowDays.filter(
-        (day) => day.inflow > 0 || day.throughput > 0 || day.level > 0,
-    );
-    return {
-        sittings,
-        busiest,
-        activeDays: activeDays.length,
-        behind: activeDays.filter((day) => day.inflow > day.throughput).length,
-        overload: windowDays.filter((day) => day.level >= heavyLine).length,
-    };
-}
 
 function aggregateContext(prs: WeeklyReviewPr[], key: "repo" | "authorType") {
     const groups = new Map<string, { prs: number; effort: number }>();

@@ -83,6 +83,11 @@ Some metrics also read `prs` snapshot columns. For example, review latency uses 
 
 Other tables: `poll_runs`, `activity_log`, `settings` (key/value, holds the saved config overrides), `changes_read`, `repo_scopes`, and `poll_lease`.
 
+Insights uses the machine's local timezone for calendar dates and Monday-start
+weeks. Summary buckets and drill-downs use the same local midnight boundaries,
+including 23-hour and 25-hour days at DST changes. Stored event timestamps stay
+in UTC. Elapsed-time metrics, such as review latency, do not use calendar days.
+
 User-managed columns live on `prs`. Only the dedicated action methods write them. `upsertPr` never does.
 
 The schema lives in `server/store/migrations.ts` as an ordered list of migrations. `PRAGMA user_version` stores how many have run. At startup, `runMigrations` runs the pending ones in one `BEGIN IMMEDIATE` transaction, so two processes cannot race and a failure changes nothing.

@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { test } from "node:test";
 import { DatabaseSync } from "node:sqlite";
 import { ArgusStore } from "./db.ts";
 
@@ -170,3 +171,189 @@ try {
     store.close();
     rmSync(dir, { recursive: true, force: true });
 }
+
+for (const zone of ["America/New_York", "Asia/Tokyo"]) {
+    test(`weekly insights use local Monday boundaries in ${zone}`, (t) => {
+        const previousZone = process.env.TZ;
+        process.env.TZ = zone;
+        const sunday = new Date(2026, 10, 15, 23).getTime();
+        t.mock.timers.enable({ apis: ["Date"], now: sunday });
+        const store = new ArgusStore(":memory:");
+        t.after(() => {
+            store.close();
+            if (previousZone === undefined) delete process.env.TZ;
+            else process.env.TZ = previousZone;
+        });
+        store.upsertPr({
+            canonical: "https://example.test/pr/1",
+            org: "o",
+            project: "p",
+            repo: "r",
+            number: 1,
+            title: "Sunday review",
+            description: "",
+            author: null,
+            isVendor: false,
+            teams: [],
+            role: "reviewer",
+            isDraft: false,
+            lastCommitSha: null,
+            lastCommitAt: null,
+            prCreatedAt: null,
+            sourceBranch: null,
+            targetBranch: null,
+        });
+        store.recordReview("https://example.test/pr/1", {
+            verdict: "approved",
+        });
+
+        for (const now of [
+            sunday,
+            new Date(2026, 10, 16, 0, 30).getTime(),
+            new Date(2026, 10, 16, 12).getTime(),
+        ]) {
+            t.mock.timers.setTime(now);
+            const insights = store.computeInsights(30);
+            assert.equal(
+                insights.throughput.weekly.at(-1)?.week,
+                now === sunday ? "2026-11-09" : "2026-11-16",
+            );
+            for (const week of ["2026-11-09", "2026-11-16"]) {
+                const expected = week === "2026-11-09" ? 1 : 0;
+                assert.equal(
+                    store.weeklyReviewFacts(week).uniquePrCount,
+                    expected,
+                );
+                assert.equal(
+                    store.loadWeekDetail(week, 30).reviewed.length,
+                    expected,
+                );
+                assert.equal(
+                    insights.throughput.weekly.find(
+                        (item) => item.week === week,
+                    )?.total,
+                    now === sunday && week === "2026-11-16"
+                        ? undefined
+                        : expected,
+                );
+                assert.equal(
+                    insights.load.weekly.find((item) => item.key === week)
+                        ?.throughput,
+                    now === sunday && week === "2026-11-16"
+                        ? undefined
+                        : expected,
+                );
+            }
+        }
+    });
+}
+
+for (const [label, month, day] of [
+    ["spring forward", 2, 8],
+    ["fall back", 10, 1],
+] as const) {
+    test(`load dates and drill-downs agree across ${label}`, (t) => {
+        const previousZone = process.env.TZ;
+        process.env.TZ = "America/New_York";
+        t.mock.timers.enable({
+            apis: ["Date"],
+            now: new Date(2026, month, day - 2).getTime(),
+        });
+        const store = new ArgusStore(":memory:");
+        t.after(() => {
+            store.close();
+            if (previousZone === undefined) delete process.env.TZ;
+            else process.env.TZ = previousZone;
+        });
+        const reviews = [
+            new Date(2026, month, day - 2, 0, 30),
+            new Date(2026, month, day - 2, 23, 30),
+            new Date(2026, month, day, 23, 30),
+            new Date(2026, month, day + 1, 0, 30),
+            new Date(2026, month, day + 1, 23, 30),
+        ];
+        reviews.forEach((at, index) => {
+            const canonical = `https://example.test/pr/${index}`;
+            t.mock.timers.setTime(at.getTime() - 3_600_000);
+            store.upsertPr({
+                canonical,
+                org: "o",
+                project: "p",
+                repo: "r",
+                number: index,
+                title: "Boundary review",
+                description: "",
+                author: null,
+                isVendor: false,
+                teams: [],
+                role: "reviewer",
+                isDraft: false,
+                lastCommitSha: null,
+                lastCommitAt: null,
+                prCreatedAt: null,
+                sourceBranch: null,
+                targetBranch: null,
+            });
+            t.mock.timers.setTime(at.getTime());
+            store.recordReview(canonical, { verdict: "approved" });
+        });
+        t.mock.timers.setTime(new Date(2026, month, day + 2, 12).getTime());
+        const key = (date: Date) =>
+            `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+        assert.equal(
+            store.loadDayDetail(key(reviews[2]), 30).reviewed.length,
+            1,
+            "The DST Sunday excludes reviews from Monday.",
+        );
+        const insights = store.computeInsights(30);
+        for (const date of [reviews[0], reviews[3]]) {
+            const dayKey = key(date);
+            const detail = store.loadDayDetail(dayKey, 30);
+            assert.equal(detail.reviewed.length, 2);
+            const expected = {
+                key: dayKey,
+                inflow: detail.arrived.length,
+                throughput: detail.reviewed.length,
+                backlog: detail.onPlate.length,
+            };
+            assert.deepEqual(
+                insights.load.daily.find((bucket) => bucket.key === dayKey),
+                expected,
+            );
+            assert.deepEqual(
+                insights.balance.days.find((bucket) => bucket.key === dayKey),
+                {
+                    key: dayKey,
+                    inflow: 1,
+                    throughput: expected.throughput,
+                    level: expected.backlog,
+                },
+            );
+        }
+        for (const bucket of insights.load.weekly.slice(-2)) {
+            const detail = store.loadWeekDetail(bucket.key, 30);
+            assert.equal(bucket.inflow, detail.arrived.length);
+            assert.equal(bucket.throughput, detail.reviewed.length);
+            assert.equal(bucket.backlog, detail.onPlate.length);
+        }
+        assert.equal(insights.load.peak.at, key(reviews[0]));
+    });
+}
+
+test("daily load keys keep the local date east of UTC", (t) => {
+    const previousZone = process.env.TZ;
+    process.env.TZ = "Asia/Tokyo";
+    t.mock.timers.enable({
+        apis: ["Date"],
+        now: new Date(2026, 10, 18, 12).getTime(),
+    });
+    const store = new ArgusStore(":memory:");
+    t.after(() => {
+        store.close();
+        if (previousZone === undefined) delete process.env.TZ;
+        else process.env.TZ = previousZone;
+    });
+    const insights = store.computeInsights(30);
+    assert.equal(insights.load.daily.at(-1)?.key, "2026-11-18");
+    assert.equal(insights.balance.days.at(-1)?.key, "2026-11-18");
+});
