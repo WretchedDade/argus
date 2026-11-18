@@ -28,7 +28,7 @@ export default defineConfig({
                 "src/**/*.{ts,tsx}",
                 "scripts/**/*.ts",
                 "packages/ado-client/src/**/*.ts",
-                "dist/test-bundles/**/*.mjs",
+                "test-results/bundles/**/*.mjs",
             ],
             exclude: [
                 "**/*.test.ts",

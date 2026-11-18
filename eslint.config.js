@@ -8,6 +8,7 @@ export default tseslint.config(
     {
         ignores: [
             "dist/",
+            "test-results/",
             "coverage/",
             "release/",
             "extension.mjs",

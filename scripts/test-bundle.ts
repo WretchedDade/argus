@@ -6,7 +6,7 @@ export async function buildTestModule(
     name: string,
     options: Omit<BuildOptions, "outfile" | "sourcemap" | "write">,
 ): Promise<unknown> {
-    const outfile = path.resolve("dist", "test-bundles", `${name}.mjs`);
+    const outfile = path.resolve("test-results", "bundles", `${name}.mjs`);
     // Keep the bundle and its source map available until coverage is reported.
     await build({ ...options, outfile, sourcemap: "inline", write: true });
     return import(pathToFileURL(outfile).href);
