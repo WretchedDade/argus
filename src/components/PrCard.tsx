@@ -77,37 +77,39 @@ function PrTitle({
     detail?: boolean;
 }) {
     return (
-        <Title
-            id={titleId}
-            order={detail ? 1 : 3}
-            size={compact ? "xs" : "sm"}
-            fw={compact ? 400 : 500}
-            flex={1}
-            miw={0}
-            style={{ overflowWrap: "anywhere" }}
-        >
-            {detail ? (
-                pr.title
-            ) : (
-                <Anchor
-                    inherit
-                    c="inherit"
-                    underline="hover"
-                    truncate={compact}
-                    title={compact ? pr.title : undefined}
-                    style={compact ? { display: "block" } : undefined}
-                    renderRoot={(props) => (
-                        <Link
-                            to="/pr"
-                            search={{ c: pr.canonical }}
-                            {...props}
-                        />
-                    )}
-                >
-                    {pr.title}
-                </Anchor>
-            )}
-        </Title>
+        <Stack gap={2} flex={1} miw={0} style={{ overflowWrap: "anywhere" }}>
+            <Title
+                id={titleId}
+                order={detail ? 1 : 3}
+                size={compact ? "xs" : "sm"}
+                fw={compact ? 400 : 500}
+            >
+                {detail ? (
+                    pr.title
+                ) : (
+                    <Anchor
+                        inherit
+                        c="inherit"
+                        underline="hover"
+                        truncate={compact}
+                        title={compact ? pr.title : undefined}
+                        style={compact ? { display: "block" } : undefined}
+                        renderRoot={(props) => (
+                            <Link
+                                to="/pr"
+                                search={{ c: pr.canonical }}
+                                {...props}
+                            />
+                        )}
+                    >
+                        {pr.title}
+                    </Anchor>
+                )}
+            </Title>
+            <Text size="xs" c="var(--argus-tag-text)">
+                {pr.author || "Unknown author"}
+            </Text>
+        </Stack>
     );
 }
 
@@ -699,7 +701,7 @@ function CompactPrCard({ pr, labels, onRestore }: PrCardProps) {
             aria-description={`${pr.isDraft ? "Draft. " : ""}Review status: ${meta.label}`}
             withBorder
             padding="xs"
-            bg={`color-mix(in srgb, var(${anchor}) 14%, var(--page-base))`}
+            bg={`color-mix(in srgb, var(${anchor}) 14%, light-dark(var(--page-base), var(--mantine-color-dark-9)))`}
             style={{
                 borderColor: `color-mix(in srgb, var(${anchor}) 30%, var(--mantine-color-default-border))`,
             }}

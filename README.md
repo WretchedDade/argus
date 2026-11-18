@@ -37,7 +37,9 @@ Open **Settings > Appearance** to select a color mode and an accent.
 Changes apply at once. **Auto** selects light or dark from the
 Copilot canvas background when that token is present. In a normal browser, it
 uses the system preference. An explicit Light or Dark choice overrides both.
-This follows the host mode, not its full color palette.
+For a dark host, the page background matches the host and shared neutral shades
+follow it. Standalone dark mode uses the GitHub dark background.
+Your selected accent remains independent.
 
 Appearance choices are saved in browser storage for the current origin. They
 are separate from **Save settings** and are not stored in the Argus database.

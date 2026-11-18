@@ -214,6 +214,15 @@ try {
         assert.doesNotMatch(html, /Show details|Loading review history/);
         const header = html.match(/<header\b[^]*?<\/header>/)?.[0];
         assert.ok(header);
+        assert.match(
+            header,
+            /<p\b[^>]*>Synthetic Author<\/p>/,
+            "The author name is visible text, not just an avatar label.",
+        );
+        assert.match(
+            renderCard({ ...pr, author: "" }, { variant }),
+            /<p\b[^>]*>Unknown author<\/p>/,
+        );
         const avatar = header.match(
             /<div\b[^>]*\bmantine-Avatar-root\b[^>]*>/,
         )?.[0];
@@ -278,7 +287,7 @@ try {
                 );
             assert.match(
                 header,
-                /<\/h3><\/div><span\b[^>]*title="12 files changed"/,
+                /<\/h3><p\b[^>]*>Synthetic Author<\/p><\/div><\/div><span\b[^>]*title="12 files changed"/,
                 "Size sits beside the title.",
             );
             assert.doesNotMatch(header, /Needs Review/);
@@ -342,6 +351,13 @@ try {
             );
         }
         assert.match(html, /aria-label="Back to review"/);
+    }
+    for (const render of [renderAuthoredCard, renderDetailCard]) {
+        const header = render({ ...pr, author: "Synthetic Author" }).match(
+            /<header\b[^]*?<\/header>/,
+        )?.[0];
+        assert.ok(header);
+        assert.match(header, /<p\b[^>]*>Synthetic Author<\/p>/);
     }
     const detailPr: Pr = {
         ...pr,

@@ -11,10 +11,10 @@ import {
     APPEARANCE_KEY,
     DEFAULT_APPEARANCE,
     backgroundScheme,
+    darkPaletteForBackground,
     parseAppearance,
     resolveColorScheme,
     type Appearance,
-    type ColorScheme,
 } from "../lib/appearance";
 
 const AppearanceContext = createContext<{
@@ -37,7 +37,7 @@ function readSavedAppearance() {
     }
 }
 
-function readHostScheme(): ColorScheme | null {
+function readHostAppearance() {
     const probe = document.createElement("span");
     probe.style.cssText =
         "position:fixed;visibility:hidden;background:var(--background-color-default,transparent)";
@@ -49,22 +49,29 @@ function readHostScheme(): ColorScheme | null {
     context.fillStyle = color;
     context.fillRect(0, 0, 1, 1);
     const [red, green, blue, alpha] = context.getImageData(0, 0, 1, 1).data;
-    return alpha === 255 ? backgroundScheme(red, green, blue) : null;
+    if (alpha !== 255) return null;
+    const darkColors = darkPaletteForBackground(red, green, blue);
+    return {
+        scheme: backgroundScheme(red, green, blue),
+        background: darkColors[7],
+        darkColors,
+    };
 }
 
 export function AppearanceProvider({ children }: { children: ReactNode }) {
     const [saved, setSaved] = useState(readSavedAppearance);
     const [environment, setEnvironment] = useState(() => ({
-        host: readHostScheme(),
+        host: readHostAppearance(),
         systemDark: matchMedia("(prefers-color-scheme: dark)").matches,
     }));
 
     useEffect(() => {
         const media = matchMedia("(prefers-color-scheme: dark)");
         const update = () => {
-            const host = readHostScheme();
+            const host = readHostAppearance();
             setEnvironment((previous) =>
-                previous.host === host && previous.systemDark === media.matches
+                previous.host?.background === host?.background &&
+                previous.systemDark === media.matches
                     ? previous
                     : { host, systemDark: media.matches },
             );
@@ -130,12 +137,18 @@ export function AppearanceProvider({ children }: { children: ReactNode }) {
                 })}
                 forceColorScheme={resolveColorScheme(
                     saved.appearance.mode,
-                    environment.host,
+                    environment.host?.scheme ?? null,
                     environment.systemDark,
                 )}
                 theme={{
                     ...argusTheme,
                     primaryColor: saved.appearance.accent,
+                    colors: {
+                        ...argusTheme.colors,
+                        ...(environment.host?.scheme === "dark"
+                            ? { dark: environment.host.darkColors }
+                            : {}),
+                    },
                 }}
             >
                 {children}
