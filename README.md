@@ -367,10 +367,18 @@ That result does not change the current vote state or completed-review metrics.
 
 A baseline skill ships in `skills/pr-review/` in this folder. It carries the parts
 Argus depends on plus a neutral review philosophy. To use it, copy it into your
-skills directory:
+skills directory from the source checkout. Keep an existing `pr-review` skill.
+The manual install command stops if the destination already exists:
 
-```
-cp -r skills/pr-review ~/.copilot/skills/pr-review
+```powershell
+$skillsDirectory = Join-Path $HOME ".copilot\skills"
+$destination = Join-Path $skillsDirectory "pr-review"
+if (Test-Path -LiteralPath $destination) {
+    throw "A pr-review skill already exists. Keep your existing skill."
+} else {
+    New-Item -ItemType Directory -Path $skillsDirectory -Force -ErrorAction Stop | Out-Null
+    Copy-Item -LiteralPath .\skills\pr-review -Destination $destination -Recurse -ErrorAction Stop
+}
 ```
 
 A manual copy has no `.argus-skill.json` sidecar file, so Argus cannot track it.
