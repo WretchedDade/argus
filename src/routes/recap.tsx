@@ -473,10 +473,7 @@ function RecapPage() {
             </div>
 
             {factsQuery.isPending || !insights || !rhythm ? (
-                <div
-                    className="border-line rounded-xl border p-8 text-center text-sm text-muted"
-                    style={{ background: "var(--card-bg)" }}
-                >
+                <div className="border-line bg-canvas rounded-xl border p-8 text-center text-sm text-muted">
                     Loading weekly review effort…
                 </div>
             ) : factsQuery.isError ? (
@@ -485,10 +482,7 @@ function RecapPage() {
                     again.
                 </div>
             ) : !facts || facts.uniquePrCount === 0 ? (
-                <div
-                    className="border-line rounded-xl border p-8 text-center"
-                    style={{ background: "var(--card-bg)" }}
-                >
+                <div className="border-line bg-canvas rounded-xl border p-8 text-center">
                     <p className="text-fg text-sm font-medium">
                         No reviews recorded for this week.
                     </p>
@@ -499,10 +493,7 @@ function RecapPage() {
                 </div>
             ) : (
                 <>
-                    <section
-                        className="border-line rounded-xl border p-5 shadow-sm"
-                        style={{ background: "var(--card-bg)" }}
-                    >
+                    <section className="border-line bg-canvas rounded-xl border p-5 shadow-sm">
                         <p className="text-fg max-w-3xl text-base leading-relaxed">
                             You reviewed{" "}
                             <strong>{facts.uniquePrCount} PRs</strong> through{" "}
@@ -547,10 +538,7 @@ function RecapPage() {
                     </section>
 
                     <div className="grid gap-5 lg:grid-cols-[1.2fr_0.8fr]">
-                        <section
-                            className="border-line rounded-xl border p-5 shadow-sm"
-                            style={{ background: "var(--card-bg)" }}
-                        >
+                        <section className="border-line bg-canvas rounded-xl border p-5 shadow-sm">
                             <div className="mb-4">
                                 <h2 className="text-fg text-sm font-semibold">
                                     What drove the effort
@@ -590,10 +578,7 @@ function RecapPage() {
                             </div>
                         </section>
 
-                        <section
-                            className="border-line rounded-xl border p-5 shadow-sm"
-                            style={{ background: "var(--card-bg)" }}
-                        >
+                        <section className="border-line bg-canvas rounded-xl border p-5 shadow-sm">
                             <div className="mb-4">
                                 <h2 className="text-fg text-sm font-semibold">
                                     Effort distribution
@@ -659,10 +644,7 @@ function RecapPage() {
                         </section>
                     </div>
 
-                    <section
-                        className="border-line overflow-hidden rounded-xl border shadow-sm"
-                        style={{ background: "var(--card-bg)" }}
-                    >
+                    <section className="border-line bg-canvas overflow-hidden rounded-xl border shadow-sm">
                         <div className="flex items-baseline justify-between gap-3 px-4 py-4">
                             <div>
                                 <h2 className="text-fg text-sm font-semibold">
@@ -682,10 +664,7 @@ function RecapPage() {
                         ))}
                     </section>
 
-                    <section
-                        className="border-line rounded-xl border p-5 shadow-sm"
-                        style={{ background: "var(--card-bg)" }}
-                    >
+                    <section className="border-line bg-canvas rounded-xl border p-5 shadow-sm">
                         <div className="mb-4">
                             <h2 className="text-fg text-sm font-semibold">
                                 Where the effort went

@@ -1,3 +1,4 @@
+import { Anchor, Text } from "@mantine/core";
 import { useLayoutEffect, useRef, useState } from "react";
 import ReactMarkdown, { type Components } from "react-markdown";
 import { markdownOptions } from "../lib/markdown-options";
@@ -47,9 +48,9 @@ const shared: Components = {
 const compactComponents: Components = {
     ...shared,
     a: ({ children }) => (
-        <span style={{ color: "var(--mantine-primary-color-filled)" }}>
+        <Text component="span" inherit c="var(--mantine-color-anchor)">
             {children}
-        </span>
+        </Text>
     ),
     h1: ({ children }) => <p className="text-fg font-semibold">{children}</p>,
     h2: ({ children }) => <p className="text-fg font-semibold">{children}</p>,
@@ -76,15 +77,16 @@ const compactComponents: Components = {
 const fullComponents: Components = {
     ...shared,
     a: ({ href, children }) => (
-        <a
+        <Anchor
             href={typeof href === "string" ? href : undefined}
             target="_blank"
             rel="noreferrer"
-            className="underline underline-offset-2"
-            style={{ color: "var(--mantine-primary-color-filled)" }}
+            inherit
+            underline="always"
+            className="underline-offset-2"
         >
             {children}
-        </a>
+        </Anchor>
     ),
     h1: ({ children }) => (
         <div className="text-fg mb-2 mt-7 text-lg font-semibold">

@@ -10,11 +10,16 @@ const result = await build({
         contents: `
             import { createElement } from "react";
             import { renderToStaticMarkup } from "react-dom/server";
+            import { MantineProvider } from "@mantine/core";
+            import { argusTheme } from "./src/theme.ts";
             import { MarkdownPreview } from "./src/components/MarkdownPreview.tsx";
+            const render = (text, clamp) => renderToStaticMarkup(
+                createElement(MantineProvider, { theme: argusTheme },
+                    createElement(MarkdownPreview, { text, clamp })));
             export const renderFull = (text) =>
-                renderToStaticMarkup(createElement(MarkdownPreview, { text, clamp: false }));
+                render(text, false);
             export const renderClamped = (text) =>
-                renderToStaticMarkup(createElement(MarkdownPreview, { text }));
+                render(text, true);
         `,
         resolveDir: process.cwd(),
         loader: "js",
