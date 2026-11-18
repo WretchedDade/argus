@@ -23,7 +23,13 @@ const result = await build({
             import { NotificationsBell } from "./src/components/NotificationsBell.tsx";
             import { Toaster } from "./src/components/Toaster.tsx";
             import { dismissToast, pushToast } from "./src/lib/toast.ts";
-            import { AuthorTreemap, CoverageWaffle, Donut, LatencyScatter, ReviewCalendar, ReviewRhythm, VoteBars } from "./src/components/Charts.tsx";
+            import { AuthorTreemap } from "./src/components/charts/AuthorTreemap.tsx";
+            import { CoverageWaffle } from "./src/components/charts/CoverageWaffle.tsx";
+            import { Donut } from "./src/components/charts/Donut.tsx";
+            import { LatencyScatter } from "./src/components/charts/LatencyScatter.tsx";
+            import { ReviewCalendar } from "./src/components/charts/ReviewCalendar.tsx";
+            import { ReviewRhythm } from "./src/components/charts/ReviewRhythm.tsx";
+            import { VoteBars } from "./src/components/charts/VoteBars.tsx";
             const render = (child, client = new QueryClient()) => renderToStaticMarkup(
                 h(MantineProvider, { theme: argusTheme }, h(QueryClientProvider, { client }, child)));
             export const longChartLegend = () => render(h(ChartLegend, {

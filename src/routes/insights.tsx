@@ -14,17 +14,15 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { configQuery, insightsQuery, type InsightsCount } from "../lib/api";
-import {
-    AuthorTreemap,
-    CoverageWaffle,
-    Donut,
-    HBars,
-    LatencyScatter,
-    LoadChart,
-    ReviewCalendar,
-    ReviewRhythm,
-    VoteBars,
-} from "../components/Charts";
+import { AuthorTreemap } from "../components/charts/AuthorTreemap";
+import { CoverageWaffle } from "../components/charts/CoverageWaffle";
+import { Donut } from "../components/charts/Donut";
+import { HBars } from "../components/charts/HBars";
+import { LatencyScatter } from "../components/charts/LatencyScatter";
+import { LoadChart } from "../components/charts/LoadChart";
+import { ReviewCalendar } from "../components/charts/ReviewCalendar";
+import { ReviewRhythm } from "../components/charts/ReviewRhythm";
+import { VoteBars } from "../components/charts/VoteBars";
 import { authorType, fmtHours, shortRepo } from "../lib/format";
 
 export const Route = createFileRoute("/insights")({

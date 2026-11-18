@@ -127,7 +127,7 @@ The client is a single-page app in `src/`:
 - `src/routes/` holds one file per route. Vite generates `src/routeTree.gen.ts` from it. Do not edit or commit that file.
 - `src/lib/api.ts` holds the response types, the `api` fetch helpers, and the `queryOptions` for each endpoint.
 - API domain calls use `hono/client` with `AppType` from the server.
-- `src/components/` holds shared components. Charts are in `Charts.tsx`.
+- `src/components/` holds shared components. Each chart has a file in `src/components/charts/`.
 
 `AppearanceProvider` wraps the client in Mantine. It stores mode and accent
 choices in browser storage under `argus.appearance`. Automatic mode reads the
