@@ -43,10 +43,9 @@ Appearance choices are saved in browser storage for the current origin. They
 are separate from **Save settings** and are not stored in the Argus database.
 Different browsers or canvas ports can have different choices.
 
-Controls, menus, filters, notifications, and the load drawer use Mantine.
-Throughput, load, horizontal bars, verdict mixes, and donuts use Mantine Charts.
-The streamgraph, labeled scatter plots, bubble grid, and treemap keep their
-custom Recharts layouts. Chart text, grids, and surfaces follow the selected mode.
+Controls, forms, PR cards, notifications, and charts use Mantine.
+Load context bands use Recharts inside the Mantine chart.
+Chart text, grids, and surfaces follow the selected mode.
 Verdict and category colors stay distinct from the accent.
 The radar stays in the header and uses the selected accent. Its sweep speeds
 up while a poll runs. The header uses a neutral surface in both modes.
@@ -480,9 +479,9 @@ parts connect and where the data lives.
 
 ## Stack
 
-- React 18 + TanStack Router + TanStack Query
+- React 19 + TanStack Router + TanStack Query + TanStack Form
 - Mantine for controls, menus, filters, and notifications
 - Tailwind v4 (follows the app light/dark theme)
-- Recharts for the insights charts
+- Mantine Charts over Recharts for the insights charts
 - Vite (client) and esbuild (server bundle)
 - `server/extension.ts` compiled to `extension.mjs` (the loadable entry)

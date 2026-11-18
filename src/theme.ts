@@ -9,6 +9,7 @@ import { ChartLegend } from "@mantine/charts";
 
 export const argusTheme = createTheme({
     autoContrast: true,
+    respectReducedMotion: true,
     defaultRadius: "md",
     fontFamily: 'ui-sans-serif, system-ui, "Segoe UI", sans-serif',
     components: {

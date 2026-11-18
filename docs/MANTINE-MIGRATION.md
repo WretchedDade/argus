@@ -7,7 +7,7 @@ and deferred. Its route, scoring, and stored data remain available.
 
 The migration does not change the database schema, stored review history, or
 metric definitions. The tracked inventory adds an all-history read endpoint.
-No release version change is selected.
+The release version is 0.14.0.
 
 ## Shared decisions
 

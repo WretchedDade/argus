@@ -138,22 +138,24 @@ choices override this detection. Host palettes and accents are not imported.
 The saved `forceRadarAnimation` choice overrides reduced motion for the radar
 sweep only. Existing appearance settings default to no override.
 
-Controls, menus, filters, notifications, and the load drawer use Mantine.
+Controls, forms, PR cards, and notifications use Mantine.
 `src/theme.ts` defines shared component defaults and badge color variables.
-PR cards use `Card.Section` to separate the linked body from footer controls.
+PR cards use `Card.Section` to separate headers, descriptions, and footer controls.
+Titles navigate. Footer controls do not sit inside links.
 The description fade uses an alpha mask, so it follows the surface on hover.
 TanStack Form still owns the configuration form. Appearance has its own Settings
 tab. Its choices apply separately and do not enter that form.
-Throughput, load, horizontal bars, verdict mixes, and donuts use Mantine Charts
-over the existing Recharts dependency. The streamgraph, labeled scatter plots,
-bubble grid, and treemap keep their custom Recharts layouts.
+Insights uses Mantine Charts over the existing Recharts dependency for load,
+bars, donuts, scatter plots, treemaps, waffles, and the calendar heatmap.
+Load context bands keep Recharts `ReferenceArea` and `Label` inside CompositeChart.
+Native transitions and animations follow the system reduced-motion preference.
 Tailwind handles page layout and domain-specific visuals. Its semantic color
 utilities read Mantine tokens. Chart text, grids, and surfaces use those tokens.
 Keep verdict and category palettes distinct from the user-selected accent.
 Tinted tags mix a small part of their category color into muted theme text.
 Use stronger category colors for their backgrounds and borders.
-The [Mantine migration plan](MANTINE-MIGRATION.md) lists the remaining component
-replacements and proposed layout changes.
+The [Mantine migration record](MANTINE-MIGRATION.md) lists the completed surfaces,
+intentional custom code, and verification limits.
 
 There is no dev server. `npm run dev` runs a watch build, and you reload the canvas to see client changes. A server change needs a reload of extensions (or a restart of the Copilot app).
 

@@ -17,7 +17,13 @@ export function RefreshButton() {
             );
         },
         onSettled: () => {
-            for (const key of ["prs", "activity", "runs", "health"]) {
+            for (const key of [
+                "prs",
+                "all-prs",
+                "activity",
+                "runs",
+                "health",
+            ]) {
                 void qc.invalidateQueries({ queryKey: [key] });
             }
         },
