@@ -62,7 +62,10 @@ npm run format        # fix formatting
 npm run format:check  # check formatting
 npm run typecheck     # TypeScript
 npm run lint          # ESLint (typed rules, React hooks, import boundaries)
+npm run knip          # unused client files, exports, and types
 ```
+
+Knip checks `src/`. Routes are entry points, so the check does not need the generated route tree. Exports used in their own file can remain available to render tests.
 
 The pre-commit hook formats staged files with Prettier and fixes lint errors with ESLint. Use four-space indentation (set in `.prettierrc.json`). Do not edit generated files, such as `src/routeTree.gen.ts`.
 

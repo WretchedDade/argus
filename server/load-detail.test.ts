@@ -3,6 +3,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
+import { test, type TestContext } from "node:test";
 import { ArgusStore } from "./db.ts";
 
 const dir = mkdtempSync(path.join(tmpdir(), "argus-load-test-"));
@@ -109,3 +110,176 @@ try {
 } finally {
     rmSync(dir, { recursive: true, force: true });
 }
+
+function loadFixture(t: TestContext, arrivals: string[]) {
+    const previousTimezone = process.env.TZ;
+    process.env.TZ = "UTC";
+    t.after(() => {
+        if (previousTimezone === undefined) delete process.env.TZ;
+        else process.env.TZ = previousTimezone;
+    });
+    t.mock.timers.enable({
+        apis: ["Date"],
+        now: Date.parse("2026-11-18T12:00:00Z"),
+    });
+    const dir = mkdtempSync(path.join(tmpdir(), "argus-load-boundaries-"));
+    const file = path.join(dir, "argus.db");
+    const store = new ArgusStore(file);
+    const db = new DatabaseSync(file);
+    t.after(() => {
+        db.close();
+        store.close();
+        rmSync(dir, { recursive: true, force: true });
+    });
+    const canonical = (n: number) => `https://example.test/pr/${n}`;
+    for (const [i, addedAt] of arrivals.entries()) {
+        store.upsertPr({
+            canonical: canonical(i + 1),
+            org: "o",
+            project: "p",
+            repo: "r",
+            number: i + 1,
+            title: `PR ${i + 1}`,
+            description: "",
+            author: "a",
+            role: "reviewer",
+            isVendor: false,
+            isDraft: false,
+            teams: [],
+            lastCommitSha: null,
+            lastCommitAt: null,
+            prCreatedAt: null,
+            sourceBranch: null,
+            targetBranch: null,
+        });
+        db.prepare(
+            "UPDATE prs SET added_at = ?, updated_at = ? WHERE canonical = ?",
+        ).run(addedAt, "2026-11-18T09:00:00Z", canonical(i + 1));
+    }
+    return { store, db, canonical };
+}
+
+test("daily inflow rolls to custom workdays while weekly inflow keeps arrival dates", (t) => {
+    const { store } = loadFixture(t, [
+        "2026-11-13T15:59:00Z",
+        "2026-11-13T16:00:00Z",
+        "2026-11-14T10:00:00Z",
+        "2026-11-16T16:00:00Z",
+        "2026-11-17T10:00:00Z",
+    ]);
+    const work = { endHour: 16, days: [1, 3, 5] };
+    const load = store.computeInsights(30, work).load;
+    for (const [day, expected] of [
+        ["2026-11-13", [1]],
+        ["2026-11-16", [2, 3]],
+        ["2026-11-17", []],
+        ["2026-11-18", [4, 5]],
+    ] as const) {
+        const detail = store.loadDayDetail(day, 30, work);
+        assert.deepEqual(
+            detail.arrived.map((p) => p.number),
+            expected,
+            day,
+        );
+        assert.equal(
+            load.daily.find((bucket) => bucket.key === day)?.inflow,
+            expected.length,
+            day,
+        );
+    }
+    for (const [week, expected] of [
+        ["2026-11-09", [1, 2, 3]],
+        ["2026-11-16", [4, 5]],
+    ] as const) {
+        const detail = store.loadWeekDetail(week, 30, work);
+        assert.deepEqual(
+            detail.arrived.map((p) => p.number),
+            expected,
+            week,
+        );
+        assert.equal(
+            load.weekly.find((bucket) => bucket.key === week)?.inflow,
+            expected.length,
+            week,
+        );
+    }
+});
+
+test("chart and drill-down load agree on verdict, coverage, closure, and stale boundaries", (t) => {
+    const { store, db, canonical } = loadFixture(
+        t,
+        new Array<string>(13).fill("2026-11-13T09:00:00Z"),
+    );
+    const verdicts = ["approved", "suggestions", "waiting", "rejected"];
+    for (const [i, verdict] of verdicts.entries()) {
+        db.prepare(
+            "UPDATE prs SET review_state = ?, reviewed_at = ? WHERE number = ?",
+        ).run(verdict, "2026-11-16T13:00:00Z", i + 1);
+    }
+    db.exec(`
+UPDATE prs SET review_state = 'approved', updated_at = '2026-11-16T13:00:00Z' WHERE number = 5;
+UPDATE prs SET review_state = 'covered', updated_at = '2026-11-16T00:00:00Z' WHERE number = 6;
+UPDATE prs SET updated_at = '2026-11-15T00:00:00Z' WHERE number = 8;
+UPDATE prs SET snooze_mode = 'time', snoozed_until = '2026-11-20T12:00:00Z' WHERE number = 9;
+UPDATE prs SET role = 'author' WHERE number = 10;
+UPDATE prs SET is_draft = 1 WHERE number = 11;
+UPDATE prs SET dismissed = 1 WHERE number = 12;
+UPDATE prs SET out_of_scope = 1 WHERE number = 13;
+`);
+    store.appendEvent(canonical(7), "closed", {}, "2026-11-16T00:00:00Z");
+    store.appendEvent(canonical(7), "closed", {}, "2026-11-17T12:00:00Z");
+    for (const at of [
+        "2026-11-16T13:00:00Z",
+        "2026-11-16T14:00:00Z",
+        "2026-11-17T10:00:00Z",
+    ]) {
+        store.appendEvent(
+            canonical(1),
+            "reviewed",
+            { verdict: "approved" },
+            at,
+        );
+    }
+    const load = store.computeInsights(1).load;
+    for (const [day, expected] of [
+        ["2026-11-13", [1, 2, 3, 4, 5, 6, 7, 8, 9]],
+        ["2026-11-15", [1, 2, 3, 4, 5, 6, 7, 8, 9]],
+        ["2026-11-16", [1, 2, 3, 4, 5, 9]],
+        ["2026-11-17", [9]],
+        ["2026-11-18", [9]],
+    ] as const) {
+        const detail = store.loadDayDetail(day, 1);
+        assert.deepEqual(
+            detail.onPlate.map((p) => p.number),
+            expected,
+            day,
+        );
+        if (day === "2026-11-15") continue;
+        const bucket = load.daily.find((bucket) => bucket.key === day);
+        assert.deepEqual(
+            bucket,
+            {
+                key: day,
+                inflow: detail.arrived.length,
+                throughput: detail.reviewed.length,
+                backlog: expected.length,
+            },
+            day,
+        );
+    }
+    for (const week of ["2026-11-09", "2026-11-16"]) {
+        const detail = store.loadWeekDetail(week, 1);
+        assert.deepEqual(
+            load.weekly.find((bucket) => bucket.key === week),
+            {
+                key: week,
+                inflow: detail.arrived.length,
+                throughput: detail.reviewed.length,
+                backlog: detail.onPlate.length,
+            },
+        );
+    }
+    assert.equal(store.loadDayDetail("2026-11-16", 1).reviewed.length, 1);
+    assert.equal(store.loadDayDetail("2026-11-17", 1).reviewed.length, 1);
+    assert.equal(store.loadWeekDetail("2026-11-16", 1).reviewed.length, 1);
+});

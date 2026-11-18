@@ -6,15 +6,7 @@ import { SLOW_STALE_TIME_MS } from "./query-defaults";
 import { ApiError } from "./errors";
 
 import { PrsResponseSchema } from "#shared/schemas/pr";
-import type {
-    AuthorMeta,
-    Lane,
-    Pr,
-    PrReviewState,
-    PrRole,
-    PrState,
-    ReviewActionMode,
-} from "#shared/schemas/pr";
+import type { Pr, PrReviewState, ReviewActionMode } from "#shared/schemas/pr";
 
 import { NoticesResponseSchema, type Notice } from "#shared/schemas/notice";
 import {
@@ -30,36 +22,18 @@ import {
     InsightsResponseSchema,
     LoadDetailResponseSchema,
     WeeklyReviewFactsResponseSchema,
-    type Insights,
-    type InsightsAuthoredPr,
     type InsightsCount,
     type InsightsLoadBucket,
-    type InsightsWaiting,
-    type LoadDayPr,
-    type LoadDetail,
     type WeeklyReviewEffort,
     type WeeklyReviewFacts,
     type WeeklyReviewPr,
 } from "#shared/schemas/insights";
 
-export type {
-    AuthorMeta,
-    Lane,
-    Pr,
-    PrReviewState,
-    PrRole,
-    PrState,
-    ReviewActionMode,
-};
+export type { Pr, PrReviewState, ReviewActionMode };
 export type { Notice, ActivityEntry, ArgusConfig, Period };
 export type {
-    Insights,
-    InsightsAuthoredPr,
     InsightsCount,
     InsightsLoadBucket,
-    InsightsWaiting,
-    LoadDayPr,
-    LoadDetail,
     WeeklyReviewEffort,
     WeeklyReviewFacts,
     WeeklyReviewPr,
@@ -92,7 +66,7 @@ export interface ArchivableSession {
     sessionId: string;
 }
 
-export interface StaleCandidate {
+interface StaleCandidate {
     canonical: string;
     repo: string;
     number: number;
@@ -115,7 +89,7 @@ export interface RepoScopeRow {
     hidden: number;
 }
 
-export interface PollerStatus {
+interface PollerStatus {
     me: string | null;
     authOk: boolean;
     running: boolean;
@@ -199,7 +173,6 @@ import { queryOptions } from "@tanstack/react-query";
 
 export type RunDetail = InferResponseType<typeof client.run.$get, 200>;
 export type RunEvent = RunDetail["changes"][number];
-export type ChangeFeed = InferResponseType<typeof client.changes.$get>;
 
 async function getJson<T>(path: string): Promise<T> {
     return apiJson<T>(
@@ -311,13 +284,6 @@ export const api = {
         if (!res.ok) throw new Error(`review -> ${res.status}`);
         return readJson(res);
     },
-    archivedPrs: async () =>
-        (
-            await apiJson<{ prs: Pr[] }>(
-                await client.archived.$get(),
-                "/api/archived",
-            )
-        ).prs,
     stalePreview: async () =>
         apiJson<StalePreview>(
             await client.archive.preview.$get(),
@@ -362,8 +328,6 @@ export const api = {
         if (!res.ok) throw new Error(`archive -> ${res.status}`);
         return readJson(res);
     },
-    changes: async () =>
-        apiJson<ChangeFeed>(await client.changes.$get(), "/api/changes"),
     notices: async () => {
         const res = await client.notices.$get();
         return NoticesResponseSchema.parse(await apiJson(res, "/api/notices"))
@@ -435,16 +399,6 @@ export const api = {
                 `/api/load/detail?key=${key}&granularity=${granularity}`,
             ),
         ).detail,
-    markChangesRead: async (canonical: string): Promise<void> => {
-        const res = await client.changes.read.$post({
-            json: { canonical },
-        });
-        if (!res.ok) throw new Error(`changes/read -> ${res.status}`);
-    },
-    markAllChangesRead: async (): Promise<void> => {
-        const res = await client.changes["read-all"].$post();
-        if (!res.ok) throw new Error(`changes/read-all -> ${res.status}`);
-    },
 };
 
 // Shared query options so route loaders (prefetch) and useQuery use one key.
@@ -452,11 +406,6 @@ export const prsQuery = queryOptions({
     queryKey: ["prs"],
     queryFn: api.prs,
     refetchInterval: 10_000,
-});
-export const archivedQuery = queryOptions({
-    queryKey: ["archived"],
-    queryFn: api.archivedPrs,
-    refetchInterval: 15_000,
 });
 export const allPrsQuery = queryOptions({
     queryKey: ["all-prs"],
@@ -487,11 +436,6 @@ export const updateStatusQuery = queryOptions({
     queryFn: api.updateStatus,
     refetchInterval: (query) =>
         isUpdateRunning(query.state.data?.phase) ? 1_000 : false,
-});
-export const changesQuery = queryOptions({
-    queryKey: ["changes"],
-    queryFn: api.changes,
-    refetchInterval: 12_000,
 });
 export const insightsQuery = queryOptions({
     queryKey: ["insights"],

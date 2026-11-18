@@ -79,6 +79,8 @@ For authored PRs, policy and comment fetches report success separately. A failed
 
 Some metrics also read `prs` snapshot columns. For example, review latency uses `prs.reviewed_at` and `prs.reviewed_sha_authored_at`, and the backlog and authored-PR summaries use snapshot rows.
 
+`server/store/load.ts` holds the pure load rules shared by insights and drill-downs: eligibility, business-day rollover, and end times. The store supplies the time and work schedule. Daily inflow rolls arrivals to the next workday when needed. Weekly inflow keeps the original arrival dates.
+
 Other tables: `poll_runs`, `activity_log`, `settings` (key/value, holds the saved config overrides), `changes_read`, `repo_scopes`, and `poll_lease`.
 
 Insights uses the machine's local timezone for calendar dates and Monday-start

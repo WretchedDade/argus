@@ -11,6 +11,7 @@ import {
     type WeeklyReviewPr,
 } from "../lib/api";
 import { shortRepo } from "../lib/format";
+import { countReviewSittings } from "../lib/review-rhythm";
 import { pushToast } from "../lib/toast";
 import { SegToggle } from "../components/SegToggle";
 
@@ -77,7 +78,6 @@ type BalanceDay = {
 };
 type EffortKey = Exclude<keyof WeeklyReviewEffort, "score">;
 
-const SITTING_GAP_MIN = 45;
 const EFFORT_META: {
     key: EffortKey;
     label: string;
@@ -153,13 +153,9 @@ function computeRhythm(
     let sittings = 0;
     let busiest: { key: string; count: number } | null = null;
     for (const [key, minutes] of byDay) {
-        const sorted = minutes.slice().sort((a, b) => a - b);
-        let count = sorted.length ? 1 : 0;
-        for (let i = 1; i < sorted.length; i++)
-            if (sorted[i] - sorted[i - 1] > SITTING_GAP_MIN) count++;
-        sittings += count;
-        if (!busiest || sorted.length > busiest.count)
-            busiest = { key, count: sorted.length };
+        sittings += countReviewSittings(minutes);
+        if (!busiest || minutes.length > busiest.count)
+            busiest = { key, count: minutes.length };
     }
     const windowDays = days.filter((day) => {
         const time = Date.parse(day.key);

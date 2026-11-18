@@ -21,6 +21,7 @@
         "test:coverage": "node --test --experimental-test-coverage \"server/**/*.test.ts\" \"shared/**/*.test.ts\" \"src/**/*.test.ts\" \"scripts/**/*.test.ts\" && npm test --prefix packages/ado-client",
         "typecheck": "tsc --noEmit",
         "lint": "eslint .",
+        "knip": "knip --include files,exports,types",
         "format": "prettier --write .",
         "format:check": "prettier --check ."
     },
@@ -69,11 +70,22 @@
         "eslint-plugin-react-hooks": "^7.1.1",
         "globals": "^17.13.0",
         "husky": "9.1.7",
+        "knip": "^6.45.1",
         "lint-staged": "17.6.0",
         "prettier": "3.9.10",
         "tailwindcss": "^4.0.0",
         "typescript": "^5.7.0",
         "typescript-eslint": "^8.72.1",
         "vite": "^6.0.0"
+    },
+    "knip": {
+        "entry": [
+            "src/routes/**/*.{ts,tsx}",
+            "src/**/*.test.ts"
+        ],
+        "project": [
+            "src/**/*.{ts,tsx,css}"
+        ],
+        "ignoreExportsUsedInFile": true
     }
 }

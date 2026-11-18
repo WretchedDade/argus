@@ -73,7 +73,6 @@ const ReviewModelSchema = () =>
 export const ConfigSchema = z.object({
     me: z.string().max(320).nullable(),
     adoAuth: z.enum(["az", "broker"]),
-    avatarUrl: z.string().max(2048),
     orgUrl: optional(z.string(), ORG_URL, "must be an http(s) URL"),
     orgSlug: optional(z.string(), SLUG, "contains unsafe characters"),
     project: optional(z.string(), PROJECT_NAME, "contains unsafe characters"),
@@ -184,7 +183,6 @@ function emptyReviewModels(): Record<ReviewMode, ReviewModelSetting> {
 const SAFE_DEFAULTS: ArgusConfig = {
     me: null,
     adoAuth: "az",
-    avatarUrl: "",
     orgUrl: "",
     orgSlug: "",
     project: "",
@@ -232,7 +230,6 @@ function envConfig(): ArgusConfig {
     return {
         me: process.env.ARGUS_ME ?? null,
         adoAuth: process.env.ARGUS_ADO_AUTH === "broker" ? "broker" : "az",
-        avatarUrl: process.env.ARGUS_AVATAR_URL ?? "",
         orgUrl:
             process.env.ARGUS_ORG_URL ??
             (orgSlug ? `https://dev.azure.com/${orgSlug}` : ""),

@@ -10,7 +10,6 @@ const empty = { model: "", reasoningEffort: "" };
 const config: ArgusConfig = {
     me: null,
     adoAuth: "az",
-    avatarUrl: "",
     orgUrl: "https://dev.azure.com/org",
     orgSlug: "org",
     project: "proj",

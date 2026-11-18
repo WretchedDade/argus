@@ -29,6 +29,11 @@ import { STALE_ARCHIVE_DAYS } from "./types.ts";
 import type { Plan, Snapshot } from "./ado/reconcile.ts";
 import type { ConfigOverrides } from "./config.ts";
 import { runMigrations } from "./store/migrations.ts";
+import {
+    loadArrivalTime,
+    loadEndTime,
+    rollToBusinessDay,
+} from "./store/load.ts";
 import { prep } from "./store/prep.ts";
 import * as activity from "./store/activity.ts";
 import * as events from "./store/events.ts";
@@ -410,9 +415,7 @@ export class ArgusStore {
 
     // --- Insights: aggregate analytics computed on demand from events + PRs ---
 
-    // Per-day breakdown for the Load & capacity drill-down: which PRs arrived,
-    // which you reviewed, and which were on your plate on a given local day. The
-    // bucket logic mirrors computeInsights's daily series (must stay in sync).
+    // The local-day drill-down uses the same load rules as computeInsights.
     loadDayDetail(
         dayKey: string,
         recencyDays: number,
@@ -427,25 +430,6 @@ export class ArgusStore {
         const dayStart = new Date(y, m - 1, d).getTime();
         const dayEnd = localDayStart(dayStart, 1);
 
-        const rollToBusinessDay = (ms: number): number => {
-            const dt = new Date(ms);
-            const day = new Date(dt.getFullYear(), dt.getMonth(), dt.getDate());
-            if (
-                dt.getHours() >= work.endHour ||
-                !work.days.includes(dt.getDay())
-            )
-                day.setDate(day.getDate() + 1);
-            let guard = 0;
-            while (!work.days.includes(day.getDay()) && guard++ < 8)
-                day.setDate(day.getDate() + 1);
-            return day.getTime();
-        };
-        const VERDICT = new Set([
-            "approved",
-            "suggestions",
-            "waiting",
-            "rejected",
-        ]);
         const closedTs = new Map<string, number>();
         for (const r of this.#prep(
             "SELECT canonical, MIN(ts) AS ts FROM pr_events WHERE type = 'closed' GROUP BY canonical",
@@ -489,27 +473,15 @@ export class ArgusStore {
         const arrived: LoadDayPr[] = [];
         const onPlate: LoadDayPr[] = [];
         for (const p of prs) {
-            if (p.role === "author" || p.dismissed || p.outOfScope || p.isDraft)
-                continue;
-            const start = Date.parse(p.addedAt);
-            if (!Number.isFinite(start)) continue;
-            const rolled = rollToBusinessDay(start);
+            const start = loadArrivalTime(p);
+            if (start === null) continue;
+            const rolled = rollToBusinessDay(start, work);
             if (rolled >= dayStart && rolled < dayEnd) arrived.push(row(p));
-            const ends: number[] = [];
-            const cl = closedTs.get(p.canonical);
-            if (cl) ends.push(cl);
-            if (p.reviewState === "covered") ends.push(Date.parse(p.updatedAt));
-            else if (p.reviewState && VERDICT.has(p.reviewState))
-                ends.push(
-                    localDayStart(
-                        p.reviewedAt
-                            ? Date.parse(p.reviewedAt)
-                            : Date.parse(p.updatedAt),
-                        1,
-                    ),
-                );
-            ends.push(Date.parse(p.updatedAt) + staleMs);
-            const end = ends.length ? Math.min(...ends) : nowMs;
+            const end = loadEndTime(p, {
+                closedAt: closedTs.get(p.canonical) || undefined,
+                staleAt: Date.parse(p.updatedAt) + staleMs,
+                nowMs,
+            });
             if (start < dayEnd && end > dayStart) onPlate.push(row(p));
         }
 
@@ -671,25 +643,6 @@ export class ArgusStore {
         const nowMs = Date.now();
         const staleMs = recencyDays * 86_400_000;
         const weeks = recentWeeks(8);
-
-        // Roll an arrival timestamp forward to the business day the PR could actually
-        // be picked up: after-hours arrivals (>= workEndHour) and non-work-day
-        // arrivals move to the next work day's start. So a Friday-evening or weekend
-        // PR counts as Monday inflow instead of vanishing from the weekday view.
-        const rollToBusinessDay = (ms: number): number => {
-            const d = new Date(ms);
-            const day = new Date(d.getFullYear(), d.getMonth(), d.getDate());
-            if (
-                d.getHours() >= work.endHour ||
-                !work.days.includes(d.getDay())
-            ) {
-                day.setDate(day.getDate() + 1);
-            }
-            let guard = 0;
-            while (!work.days.includes(day.getDay()) && guard++ < 8)
-                day.setDate(day.getDate() + 1);
-            return day.getTime();
-        };
 
         // Verdict reviews (one recordReview per completed review), with their PR.
         const reviewed = this.#prep(
@@ -1333,40 +1286,17 @@ export class ArgusStore {
         // entirely: your own PRs, dismissed, out-of-scope, and drafts (not ready).
         const intervals: { start: number; end: number }[] = [];
         const inflowMs: number[] = [];
-        const VERDICT_STATES = new Set([
-            "approved",
-            "suggestions",
-            "waiting",
-            "rejected",
-        ]);
         for (const p of prs) {
-            if (p.role === "author" || p.dismissed || p.outOfScope || p.isDraft)
-                continue;
-            const start = Date.parse(p.addedAt);
-            if (!Number.isFinite(start)) continue;
+            const start = loadArrivalTime(p);
+            if (start === null) continue;
             inflowMs.push(start);
-            const ends: number[] = [];
             const cl = closedTs.get(p.canonical);
-            if (cl) ends.push(Date.parse(cl));
-            // A teammate covered the team's review — off your plate from when it settled.
-            if (p.reviewState === "covered") ends.push(Date.parse(p.updatedAt));
-            // You cast a verdict (approved/suggestions/waiting/rejected): it was on your
-            // plate through that day, then leaves the next day — the ball is now in the
-            // author's court. Verdict day = when you recorded it, else when it settled.
-            else if (p.reviewState && VERDICT_STATES.has(p.reviewState)) {
-                ends.push(
-                    localDayStart(
-                        p.reviewedAt
-                            ? Date.parse(p.reviewedAt)
-                            : Date.parse(p.updatedAt),
-                        1,
-                    ),
-                );
-            }
-            // Stale: idle past the recency window, no longer live load.
             const staleCut = Date.parse(p.updatedAt) + staleMs;
-            if (Number.isFinite(staleCut)) ends.push(staleCut);
-            const end = ends.length ? Math.min(...ends) : nowMs;
+            const end = loadEndTime(p, {
+                closedAt: cl ? Date.parse(cl) : undefined,
+                staleAt: Number.isFinite(staleCut) ? staleCut : undefined,
+                nowMs,
+            });
             if (end > start) intervals.push({ start, end });
         }
         const WINDOW_DAYS = 84; // 12 weeks, enough to derive both series
@@ -1394,7 +1324,7 @@ export class ArgusStore {
         // instead of vanishing from the weekday-only day chart.
         const rolledInflow = new Array<number>(WINDOW_DAYS).fill(0);
         for (const ms of inflowMs) {
-            const i = dayIndex(rollToBusinessDay(ms));
+            const i = dayIndex(rollToBusinessDay(ms, work));
             if (i >= 0 && i < WINDOW_DAYS) rolledInflow[i]++;
         }
         const dailyReviewed = new Set<string>();

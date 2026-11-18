@@ -274,7 +274,6 @@ export function SettingsForm({ config: cfg }: { config: ArgusConfig }) {
         defaultValues: {
             me: cfg.me ?? "",
             adoAuth: cfg.adoAuth,
-            avatarUrl: cfg.avatarUrl,
             project: cfg.project,
             orgUrl: cfg.orgUrl,
             orgSlug: cfg.orgSlug,
@@ -306,7 +305,6 @@ export function SettingsForm({ config: cfg }: { config: ArgusConfig }) {
                 await configApi.save({
                     me: value.me.trim() || null,
                     adoAuth: value.adoAuth,
-                    avatarUrl: value.avatarUrl.trim(),
                     project: value.project.trim(),
                     orgUrl: value.orgUrl.trim(),
                     orgSlug: value.orgSlug.trim(),
@@ -1060,32 +1058,6 @@ export function SettingsForm({ config: cfg }: { config: ArgusConfig }) {
                                                         label="Account email override"
                                                         description="Leave blank to use the signed-in Azure DevOps account."
                                                         placeholder="Auto-detect"
-                                                        name={field.name}
-                                                        value={
-                                                            field.state.value
-                                                        }
-                                                        onBlur={
-                                                            field.handleBlur
-                                                        }
-                                                        onChange={(event) =>
-                                                            field.handleChange(
-                                                                event
-                                                                    .currentTarget
-                                                                    .value,
-                                                            )
-                                                        }
-                                                        error={field.state.meta.errors.join(
-                                                            " ",
-                                                        )}
-                                                    />
-                                                )}
-                                            </form.Field>
-                                            <form.Field name="avatarUrl">
-                                                {(field) => (
-                                                    <TextInput
-                                                        label="Avatar image"
-                                                        description="Optional image URL for your own PRs. Falls back to initials."
-                                                        placeholder="https://example.test/me.jpg"
                                                         name={field.name}
                                                         value={
                                                             field.state.value

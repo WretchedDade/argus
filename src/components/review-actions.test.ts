@@ -480,7 +480,7 @@ try {
     assert.match(authoredFooter, /2 active/);
     assert.match(authoredFooter, /3 resolved/);
     assert.match(authoredFooter, /aria-label="Reviewer votes"/);
-    assert.match(authoredFooter, /Synthetic waiting: Waiting for author/);
+    assert.match(authoredFooter, /Synthetic waiting: Waiting on author/);
     assert.match(authoredFooter, /mantine-ActionIconGroup-group/);
     assert.match(authoredFooter, /aria-label="Refresh"/);
     assert.match(authoredFooter, /aria-label="Open in Azure DevOps"/);
@@ -535,7 +535,7 @@ try {
     assert.match(votes, /aria-label="Reviewer votes"/);
     const voteLabels = [
         "Synthetic rejected: Rejected",
-        "Synthetic waiting: Waiting for author",
+        "Synthetic waiting: Waiting on author",
         "Synthetic suggestions: Approved with suggestions",
         "Synthetic approved: Approved",
     ];
