@@ -26,7 +26,9 @@ const result = await build({
             import { AuthorTreemap } from "./src/components/charts/AuthorTreemap.tsx";
             import { CoverageWaffle } from "./src/components/charts/CoverageWaffle.tsx";
             import { Donut } from "./src/components/charts/Donut.tsx";
+            import { HBars } from "./src/components/charts/HBars.tsx";
             import { LatencyScatter } from "./src/components/charts/LatencyScatter.tsx";
+            import { LoadChart } from "./src/components/charts/LoadChart.tsx";
             import { ReviewCalendar } from "./src/components/charts/ReviewCalendar.tsx";
             import { ReviewRhythm } from "./src/components/charts/ReviewRhythm.tsx";
             import { VoteBars } from "./src/components/charts/VoteBars.tsx";
@@ -83,6 +85,48 @@ const result = await build({
                 "aria-label": "Sign-in method", value: "az", onChange: () => {},
                 options: [{ v: "az", label: "Azure CLI" }, { v: "broker", label: "Windows account" }],
             }));
+            export const chartAlternatives = (empty = false) => {
+                mock.timers.enable({ apis: ["Date"], now: new Date(2026, 2, 17, 12).getTime() });
+                try {
+                    const counts = empty ? [] : [
+                        { label: "Synthetic category", count: 3 },
+                        { label: "Zero category", count: 0 },
+                    ];
+                    const items = empty ? [] : [
+                        { at: new Date(2026, 2, 16, 9, 0).toISOString(),
+                          repo: "Preview.One", team: "team-a", number: 42, title: "Synthetic review" },
+                        { at: new Date(2026, 2, 14, 9, 0).toISOString(),
+                          repo: "Preview.Weekend", team: null, number: 43, title: "Weekend review" },
+                        { at: new Date(2025, 11, 31, 9, 0).toISOString(),
+                          repo: "Preview.Old", team: null, number: 44, title: "Older review" },
+                    ];
+                    return Object.fromEntries(Object.entries({
+                        donut: h(Donut, { data: counts, unit: "comment" }),
+                        bars: h(HBars, { data: counts }),
+                        authors: h(AuthorTreemap, { authors: counts }),
+                        votes: h(VoteBars, { data: empty ? [] : [
+                            { label: "FTE", approved: 3, suggestions: 2, waiting: 1, rejected: 0 },
+                        ] }),
+                        load: h(LoadChart, { granularity: "week", data: empty ? [] : [
+                            { key: "2026-03-16", inflow: 4, throughput: 2, backlog: 5 },
+                        ], periods: [{ label: "Synthetic leave", start: "2026-03-17", end: "2026-03-18" }] }),
+                        latency: h(LatencyScatter, { points: empty ? [] : [
+                            { at: items[0].at, repo: "Preview.One", number: 42, verdict: null, hours: 2 },
+                            { at: items[0].at, repo: "Preview.Two", number: 43, verdict: "future", hours: 0 },
+                        ] }),
+                        coverage: h(CoverageWaffle, { labels: { "team-a": "Synthetic team" }, data: empty ? [] : [
+                            { team: "team-a", total: 2, me: 1, teammate: 0, needs: 1, prs: [
+                                { repo: "Preview.One", number: 42, title: "Covered review", coverage: "me" },
+                                { repo: "Preview.Two", number: 43, title: "Uncovered review", coverage: "needs" },
+                            ] },
+                        ] }),
+                        rhythm: h(ReviewRhythm, { items, labels: { "team-a": "Synthetic team" } }),
+                        calendar: h(ReviewCalendar, { items, months: 3 }),
+                    }).map(([name, chart]) => [name, render(chart)]));
+                } finally {
+                    mock.timers.reset();
+                }
+            };
             export const latencySamples = () => {
                 const at = "2026-01-02T09:00:00.000Z";
                 const props = LatencyScatter({ points: [
@@ -90,7 +134,7 @@ const result = await build({
                     { at, hours: 2, repo: "Preview.Two", number: 2, verdict: "approved" },
                     { at, hours: 2, repo: "Preview.Three", number: 3, verdict: null },
                     { at, hours: 9, repo: "Preview.Four", number: 4, verdict: "future" },
-                ] }).props;
+                ] }).props.children.props;
                 const points = props.data.flatMap((series) => series.data);
                 return {
                     points,
@@ -100,7 +144,7 @@ const result = await build({
             };
             export const treemapTile = (width, height) => {
                 const name = "Preview author with a very long display name";
-                const props = AuthorTreemap({ authors: [{ label: name, count: 3 }] }).props;
+                const props = AuthorTreemap({ authors: [{ label: name, count: 3 }] }).props.children.props;
                 const content = props.treemapProps?.content;
                 return {
                     markup: content ? render(h("svg", null, cloneElement(content, {
@@ -115,7 +159,7 @@ const result = await build({
                     { label: "Vendor", approved: 3, suggestions: 2, waiting: 1, rejected: 1 },
                     { label: "Automated", approved: 0, suggestions: 0, waiting: 1, rejected: 0 },
                 ];
-                const props = VoteBars({ data }).props;
+                const props = VoteBars({ data }).props.children.props;
                 return {
                     source: data,
                     points: props.data,
@@ -127,7 +171,7 @@ const result = await build({
                     { label: "Preview.One", count: 3 },
                     { label: "Preview.Two", count: 0 },
                     { label: "Preview.Three", count: 1 },
-                ] });
+                ] }).props.children;
                 const chart = element.props.children[0].props;
                 return {
                     segments: chart.data.map(({ name, value }) => ({ name, value })),
@@ -151,7 +195,7 @@ const result = await build({
                 const name = "Preview team with a very long display name";
                 const props = CoverageWaffle({ data, labels: {
                     "team-a": name, "team-b": name, Individual: "Not the Individual label",
-                } }).props;
+                } }).props.children.props;
                 return props.children[1].map(row => {
                     const chart = row.props.children[1].props.children.props;
                     return {
@@ -178,11 +222,12 @@ const result = await build({
                     make(12, 18, 0, 5),
                     ...Array.from({ length: 11 }, (_, i) => make(i + 1, 9, 0, i + 6)),
                 ];
-                const element = ReviewRhythm({ items, labels: { "team-a": "Preview team" } });
+                const element = ReviewRhythm({ items, labels: { "team-a": "Preview team" } }).props.children;
                 const chart = element.props.children.find(child => child?.props?.dataKey?.x === "min").props;
                 const points = chart.data.flatMap(series => series.data);
                 return {
                     points,
+                    markup: render(h(ReviewRhythm, { items, labels: { "team-a": "Preview team" } })),
                     stats: element.props.children[0].props.children.map(stat => stat.props.value),
                     names: chart.data.map(series => series.name),
                     domain: chart.xAxisProps.domain,
@@ -207,7 +252,7 @@ const result = await build({
                         make(2026, 3, 14, 9, 0),
                     ];
                     const chart = months => ReviewCalendar({ items, months })
-                        .props.children[1].props.children.props;
+                        .props.children.props.children[1].props.children.props;
                     const props = chart(3);
                     return {
                         data: props.data,
@@ -254,6 +299,7 @@ try {
         toast: (kind: "success" | "error" | "progress") => string;
         pollWarning: (authOk: boolean) => string;
         registration: (polling?: boolean) => string;
+        chartAlternatives: (empty?: boolean) => Record<string, string>;
         latencySamples: () => {
             points: Record<string, number>[];
             labels: (string | null)[];
@@ -292,6 +338,7 @@ try {
         }[];
         rhythmSamples: () => {
             points: { min: number; day: number; pointId: number }[];
+            markup: string;
             stats: string[];
             names: string[];
             domain: number[];
@@ -370,6 +417,83 @@ try {
         );
     }
     assert.match(render.signInMethod(), /aria-label="Sign-in method"/);
+    const alternatives = render.chartAlternatives();
+    const tableRows = (html: string) => {
+        const table = html.match(/<table\b[^]*?<\/table>/)?.[0];
+        assert.ok(table, "Each chart has a data table");
+        assert.match(table, /mantine-VisuallyHidden-root/);
+        assert.match(table, /<caption>[^<]+<\/caption>/);
+        assert.match(table, /<th\b[^>]*scope="col"/);
+        return [...table.matchAll(/<tr\b[^>]*>([^]*?)<\/tr>/g)]
+            .filter((match) => match[1].includes("<td"))
+            .map((match) =>
+                [...match[1].matchAll(/<td\b[^>]*>([^]*?)<\/td>/g)].map(
+                    (cell) => cell[1],
+                ),
+            );
+    };
+    for (const html of Object.values(alternatives)) {
+        assert.match(html, /role="group"[^>]*aria-label="[^"]+"/);
+        tableRows(html);
+    }
+    for (const chart of ["donut", "bars", "authors"]) {
+        assert.deepEqual(tableRows(alternatives[chart]), [
+            ["Synthetic category", "3"],
+            ["Zero category", "0"],
+        ]);
+    }
+    assert.match(alternatives.donut, /3 comments/);
+    assert.deepEqual(tableRows(alternatives.votes), [
+        ["FTE", "3", "2", "1", "0"],
+    ]);
+    assert.deepEqual(tableRows(alternatives.load), [
+        ["2026-03-16", "4", "2", "5", "Synthetic leave"],
+    ]);
+    assert.match(alternatives.load, /Peak daily load/);
+    const latencyRows = tableRows(alternatives.latency);
+    assert.equal(latencyRows.length, 2);
+    assert.ok(latencyRows[0].includes("No verdict"));
+    assert.ok(latencyRows[1].includes("future"));
+    assert.ok(latencyRows[1].includes("0"));
+    const coverageRows = tableRows(alternatives.coverage);
+    assert.equal(coverageRows.length, 2);
+    assert.ok(coverageRows.every((row) => row.includes("Synthetic team")));
+    assert.ok(coverageRows[0].includes("Covered by me"));
+    assert.ok(coverageRows[1].includes("Still needs"));
+    assert.equal(tableRows(alternatives.rhythm).length, 3);
+    assert.match(alternatives.rhythm, /Synthetic team/);
+    const calendarRows = tableRows(alternatives.calendar);
+    assert.ok(
+        calendarRows.some(
+            (row) =>
+                row[0] === "2026-03-16" && row[1] === "1" && row[2] === "1",
+        ),
+    );
+    assert.ok(
+        calendarRows.some(
+            (row) =>
+                row[0] === "2026-03-17" && row[1] === "0" && row[2] === "0",
+        ),
+    );
+    assert.ok(
+        calendarRows.every((row) => {
+            const day = new Date(row[0] + "T12:00:00").getDay();
+            return (
+                row[0] >= "2026-01-01" &&
+                row[0] <= "2026-03-17" &&
+                day > 0 &&
+                day < 6
+            );
+        }),
+    );
+    for (const [name, html] of Object.entries(render.chartAlternatives(true))) {
+        const rows = tableRows(html);
+        if (name === "calendar") {
+            assert.ok(rows.every((row) => row[1] === "0" && row[2] === "0"));
+        } else {
+            assert.match(html, /No data/);
+        }
+    }
     const legend = render.longChartLegend();
     assert.match(legend, /Preview team with a deliberately long display name/);
     assert.match(legend, /max-width:100%/);
@@ -453,6 +577,7 @@ try {
     assert.ok(longTooltip.includes("final title text"));
     assert.match(longTooltip, /white-space:normal/);
     const rhythm = render.rhythmSamples();
+    assert.equal(tableRows(rhythm.markup).length, rhythm.points.length);
     assert.deepEqual(rhythm.stats, ["16", "14", "1.1"]);
     assert.equal(rhythm.points.length, 14);
     assert.equal(new Set(rhythm.points.map((point) => point.pointId)).size, 14);

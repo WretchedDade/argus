@@ -1,6 +1,7 @@
 import { ScatterChart as MantineScatterChart } from "@mantine/charts";
 import { fmtHours, shortRepo } from "../../lib/format";
 import { VERDICT_BARS } from "./colors";
+import { AccessibleChart } from "../AccessibleChart";
 
 type LatPoint = {
     at: string;
@@ -12,6 +13,10 @@ type LatPoint = {
 
 // One dot per review: when you reviewed (x) vs how long it took (y).
 export function LatencyScatter({ points }: { points: LatPoint[] }) {
+    const verdictLabel = (verdict: string | null) =>
+        VERDICT_BARS.find(([key]) => key === verdict)?.[1] ??
+        verdict ??
+        "No verdict";
     const data = points.map((p, pointId) => ({
         ts: Date.parse(p.at),
         hours: p.hours,
@@ -30,7 +35,7 @@ export function LatencyScatter({ points }: { points: LatPoint[] }) {
     );
     if (other.length > 0)
         series.push({ name: "Other", color: "gray.6", data: other });
-    return (
+    const chart = (
         <MantineScatterChart
             h={260}
             data={series.filter((s) => s.data.length > 0)}
@@ -67,15 +72,33 @@ export function LatencyScatter({ points }: { points: LatPoint[] }) {
                         return null;
                     const point = points[value.pointId];
                     if (!point) return null;
-                    const verdict =
-                        VERDICT_BARS.find(
-                            ([key]) => key === point.verdict,
-                        )?.[1] ??
-                        point.verdict ??
-                        "No verdict";
-                    return `${shortRepo(point.repo)} #${point.number} · ${verdict}`;
+                    return `${shortRepo(point.repo)} #${point.number} · ${verdictLabel(point.verdict)}`;
                 },
             }}
         />
+    );
+    return (
+        <AccessibleChart
+            summary={`Review latency: ${points.length} reviews. Latency is measured in hours.`}
+            columns={[
+                "Reviewed",
+                "Repository",
+                "PR",
+                "Verdict",
+                "Latency (hours)",
+            ]}
+            rows={points.map((point) => [
+                new Date(point.at).toLocaleString(undefined, {
+                    dateStyle: "medium",
+                    timeStyle: "short",
+                }),
+                point.repo,
+                point.number,
+                verdictLabel(point.verdict),
+                point.hours,
+            ])}
+        >
+            {chart}
+        </AccessibleChart>
     );
 }

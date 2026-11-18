@@ -1,4 +1,5 @@
 import { BarChart as MantineBarChart } from "@mantine/charts";
+import { AccessibleChart } from "../AccessibleChart";
 
 // Horizontal bar list, e.g. aging buckets.
 export function HBars({
@@ -8,7 +9,7 @@ export function HBars({
     data: { label: string; count: number }[];
     color?: string;
 }) {
-    return (
+    const chart = (
         <MantineBarChart
             h={Math.max(60, data.length * 30 + 8)}
             data={data}
@@ -25,5 +26,14 @@ export function HBars({
             }}
             withBarValueLabel
         />
+    );
+    return (
+        <AccessibleChart
+            summary={`PR counts: ${data.reduce((sum, item) => sum + item.count, 0)} PRs across ${data.length} categories.`}
+            columns={["Category", "PRs"]}
+            rows={data.map((item) => [item.label, item.count])}
+        >
+            {chart}
+        </AccessibleChart>
     );
 }

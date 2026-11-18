@@ -1,6 +1,7 @@
 import { WaffleChart } from "@mantine/charts";
 import { ColorSwatch, Group, ScrollArea, Stack, Text } from "@mantine/core";
 import { shortRepo } from "../../lib/format";
+import { AccessibleChart } from "../AccessibleChart";
 
 const COVERAGE_STATUS = {
     me: { label: "Covered by me", color: "#0072B2" },
@@ -27,7 +28,9 @@ export function CoverageWaffle({
     }[];
     labels: Record<string, string>;
 }) {
-    return (
+    const teamLabel = (team: string) =>
+        team === "Individual" ? team : (labels[team] ?? team);
+    const chart = (
         <Stack gap="lg">
             <Group gap="lg">
                 {Object.entries(COVERAGE_STATUS).map(([key, status]) => (
@@ -45,10 +48,7 @@ export function CoverageWaffle({
                     1,
                     Math.ceil(origin.prs.length / columns),
                 );
-                const team =
-                    origin.team === "Individual"
-                        ? origin.team
-                        : (labels[origin.team] ?? origin.team);
+                const team = teamLabel(origin.team);
                 return (
                     <Stack key={origin.team} gap="xs">
                         <Group gap="sm" align="baseline">
@@ -98,5 +98,22 @@ export function CoverageWaffle({
                 );
             })}
         </Stack>
+    );
+    return (
+        <AccessibleChart
+            summary={`Team review coverage: ${data.reduce((sum, origin) => sum + origin.prs.length, 0)} PR entries across ${data.length} teams. Each cell represents one PR in a team.`}
+            columns={["Team", "Repository", "PR", "Title", "Coverage"]}
+            rows={data.flatMap((origin) =>
+                origin.prs.map((pr) => [
+                    teamLabel(origin.team),
+                    pr.repo,
+                    pr.number,
+                    pr.title,
+                    COVERAGE_STATUS[pr.coverage].label,
+                ]),
+            )}
+        >
+            {chart}
+        </AccessibleChart>
     );
 }

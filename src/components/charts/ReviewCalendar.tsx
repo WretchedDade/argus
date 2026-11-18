@@ -2,6 +2,7 @@ import { Heatmap } from "@mantine/charts";
 import { ScrollArea, Stack, Text } from "@mantine/core";
 import { localDate, localDayKey } from "./dates";
 import type { RhythmItem } from "./types";
+import { AccessibleChart } from "../AccessibleChart";
 
 export function ReviewCalendar({
     items,
@@ -43,7 +44,16 @@ export function ReviewCalendar({
         const repos = byDay.get(date)?.repos.size ?? 0;
         return `${dateLabel(date)}: ${count} review${count === 1 ? "" : "s"} across ${repos} repo${repos === 1 ? "" : "s"}`;
     };
-    return (
+    const dates: string[] = [];
+    for (
+        const date = localDate(startDate);
+        localDayKey(date) <= endDate;
+        date.setDate(date.getDate() + 1)
+    ) {
+        const key = localDayKey(date);
+        if (isWeekday(key)) dates.push(key);
+    }
+    const chart = (
         <Stack gap="sm">
             <Text size="sm" c="dimmed">
                 {dateLabel(startDate)} to {dateLabel(endDate)}. Weekdays only,
@@ -84,5 +94,18 @@ export function ReviewCalendar({
                 />
             </ScrollArea>
         </Stack>
+    );
+    return (
+        <AccessibleChart
+            summary={`Review calendar: ${Object.values(data).reduce((sum, count) => sum + count, 0)} reviews from ${dateLabel(startDate)} to ${dateLabel(endDate)}. Weekdays only, using local dates.`}
+            columns={["Date", "Reviews", "Repositories"]}
+            rows={dates.map((date) => [
+                date,
+                data[date] ?? 0,
+                byDay.get(date)?.repos.size ?? 0,
+            ])}
+        >
+            {chart}
+        </AccessibleChart>
     );
 }

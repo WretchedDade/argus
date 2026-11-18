@@ -2,6 +2,7 @@ import { Label, ReferenceArea } from "recharts";
 import { CompositeChart } from "@mantine/charts";
 import type { InsightsLoadBucket, Period } from "../../lib/api";
 import { localDate } from "./dates";
+import { AccessibleChart } from "../AccessibleChart";
 
 const LOAD_COLORS = {
     inflow: "var(--mantine-primary-color-filled)",
@@ -54,7 +55,7 @@ export function LoadChart({
             (b): b is { p: Period; span: { x1: string; x2: string } } =>
                 b.span !== null,
         );
-    return (
+    const chart = (
         <CompositeChart
             h={240}
             data={data}
@@ -124,5 +125,32 @@ export function LoadChart({
                 </ReferenceArea>
             ))}
         </CompositeChart>
+    );
+    return (
+        <AccessibleChart
+            summary={`Review load across ${data.length} ${granularity === "day" ? "days" : "weeks"}: ${data.reduce((sum, bucket) => sum + bucket.inflow, 0)} new PRs and ${data.reduce((sum, bucket) => sum + bucket.throughput, 0)} reviewed PRs.`}
+            columns={[
+                granularity === "day" ? "Date" : "Week of",
+                "New PRs",
+                "Reviewed PRs",
+                backlogName,
+                "Context",
+            ]}
+            rows={data.map((bucket) => [
+                bucket.key,
+                bucket.inflow,
+                bucket.throughput,
+                bucket.backlog,
+                bands
+                    .filter(
+                        ({ span }) =>
+                            bucket.key >= span.x1 && bucket.key <= span.x2,
+                    )
+                    .map(({ p }) => p.label)
+                    .join(", "),
+            ])}
+        >
+            {chart}
+        </AccessibleChart>
     );
 }

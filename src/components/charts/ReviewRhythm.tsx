@@ -5,6 +5,7 @@ import { countReviewSittings } from "../../lib/review-rhythm";
 import { PIE_COLORS } from "./colors";
 import { localDayKey } from "./dates";
 import type { RhythmItem } from "./types";
+import { AccessibleChart } from "../AccessibleChart";
 
 function RhythmStat({ value, label }: { value: string; label: string }) {
     return (
@@ -103,7 +104,7 @@ export function ReviewRhythm({
     }));
     const formatDay = (index: number) =>
         rows[index] ? dayLabel(rows[index].dayMs) : "";
-    return (
+    const chart = (
         <Stack gap="lg">
             <SimpleGrid cols={{ base: 1, xs: 3 }} spacing="lg">
                 <RhythmStat
@@ -183,5 +184,30 @@ export function ReviewRhythm({
                 measured interruptions.
             </Text>
         </Stack>
+    );
+    return (
+        <AccessibleChart
+            summary={`Review rhythm: ${rows.reduce((sum, day) => sum + day.evs.length, 0)} reviews across ${rows.length} recent active days, in local time. Totals cover all recorded history.`}
+            columns={[
+                "Date",
+                "Local time",
+                "Repository",
+                "PR",
+                "Title",
+                "Team",
+            ]}
+            rows={rows.flatMap((day) =>
+                day.evs.map((event) => [
+                    event.dayKey,
+                    fmtTime(event.min),
+                    event.repo,
+                    event.number,
+                    event.title,
+                    teamLabel(event.team),
+                ]),
+            )}
+        >
+            {chart}
+        </AccessibleChart>
     );
 }
