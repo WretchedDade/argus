@@ -85,6 +85,10 @@ const result = await build({
                 "aria-label": "Sign-in method", value: "az", onChange: () => {},
                 options: [{ v: "az", label: "Azure CLI" }, { v: "broker", label: "Windows account" }],
             }));
+            export const groupedAuthors = () => render(h(AuthorTreemap, { authors: [
+                ...Array.from({ length: 12 }, (_, index) => ({ label: "Synthetic author " + index, count: 1 })),
+                { label: "Other", count: 8 },
+            ] }));
             export const chartAlternatives = (empty = false) => {
                 mock.timers.enable({ apis: ["Date"], now: new Date(2026, 2, 17, 12).getTime() });
                 try {
@@ -293,6 +297,7 @@ try {
         | "notificationBell"
         | "refreshPolling"
         | "signInMethod"
+        | "groupedAuthors"
         | "longChartLegend",
         () => string
     > & {
@@ -442,6 +447,17 @@ try {
             ["Zero category", "0"],
         ]);
     }
+    const groupedAuthors = render.groupedAuthors();
+    assert.ok(
+        groupedAuthors.includes(
+            'aria-label="Review reach: 20 PRs across 13 displayed author groups."',
+        ),
+        "The treemap must count displayed author groups, not individual authors",
+    );
+    const authorGroups = tableRows(groupedAuthors);
+    assert.equal(authorGroups.length, 13);
+    assert.deepEqual(authorGroups.at(-1), ["Other", "8"]);
+    assert.match(groupedAuthors, /<th\b[^>]*scope="col">Author group<\/th>/);
     assert.match(alternatives.donut, /3 comments/);
     assert.deepEqual(tableRows(alternatives.votes), [
         ["FTE", "3", "2", "1", "0"],

@@ -78,8 +78,8 @@ export function AuthorTreemap({
     );
     return (
         <AccessibleChart
-            summary={`Review reach: ${authors.reduce((sum, author) => sum + author.count, 0)} PRs across ${authors.length} authors.`}
-            columns={["Author", "PRs"]}
+            summary={`Review reach: ${authors.reduce((sum, author) => sum + author.count, 0)} PRs across ${authors.length} displayed author groups.`}
+            columns={["Author group", "PRs"]}
             rows={authors.map((author) => [author.label, author.count])}
         >
             {chart}
