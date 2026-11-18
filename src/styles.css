@@ -21,6 +21,7 @@
 
 [data-mantine-color-scheme="dark"] {
     --argus-tag-text: var(--mantine-color-dark-0);
+    --page-base: var(--color-canvas);
 }
 
 body {

@@ -6,12 +6,16 @@ import {
     getThemeColor,
 } from "@mantine/core";
 import { ChartLegend } from "@mantine/charts";
+import { darkPaletteForBackground } from "./lib/appearance";
 
 export const argusTheme = createTheme({
     autoContrast: true,
     respectReducedMotion: true,
     defaultRadius: "md",
     fontFamily: 'ui-sans-serif, system-ui, "Segoe UI", sans-serif',
+    colors: {
+        dark: darkPaletteForBackground(13, 17, 23),
+    },
     components: {
         ChartLegend: ChartLegend.extend({
             styles: {

@@ -44,3 +44,35 @@ export function backgroundScheme(
         0.2126 * linear[0] + 0.7152 * linear[1] + 0.0722 * linear[2];
     return luminance < 0.179 ? "dark" : "light";
 }
+
+export function darkPaletteForBackground(
+    red: number,
+    green: number,
+    blue: number,
+) {
+    const mix = (amount: number) =>
+        `#${[red, green, blue]
+            .map((channel) =>
+                Math.round(
+                    amount >= 0
+                        ? channel + (255 - channel) * amount
+                        : channel * (1 + amount),
+                )
+                    .toString(16)
+                    .padStart(2, "0"),
+            )
+            .join("")}`;
+    // Mantine uses shade 7 for the page and shade 6 for raised surfaces.
+    return [
+        mix(0.78),
+        mix(0.68),
+        mix(0.5),
+        mix(0.24),
+        mix(0.16),
+        mix(0.1),
+        mix(0.04),
+        mix(0),
+        mix(-0.12),
+        mix(-0.24),
+    ] as const;
+}

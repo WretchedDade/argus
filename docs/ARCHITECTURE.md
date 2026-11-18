@@ -133,14 +133,18 @@ The client is a single-page app in `src/`:
 choices in browser storage under `argus.appearance`. Automatic mode reads the
 host's `--background-color-default` CSS token and selects light or dark from its
 relative luminance. It observes host style changes and system preference changes.
-Without an opaque host background, it uses the system preference. Explicit mode
-choices override this detection. Host palettes and accents are not imported.
+For a dark host, shared neutral shades use that background as their base.
+Background changes within dark mode also update the palette. Without an opaque
+host background, it uses the system preference. The fallback dark palette uses
+`#0d1117` as its page background. Explicit mode choices override detection.
+The selected accent remains independent.
 The saved `forceRadarAnimation` choice overrides reduced motion for the radar
 sweep only. Existing appearance settings default to no override.
 
 Controls, forms, PR cards, and notifications use Mantine.
 `src/theme.ts` defines shared component defaults and badge color variables.
 PR cards use `Card.Section` to separate headers, descriptions, and footer controls.
+Full and compact cards show the author name below the title, beside the avatar.
 Titles navigate. Footer controls do not sit inside links.
 The description fade uses an alpha mask, so it follows the surface on hover.
 TanStack Form still owns the configuration form. Appearance has its own Settings
