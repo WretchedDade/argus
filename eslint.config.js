@@ -8,6 +8,7 @@ export default tseslint.config(
     {
         ignores: [
             "dist/",
+            "coverage/",
             "release/",
             "extension.mjs",
             "src/routeTree.gen.ts",
@@ -46,13 +47,6 @@ export default tseslint.config(
         rules: {
             // Event payload values are untyped JSON; String() is the intended conversion.
             "@typescript-eslint/no-base-to-string": "off",
-        },
-    },
-    {
-        files: ["**/*.test.ts"],
-        rules: {
-            // Test files run as plain scripts with top-level promises.
-            "@typescript-eslint/no-floating-promises": "off",
         },
     },
     {

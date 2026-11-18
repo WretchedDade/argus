@@ -6,160 +6,193 @@ import { countBlobChanges } from "./client.ts";
 import { reconcile, type Snapshot } from "./reconcile.ts";
 import { ArgusStore } from "../db.ts";
 import type { CurrentPr } from "./types.ts";
+import { describe, it } from "vitest";
 
-// Minimal PR factory; override only what a case cares about.
-function pr(overrides: Partial<CurrentPr> = {}): CurrentPr {
-    return {
-        canonical:
-            "https://example-org.visualstudio.com/Project/_git/r/pullrequest/1",
-        org: "example-org",
-        project: "Project",
-        repo: "r",
-        repoId: "repo-guid",
-        projectId: "project-guid",
-        number: 1,
-        title: "t",
-        description: "",
-        author: "a",
-        isVendor: false,
-        role: "reviewer",
-        teams: [],
-        requiredApproverGroups: [],
-        reviewState: "needs",
-        otherVotes: [],
-        isDraft: false,
-        status: "active",
-        mergeStatus: "succeeded",
-        createdAt: new Date().toISOString(),
-        sha: "sha1",
-        targetBranch: "main",
-        sourceBranch: "f",
-        reviewers: [],
-        ...overrides,
-    };
-}
+describe("server/ado/reconcile", () => {
+    // Minimal PR factory; override only what a case cares about.
+    function pr(overrides: Partial<CurrentPr> = {}): CurrentPr {
+        return {
+            canonical:
+                "https://example-org.visualstudio.com/Project/_git/r/pullrequest/1",
+            org: "example-org",
+            project: "Project",
+            repo: "r",
+            repoId: "repo-guid",
+            projectId: "project-guid",
+            number: 1,
+            title: "t",
+            description: "",
+            author: "a",
+            isVendor: false,
+            role: "reviewer",
+            teams: [],
+            requiredApproverGroups: [],
+            reviewState: "needs",
+            otherVotes: [],
+            isDraft: false,
+            status: "active",
+            mergeStatus: "succeeded",
+            createdAt: new Date().toISOString(),
+            sha: "sha1",
+            targetBranch: "main",
+            sourceBranch: "f",
+            reviewers: [],
+            ...overrides,
+        };
+    }
 
-function snap(overrides: Partial<Snapshot> = {}): Snapshot {
-    return {
-        sha: "sha1",
-        isDraft: false,
-        state: "pending",
-        dismissed: false,
-        archived: null,
-        votes: {},
-        ...overrides,
-    };
-}
+    function snap(overrides: Partial<Snapshot> = {}): Snapshot {
+        return {
+            sha: "sha1",
+            isDraft: false,
+            state: "pending",
+            dismissed: false,
+            archived: null,
+            votes: {},
+            ...overrides,
+        };
+    }
 
-const nowMs = Date.now();
-const key = pr().canonical;
-const opts = { recencyDays: 7, nowMs };
-const types = (p: ReturnType<typeof reconcile>) =>
-    p.items[0]?.events.map((e) => e.type) ?? [];
+    const nowMs = Date.now();
 
-// New recent PR -> add.
-{
-    const plan = reconcile([pr()], new Map(), opts);
-    assert.equal(plan.items.length, 1);
-    assert.equal(plan.items[0].isAdd, true);
-    assert.deepEqual(types(plan), ["added"]);
-}
+    const key = pr().canonical;
 
-// Unchanged signatures still refresh metadata without events.
-{
-    const plan = reconcile([pr()], new Map([[key, snap()]]), opts);
-    assert.equal(plan.items.length, 1);
-    assert.deepEqual(types(plan), []);
-    assert.equal(plan.stats.unchanged, 1);
-}
+    const opts = { recencyDays: 7, nowMs };
 
-// New commit -> commit_pushed.
-{
-    const plan = reconcile(
-        [pr({ sha: "sha2" })],
-        new Map([[key, snap({ sha: "sha1" })]]),
-        opts,
-    );
-    assert.deepEqual(types(plan), ["commit_pushed"]);
-}
-
-// Reviewer vote moved -> vote_changed.
-{
-    const plan = reconcile(
-        [
-            pr({
-                reviewers: [
-                    {
-                        id: "u1",
-                        vote: 10,
-                        displayName: "U One",
-                        isContainer: false,
-                    },
-                ],
-            }),
-        ],
-        new Map([[key, snap({ votes: { u1: 0 } })]]),
-        opts,
-    );
-    assert.deepEqual(types(plan), ["vote_changed"]);
-}
-
-// Dismissed PR is never resurrected.
-{
-    const plan = reconcile(
-        [pr({ sha: "sha2" })],
-        new Map([[key, snap({ dismissed: true })]]),
-        opts,
-    );
-    assert.equal(plan.items.length, 0);
-}
-
-// Stale untracked PR is ignored.
-{
-    const old = new Date(nowMs - 30 * 86_400_000).toISOString();
-    const plan = reconcile([pr({ createdAt: old })], new Map(), opts);
-    assert.equal(plan.items.length, 0);
-}
-
-// The PR list has no commit time, so the plan must not reuse the creation date.
-{
-    const old = new Date(nowMs - 5 * 86_400_000).toISOString();
-    const plan = reconcile(
-        [pr({ createdAt: old, sha: "sha2" })],
-        new Map([[key, snap({ sha: "sha1" })]]),
-        opts,
-    );
-    assert.equal(plan.items[0].upsert.lastCommitAt, null);
-    assert.equal(plan.items[0].upsert.prCreatedAt, old);
-}
-
-assert.equal(
-    countBlobChanges([
-        ...Array.from({ length: 15 }, () => ({
-            item: { gitObjectType: "blob" },
-        })),
-        ...Array.from({ length: 11 }, () => ({
-            item: { gitObjectType: "tree" },
-        })),
-    ]),
-    15,
-);
-
-// New PRs bypass the historical backfill cap without being selected twice.
-{
-    const dir = mkdtempSync(path.join(tmpdir(), "argus-test-"));
-    try {
-        const store = new ArgusStore(path.join(dir, "argus.db"));
-        const newPrs = new Set<string>();
-        for (let i = 0; i < 50; i++) {
-            const canonical = `${key}-${i}`;
-            if (i < 25) newPrs.add(canonical);
+    const types = (p: ReturnType<typeof reconcile>) =>
+        p.items[0]?.events.map((e) => e.type) ?? [];
+    it("adds new recent PRs", () => {
+        const plan = reconcile([pr()], new Map(), opts);
+        assert.equal(plan.items.length, 1);
+        assert.equal(plan.items[0].isAdd, true);
+        assert.deepEqual(types(plan), ["added"]);
+    });
+    it("refreshes unchanged metadata without events", () => {
+        const plan = reconcile([pr()], new Map([[key, snap()]]), opts);
+        assert.equal(plan.items.length, 1);
+        assert.deepEqual(types(plan), []);
+        assert.equal(plan.stats.unchanged, 1);
+    });
+    it("records new commits", () => {
+        const plan = reconcile(
+            [pr({ sha: "sha2" })],
+            new Map([[key, snap({ sha: "sha1" })]]),
+            opts,
+        );
+        assert.deepEqual(types(plan), ["commit_pushed"]);
+    });
+    it("records reviewer vote changes", () => {
+        const plan = reconcile(
+            [
+                pr({
+                    reviewers: [
+                        {
+                            id: "u1",
+                            vote: 10,
+                            displayName: "U One",
+                            isContainer: false,
+                        },
+                    ],
+                }),
+            ],
+            new Map([[key, snap({ votes: { u1: 0 } })]]),
+            opts,
+        );
+        assert.deepEqual(types(plan), ["vote_changed"]);
+    });
+    it("does not resurrect dismissed PRs", () => {
+        const plan = reconcile(
+            [pr({ sha: "sha2" })],
+            new Map([[key, snap({ dismissed: true })]]),
+            opts,
+        );
+        assert.equal(plan.items.length, 0);
+    });
+    it("ignores stale untracked PRs", () => {
+        const old = new Date(nowMs - 30 * 86_400_000).toISOString();
+        const plan = reconcile([pr({ createdAt: old })], new Map(), opts);
+        assert.equal(plan.items.length, 0);
+    });
+    it("does not reuse creation time as commit time", () => {
+        const old = new Date(nowMs - 5 * 86_400_000).toISOString();
+        const plan = reconcile(
+            [pr({ createdAt: old, sha: "sha2" })],
+            new Map([[key, snap({ sha: "sha1" })]]),
+            opts,
+        );
+        assert.equal(plan.items[0].upsert.lastCommitAt, null);
+        assert.equal(plan.items[0].upsert.prCreatedAt, old);
+    });
+    it("counts changed blobs without counting trees", () => {
+        assert.equal(
+            countBlobChanges([
+                ...Array.from({ length: 15 }, () => ({
+                    item: { gitObjectType: "blob" },
+                })),
+                ...Array.from({ length: 11 }, () => ({
+                    item: { gitObjectType: "tree" },
+                })),
+            ]),
+            15,
+        );
+    });
+    it("selects new PRs outside the historical backfill cap without duplicates", () => {
+        const dir = mkdtempSync(path.join(tmpdir(), "argus-test-"));
+        try {
+            const store = new ArgusStore(path.join(dir, "argus.db"));
+            const newPrs = new Set<string>();
+            for (let i = 0; i < 50; i++) {
+                const canonical = `${key}-${i}`;
+                if (i < 25) newPrs.add(canonical);
+                store.upsertPr({
+                    canonical,
+                    org: "example-org",
+                    project: "Project",
+                    repo: "r",
+                    number: i + 1,
+                    title: "t",
+                    description: "",
+                    author: "a",
+                    isVendor: false,
+                    role: "reviewer",
+                    teams: [],
+                    isDraft: false,
+                    lastCommitSha: "sha1",
+                    lastCommitAt: null,
+                    prCreatedAt: null,
+                    sourceBranch: `f-${i}`,
+                    targetBranch: "main",
+                });
+            }
+            const selected = store.prsNeedingFileCount(20, newPrs);
+            assert.equal(selected.length, 45);
+            assert.equal(
+                selected.filter((item) => newPrs.has(item.canonical)).length,
+                25,
+            );
+            assert.equal(
+                selected.filter((item) => !newPrs.has(item.canonical)).length,
+                20,
+            );
+            assert.equal(
+                new Set(selected.map((item) => item.canonical)).size,
+                selected.length,
+            );
+            store.close();
+        } finally {
+            rmSync(dir, { recursive: true, force: true });
+        }
+    });
+    it("clears expired snoozes and preserves future snoozes", () => {
+        const dir = mkdtempSync(path.join(tmpdir(), "argus-test-"));
+        try {
+            const store = new ArgusStore(path.join(dir, "argus.db"));
             store.upsertPr({
-                canonical,
+                canonical: key,
                 org: "example-org",
                 project: "Project",
                 repo: "r",
-                number: i + 1,
+                number: 1,
                 title: "t",
                 description: "",
                 author: "a",
@@ -170,66 +203,22 @@ assert.equal(
                 lastCommitSha: "sha1",
                 lastCommitAt: null,
                 prCreatedAt: null,
-                sourceBranch: `f-${i}`,
+                sourceBranch: "f",
                 targetBranch: "main",
             });
+            store.setSnooze(key, "2000-01-01T00:00:00.000Z");
+            assert.equal(store.getPr(key)?.snoozedUntil, null);
+            assert.equal(store.getPr(key)?.snoozeMode, null);
+
+            store.setSnooze(key, "2100-01-01T00:00:00.000Z");
+            assert.equal(
+                store.getPr(key)?.snoozedUntil,
+                "2100-01-01T00:00:00.000Z",
+            );
+            assert.equal(store.getPr(key)?.snoozeMode, "time");
+            store.close();
+        } finally {
+            rmSync(dir, { recursive: true, force: true });
         }
-        const selected = store.prsNeedingFileCount(20, newPrs);
-        assert.equal(selected.length, 45);
-        assert.equal(
-            selected.filter((item) => newPrs.has(item.canonical)).length,
-            25,
-        );
-        assert.equal(
-            selected.filter((item) => !newPrs.has(item.canonical)).length,
-            20,
-        );
-        assert.equal(
-            new Set(selected.map((item) => item.canonical)).size,
-            selected.length,
-        );
-        store.close();
-    } finally {
-        rmSync(dir, { recursive: true, force: true });
-    }
-}
-
-// Reads clear expired timed snoozes but preserve future ones.
-{
-    const dir = mkdtempSync(path.join(tmpdir(), "argus-test-"));
-    try {
-        const store = new ArgusStore(path.join(dir, "argus.db"));
-        store.upsertPr({
-            canonical: key,
-            org: "example-org",
-            project: "Project",
-            repo: "r",
-            number: 1,
-            title: "t",
-            description: "",
-            author: "a",
-            isVendor: false,
-            role: "reviewer",
-            teams: [],
-            isDraft: false,
-            lastCommitSha: "sha1",
-            lastCommitAt: null,
-            prCreatedAt: null,
-            sourceBranch: "f",
-            targetBranch: "main",
-        });
-        store.setSnooze(key, "2000-01-01T00:00:00.000Z");
-        assert.equal(store.getPr(key)?.snoozedUntil, null);
-        assert.equal(store.getPr(key)?.snoozeMode, null);
-
-        store.setSnooze(key, "2100-01-01T00:00:00.000Z");
-        assert.equal(
-            store.getPr(key)?.snoozedUntil,
-            "2100-01-01T00:00:00.000Z",
-        );
-        assert.equal(store.getPr(key)?.snoozeMode, "time");
-        store.close();
-    } finally {
-        rmSync(dir, { recursive: true, force: true });
-    }
-}
+    });
+});

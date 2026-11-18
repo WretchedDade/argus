@@ -44,7 +44,9 @@ Read [CONTRIBUTING.md](../CONTRIBUTING.md) for setup, checks, and the PR process
 ## Testing
 
 - Write the test first for a bug fix. It must fail on the old code and pass on the new code.
-- Name each new test file `*.test.ts` under `server/` or `src/`. `npm test` finds it by glob.
+- Name each new test file `*.test.ts` under `server/`, `shared/`, `src/`, `scripts/`, or `packages/ado-client/src/`. `npm test` runs all tests with Vitest.
+- Use `describe` and `it` from `vitest` for named suites and tests. Keep `node:assert/strict` assertions where useful.
+- Run `npm run test:watch` for watch mode and `npm run test:coverage` for V8 coverage reports in `coverage/`.
 - Test calculations in `server/db.test.ts`. Do not test Recharts itself.
 - Run `npm run format:check`, `npm run typecheck`, `npm run lint`, and `npm test` before you push.
 

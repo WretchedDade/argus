@@ -6,169 +6,206 @@ import {
 } from "./queue-filters.ts";
 import type { Pr } from "./api.ts";
 import { byQueuePriority } from "./triage.ts";
+import { describe, it } from "vitest";
 
-const pr: Pr = {
-    canonical: "https://example.test/pr/1",
-    org: "org",
-    project: "project",
-    repo: "Repo A",
-    number: 1,
-    title: "Filter the queue",
-    description: "",
-    author: "Creator A",
-    isVendor: false,
-    role: "team",
-    teams: ["Optional team"],
-    requiredApproverGroups: ["Required team", "Other required team"],
-    reviewState: "needs",
-    otherVotes: [],
-    lane: "review",
-    state: "pending",
-    isDraft: false,
-    outOfScope: false,
-    dismissed: false,
-    dismissedReason: null,
-    dismissedAt: null,
-    snoozedUntil: null,
-    snoozeMode: null,
-    reviewSessionId: null,
-    reviewedSha: null,
-    reviewCount: 0,
-    coveredAt: null,
-    changedFiles: null,
-    authorMeta: null,
-    prCreatedAt: null,
-    lastCommitSha: null,
-    lastCommitAt: null,
-    addedAt: "",
-    updatedAt: "",
-};
-
-assert.equal(matchesQueueFilters(pr, {}), true);
-assert.equal(matchesQueueFilters(pr, { group: "Required team" }), true);
-assert.equal(matchesQueueFilters(pr, { group: "Other required team" }), true);
-assert.equal(matchesQueueFilters(pr, { group: "Optional team" }), false);
-assert.equal(matchesQueueFilters(pr, { creator: "Creator A" }), true);
-assert.equal(matchesQueueFilters(pr, { repository: "Repo A" }), true);
-assert.equal(
-    matchesQueueFilters(pr, {
-        group: "Required team",
-        creator: "Creator A",
-        repository: "Repo A",
-    }),
-    true,
-);
-assert.equal(
-    matchesQueueFilters(pr, { group: "Required team", creator: "Creator B" }),
-    false,
-);
-assert.equal(
-    matchesQueueFilters(pr, { creator: "Creator A", repository: "Repo B" }),
-    false,
-);
-assert.equal(
-    matchesQueueFilters({ ...pr, author: null }, { creator: "Creator A" }),
-    false,
-);
-assert.equal(
-    matchesQueueFilters(
-        { ...pr, requiredApproverGroups: [] },
-        { group: "Required team" },
-    ),
-    false,
-);
-
-// Filtering is independent of triage state, so every section uses the same rules.
-for (const change of [
-    { lane: "quick" as const },
-    { isDraft: true },
-    { outOfScope: true },
-    { snoozeMode: "fte" as const },
-    { snoozedUntil: "2099-01-01" },
-    { prCreatedAt: "2000-01-01" },
-]) {
-    assert.equal(
-        matchesQueueFilters({ ...pr, ...change }, { repository: "Repo A" }),
-        true,
-    );
-}
-
-assert.deepEqual(
-    queueFilterOptions([
-        pr,
-        pr,
-        { ...pr, repo: "Repo B", author: null, requiredApproverGroups: [] },
-        { ...pr, repo: "", author: " ", requiredApproverGroups: [""] },
-    ]),
-    {
-        group: ["Other required team", "Required team"],
-        creator: ["Creator A"],
-        repository: ["Repo A", "Repo B"],
-    },
-);
-assert.deepEqual(queueFilterOptions([]), {
-    group: [],
-    creator: [],
-    repository: [],
-});
-assert.deepEqual(
-    parseQueueFilters({ group: ["invalid"], creator: 42, repository: " " }),
-    {
-        group: undefined,
-        creator: undefined,
-        repository: undefined,
-    },
-);
-const filters = {
-    group: "[Project]\\Approvers & Owners",
-    creator: "Creator A",
-    repository: "Repo A",
-};
-assert.deepEqual(
-    parseQueueFilters(
-        Object.fromEntries(
-            new URLSearchParams(new URLSearchParams(filters).toString()),
-        ),
-    ),
-    filters,
-);
-assert.deepEqual(
-    parseQueueFilters({ ...filters, unrelated: "ignored" }),
-    filters,
-);
-
-const queue = [
-    {
-        ...pr,
+describe("src/lib/queue-filters", () => {
+    const pr: Pr = {
+        canonical: "https://example.test/pr/1",
+        org: "org",
+        project: "project",
+        repo: "Repo A",
         number: 1,
-        lane: "review",
-        reviewState: "approved",
-        updatedAt: "2026-11-10",
-    },
-    {
-        ...pr,
-        number: 2,
-        lane: "quick",
+        title: "Filter the queue",
+        description: "",
+        author: "Creator A",
+        isVendor: false,
+        role: "team",
+        teams: ["Optional team"],
+        requiredApproverGroups: ["Required team", "Other required team"],
         reviewState: "needs",
-        updatedAt: "2026-11-08",
-    },
-    {
-        ...pr,
-        number: 3,
+        otherVotes: [],
         lane: "review",
-        reviewState: null,
-        updatedAt: "2026-11-09",
-    },
-    {
-        ...pr,
-        number: 4,
-        lane: "quick",
-        reviewState: "waiting",
-        updatedAt: "2026-11-07",
-    },
-] satisfies Pr[];
-assert.deepEqual(
-    queue.sort(byQueuePriority).map((item) => item.number),
-    [3, 2, 1, 4],
-    "One queue sorts by need, then recent activity, regardless of the stored lane.",
-);
+        state: "pending",
+        isDraft: false,
+        outOfScope: false,
+        dismissed: false,
+        dismissedReason: null,
+        dismissedAt: null,
+        snoozedUntil: null,
+        snoozeMode: null,
+        reviewSessionId: null,
+        reviewedSha: null,
+        reviewCount: 0,
+        coveredAt: null,
+        changedFiles: null,
+        authorMeta: null,
+        prCreatedAt: null,
+        lastCommitSha: null,
+        lastCommitAt: null,
+        addedAt: "",
+        updatedAt: "",
+    };
+    it("matches required groups, creators, and repositories", async () => {
+        assert.equal(matchesQueueFilters(pr, {}), true);
+        assert.equal(matchesQueueFilters(pr, { group: "Required team" }), true);
+        assert.equal(
+            matchesQueueFilters(pr, { group: "Other required team" }),
+            true,
+        );
+        assert.equal(
+            matchesQueueFilters(pr, { group: "Optional team" }),
+            false,
+        );
+        assert.equal(matchesQueueFilters(pr, { creator: "Creator A" }), true);
+        assert.equal(matchesQueueFilters(pr, { repository: "Repo A" }), true);
+        assert.equal(
+            matchesQueueFilters(pr, {
+                group: "Required team",
+                creator: "Creator A",
+                repository: "Repo A",
+            }),
+            true,
+        );
+        assert.equal(
+            matchesQueueFilters(pr, {
+                group: "Required team",
+                creator: "Creator B",
+            }),
+            false,
+        );
+        assert.equal(
+            matchesQueueFilters(pr, {
+                creator: "Creator A",
+                repository: "Repo B",
+            }),
+            false,
+        );
+        assert.equal(
+            matchesQueueFilters(
+                { ...pr, author: null },
+                { creator: "Creator A" },
+            ),
+            false,
+        );
+        assert.equal(
+            matchesQueueFilters(
+                { ...pr, requiredApproverGroups: [] },
+                { group: "Required team" },
+            ),
+            false,
+        );
+    });
+    it("filters independently of triage state", async () => {
+        for (const change of [
+            { lane: "quick" as const },
+            { isDraft: true },
+            { outOfScope: true },
+            { snoozeMode: "fte" as const },
+            { snoozedUntil: "2099-01-01" },
+            { prCreatedAt: "2000-01-01" },
+        ]) {
+            assert.equal(
+                matchesQueueFilters(
+                    { ...pr, ...change },
+                    { repository: "Repo A" },
+                ),
+                true,
+            );
+        }
+    });
+    it("builds distinct non-empty filter options", async () => {
+        assert.deepEqual(
+            queueFilterOptions([
+                pr,
+                pr,
+                {
+                    ...pr,
+                    repo: "Repo B",
+                    author: null,
+                    requiredApproverGroups: [],
+                },
+                { ...pr, repo: "", author: " ", requiredApproverGroups: [""] },
+            ]),
+            {
+                group: ["Other required team", "Required team"],
+                creator: ["Creator A"],
+                repository: ["Repo A", "Repo B"],
+            },
+        );
+        assert.deepEqual(queueFilterOptions([]), {
+            group: [],
+            creator: [],
+            repository: [],
+        });
+    });
+    it("parses filter values and preserves URL round trips", async () => {
+        assert.deepEqual(
+            parseQueueFilters({
+                group: ["invalid"],
+                creator: 42,
+                repository: " ",
+            }),
+            {
+                group: undefined,
+                creator: undefined,
+                repository: undefined,
+            },
+        );
+        const filters = {
+            group: "[Project]\\Approvers & Owners",
+            creator: "Creator A",
+            repository: "Repo A",
+        };
+        assert.deepEqual(
+            parseQueueFilters(
+                Object.fromEntries(
+                    new URLSearchParams(
+                        new URLSearchParams(filters).toString(),
+                    ),
+                ),
+            ),
+            filters,
+        );
+        assert.deepEqual(
+            parseQueueFilters({ ...filters, unrelated: "ignored" }),
+            filters,
+        );
+    });
+    it("sorts by review need and activity rather than lane", async () => {
+        const queue = [
+            {
+                ...pr,
+                number: 1,
+                lane: "review",
+                reviewState: "approved",
+                updatedAt: "2026-11-10",
+            },
+            {
+                ...pr,
+                number: 2,
+                lane: "quick",
+                reviewState: "needs",
+                updatedAt: "2026-11-08",
+            },
+            {
+                ...pr,
+                number: 3,
+                lane: "review",
+                reviewState: null,
+                updatedAt: "2026-11-09",
+            },
+            {
+                ...pr,
+                number: 4,
+                lane: "quick",
+                reviewState: "waiting",
+                updatedAt: "2026-11-07",
+            },
+        ] satisfies Pr[];
+        assert.deepEqual(
+            queue.sort(byQueuePriority).map((item) => item.number),
+            [3, 2, 1, 4],
+            "One queue sorts by need, then recent activity, regardless of the stored lane.",
+        );
+    });
+});

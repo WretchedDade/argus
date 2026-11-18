@@ -8,7 +8,7 @@
         "./retry": "./src/retry.ts"
     },
     "scripts": {
-        "test": "node --test src/*.test.ts"
+        "test": "vitest run --root ../.. packages/ado-client/src"
     },
     "dependencies": {
         "@azure/identity": "^4.14.0",

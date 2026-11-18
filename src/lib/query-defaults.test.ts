@@ -1,5 +1,4 @@
 import assert from "node:assert/strict";
-import test from "node:test";
 import {
     claimPrRefresh,
     createQueryClient,
@@ -7,31 +6,34 @@ import {
     warmQuery,
     DEFAULT_STALE_TIME_MS,
 } from "./query-defaults.ts";
+import { describe, it } from "vitest";
 
-test("warmQuery swallows a failing fetch so the route still renders", async () => {
-    const qc = createQueryClient();
-    await warmQuery(qc, {
-        queryKey: ["boom"],
-        queryFn: () => Promise.reject(new Error("down")),
-        retry: false,
+describe("src/lib/query-defaults", () => {
+    it("warmQuery swallows a failing fetch so the route still renders", async () => {
+        const qc = createQueryClient();
+        await warmQuery(qc, {
+            queryKey: ["boom"],
+            queryFn: () => Promise.reject(new Error("down")),
+            retry: false,
+        });
+        assert.equal(qc.getQueryState(["boom"])?.status, "error");
     });
-    assert.equal(qc.getQueryState(["boom"])?.status, "error");
-});
 
-test("the query client sets a non-zero default staleTime", () => {
-    const opts = createQueryClient().getDefaultOptions().queries;
-    assert.equal(opts?.staleTime, DEFAULT_STALE_TIME_MS);
-    assert.ok(DEFAULT_STALE_TIME_MS > 0);
-});
+    it("the query client sets a non-zero default staleTime", () => {
+        const opts = createQueryClient().getDefaultOptions().queries;
+        assert.equal(opts?.staleTime, DEFAULT_STALE_TIME_MS);
+        assert.ok(DEFAULT_STALE_TIME_MS > 0);
+    });
 
-test("a PR refresh is claimed once per PR", () => {
-    assert.equal(claimPrRefresh("org/proj/repo#1"), true);
-    assert.equal(claimPrRefresh("org/proj/repo#1"), false);
-    assert.equal(claimPrRefresh("org/proj/repo#2"), true);
-});
+    it("a PR refresh is claimed once per PR", () => {
+        assert.equal(claimPrRefresh("org/proj/repo#1"), true);
+        assert.equal(claimPrRefresh("org/proj/repo#1"), false);
+        assert.equal(claimPrRefresh("org/proj/repo#2"), true);
+    });
 
-test("a released PR refresh can be claimed again", () => {
-    assert.equal(claimPrRefresh("org/proj/repo#3"), true);
-    releasePrRefresh("org/proj/repo#3");
-    assert.equal(claimPrRefresh("org/proj/repo#3"), true);
+    it("a released PR refresh can be claimed again", () => {
+        assert.equal(claimPrRefresh("org/proj/repo#3"), true);
+        releasePrRefresh("org/proj/repo#3");
+        assert.equal(claimPrRefresh("org/proj/repo#3"), true);
+    });
 });

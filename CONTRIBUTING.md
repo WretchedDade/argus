@@ -51,7 +51,7 @@ To test inside the Copilot app, run `npm run build`, then copy the build output 
 npm test
 ```
 
-`npm test` uses the `node --test` runner. It finds every `*.test.ts` file under `server/` and `src/`, and then runs the tests in `packages/ado-client`. Name a new test file `*.test.ts` and it runs without other changes. Run `npm run test:coverage` to also print coverage.
+`npm test` uses Vitest. It finds every `*.test.ts` file under `server/`, `shared/`, `src/`, `scripts/`, and `packages/ado-client/src/`. Use `describe` and `it` for named suites and tests. Keep `node:assert/strict` assertions where useful. Run `npm run test:watch` for watch mode. Run `npm run test:coverage` for V8 coverage, including text, JSON summary, and LCOV reports in `coverage/`.
 
 For a bug fix, write the test first. It must fail on the old code and pass on the new code.
 
