@@ -1,14 +1,106 @@
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
-import path from "node:path";
-import { pathToFileURL } from "node:url";
-import { build } from "esbuild";
+import { buildTestModule } from "../../scripts/test-bundle.ts";
+import { describe, it, beforeAll } from "vitest";
 
-const result = await build({
-    stdin: {
-        contents: `
+describe("src/components/primitives", () => {
+    type Render = Record<
+        | "error"
+        | "failure"
+        | "pending"
+        | "boardPending"
+        | "noticePending"
+        | "notificationBell"
+        | "refreshPolling"
+        | "signInMethod"
+        | "groupedAuthors"
+        | "longChartLegend",
+        () => string
+    > & {
+        toast: (kind: "success" | "error" | "progress") => string;
+        pollWarning: (authOk: boolean) => string;
+        registration: (polling?: boolean) => string;
+        chartAlternatives: (empty?: boolean) => Record<string, string>;
+        latencySamples: () => {
+            points: Record<string, number>[];
+            labels: (string | null)[];
+        };
+        treemapTile: (
+            width: number,
+            height: number,
+        ) => {
+            markup: string;
+            authorNames: string[];
+        };
+        voteSamples: () => {
+            source: {
+                label: string;
+                approved: number;
+                suggestions: number;
+                waiting: number;
+                rejected: number;
+            }[];
+            points: {
+                label: string;
+                approved: number;
+                suggestions: number;
+                waiting: number;
+                rejected: number;
+            }[];
+            formattedCounts: string[];
+        };
+        coverageSamples: () => {
+            key: string;
+            heading: string;
+            cells: { name: string; value: number; color: string }[];
+            capacity: number;
+            total: number;
+            tooltips: string[];
+        }[];
+        rhythmSamples: () => {
+            points: { min: number; day: number; pointId: number }[];
+            markup: string;
+            stats: string[];
+            names: string[];
+            domain: number[];
+            labels: string[];
+        };
+        calendarSamples: () => {
+            data: Record<string, number>;
+            starts: string[];
+            end: string;
+            tooltip: string;
+            empty: string;
+            weekendHidden: string;
+            weekdayLabel: string;
+        };
+        donutSamples: (unit?: "PR" | "comment") => {
+            segments: { name: string; value: number }[];
+            total: number;
+            values: string[];
+        };
+    };
+    let render: Render;
+
+    const tableRows = (html: string) => {
+        const table = html.match(/<table\b[^]*?<\/table>/)?.[0];
+        assert.ok(table, "Each chart has a data table");
+        assert.match(table, /mantine-VisuallyHidden-root/);
+        assert.match(table, /<caption>[^<]+<\/caption>/);
+        assert.match(table, /<th\b[^>]*scope="col"/);
+        return [...table.matchAll(/<tr\b[^>]*>([^]*?)<\/tr>/g)]
+            .filter((match) => match[1].includes("<td"))
+            .map((match) =>
+                [...match[1].matchAll(/<td\b[^>]*>([^]*?)<\/td>/g)].map(
+                    (cell) => cell[1],
+                ),
+            );
+    };
+    beforeAll(async () => {
+        const result = await buildTestModule("primitives", {
+            stdin: {
+                contents: `
             import { cloneElement, createElement as h } from "react";
-            import { mock } from "node:test";
+            import { vi } from "vitest";
             import { renderToStaticMarkup } from "react-dom/server";
             import { MantineProvider } from "@mantine/core";
             import { ChartLegend } from "@mantine/charts";
@@ -90,7 +182,7 @@ const result = await build({
                 { label: "Other", count: 8 },
             ] }));
             export const chartAlternatives = (empty = false) => {
-                mock.timers.enable({ apis: ["Date"], now: new Date(2026, 2, 17, 12).getTime() });
+                vi.useFakeTimers({ toFake: ["Date"] }).setSystemTime(new Date(2026, 2, 17, 12).getTime());
                 try {
                     const counts = empty ? [] : [
                         { label: "Synthetic category", count: 3 },
@@ -128,7 +220,7 @@ const result = await build({
                         calendar: h(ReviewCalendar, { items, months: 3 }),
                     }).map(([name, chart]) => [name, render(chart)]));
                 } finally {
-                    mock.timers.reset();
+                    vi.useRealTimers();
                 }
             };
             export const latencySamples = () => {
@@ -240,7 +332,7 @@ const result = await build({
                 };
             };
             export const calendarSamples = () => {
-                mock.timers.enable({ apis: ["Date"], now: new Date(2026, 2, 17, 12).getTime() });
+                vi.useFakeTimers({ toFake: ["Date"] }).setSystemTime(new Date(2026, 2, 17, 12).getTime());
                 try {
                     const make = (year, month, day, hour, minute, repo = "Preview.One") => ({
                         at: new Date(year, month - 1, day, hour, minute).toISOString(),
@@ -268,385 +360,350 @@ const result = await build({
                         weekdayLabel: props.getRectProps({ date: "2026-03-16", value: 2 })["aria-label"],
                     };
                 } finally {
-                    mock.timers.reset();
+                    vi.useRealTimers();
                 }
             };
         `,
-        resolveDir: process.cwd(),
-        loader: "js",
-    },
-    bundle: true,
-    write: false,
-    format: "esm",
-    platform: "node",
-    packages: "external",
-    jsx: "automatic",
-});
-const cacheDir = path.join("node_modules", ".cache");
-mkdirSync(cacheDir, { recursive: true });
-const outDir = mkdtempSync(path.join(cacheDir, "argus-primitives-test-"));
-try {
-    const outFile = path.join(outDir, "primitives.mjs");
-    writeFileSync(outFile, result.outputFiles[0].text);
-    const render = (await import(pathToFileURL(outFile).href)) as Record<
-        | "error"
-        | "failure"
-        | "pending"
-        | "boardPending"
-        | "noticePending"
-        | "notificationBell"
-        | "refreshPolling"
-        | "signInMethod"
-        | "groupedAuthors"
-        | "longChartLegend",
-        () => string
-    > & {
-        toast: (kind: "success" | "error" | "progress") => string;
-        pollWarning: (authOk: boolean) => string;
-        registration: (polling?: boolean) => string;
-        chartAlternatives: (empty?: boolean) => Record<string, string>;
-        latencySamples: () => {
-            points: Record<string, number>[];
-            labels: (string | null)[];
-        };
-        treemapTile: (
-            width: number,
-            height: number,
-        ) => {
-            markup: string;
-            authorNames: string[];
-        };
-        voteSamples: () => {
-            source: {
-                label: string;
-                approved: number;
-                suggestions: number;
-                waiting: number;
-                rejected: number;
-            }[];
-            points: {
-                label: string;
-                approved: number;
-                suggestions: number;
-                waiting: number;
-                rejected: number;
-            }[];
-            formattedCounts: string[];
-        };
-        coverageSamples: () => {
-            key: string;
-            heading: string;
-            cells: { name: string; value: number; color: string }[];
-            capacity: number;
-            total: number;
-            tooltips: string[];
-        }[];
-        rhythmSamples: () => {
-            points: { min: number; day: number; pointId: number }[];
-            markup: string;
-            stats: string[];
-            names: string[];
-            domain: number[];
-            labels: string[];
-        };
-        calendarSamples: () => {
-            data: Record<string, number>;
-            starts: string[];
-            end: string;
-            tooltip: string;
-            empty: string;
-            weekendHidden: string;
-            weekdayLabel: string;
-        };
-        donutSamples: (unit?: "PR" | "comment") => {
-            segments: { name: string; value: number }[];
-            total: number;
-            values: string[];
-        };
-    };
-    const error = render.error();
-    assert.match(error, /role="alert"/);
-    assert.match(error, /Could not load PRs/);
-    assert.match(error, /Synthetic failure/);
-    assert.match(error, /type="button"[^]*?>Retry<\/span>/);
-    const failure = render.failure();
-    assert.match(failure, /Things to try/);
-    assert.match(failure, /Synthetic failure/);
-    assert.doesNotMatch(failure, /Open activity log/);
-    for (const html of [render.pending(), render.boardPending()]) {
-        assert.match(html, /role="status"/);
-        assert.match(html, /aria-busy="true"/);
-        assert.match(html, /Loading/);
-    }
-    const registration = render.registration();
-    assert.doesNotMatch(registration, /<form/);
-    for (const label of [
-        "Application \\(client\\) ID",
-        "Directory \\(tenant\\) ID",
-    ]) {
-        const id = new RegExp(`<label[^>]*for="([^"]+)"[^>]*>${label}`).exec(
-            registration,
-        )?.[1];
-        assert.ok(id);
-        assert.ok(registration.includes(`id="${id}"`));
-    }
-    assert.match(render.noticePending(), /data-loading="true"/);
-    assert.match(render.noticePending(), /disabled/);
-    for (const kind of ["success", "error"] as const) {
-        const toast = render.toast(kind);
-        assert.match(toast, /Synthetic toast/);
-        assert.match(toast, /<button\b[^>]*aria-label="Dismiss"/);
-    }
-    assert.doesNotMatch(render.toast("progress"), /<button\b/);
-    const bell = render.notificationBell();
-    const bellButton = bell.match(
-        /<button\b[^>]*aria-label="Notifications"[^]*?<\/button>/,
-    )?.[0];
-    assert.ok(bellButton);
-    assert.match(bellButton, /aria-expanded="false"/);
-    assert.match(bell, /mantine-Indicator-indicator/);
-    assert.doesNotMatch(bellButton, /mantine-Indicator-indicator/);
-    for (const html of [render.refreshPolling(), render.registration(true)]) {
-        const button = html.match(/<button\b[^>]*>[^]*?<\/button>/)?.[0];
-        assert.ok(button);
-        assert.match(button, /\bdisabled(?:=|\s|>)/);
-        assert.doesNotMatch(button, /data-loading/);
-    }
-    for (const authOk of [true, false]) {
-        const warning = render.pollWarning(authOk);
-        assert.match(warning, /role="alert"/);
-        assert.match(warning, /Nothing to review right now/);
-        assert.match(
-            warning,
-            authOk ? /Last poll failed: Synthetic poll failure/ : /az login/,
+                resolveDir: process.cwd(),
+                loader: "js",
+            },
+            bundle: true,
+            format: "esm",
+            platform: "node",
+            packages: "external",
+            jsx: "automatic",
+        });
+
+        render = result as Render;
+    }, 30_000);
+
+    it("renders load failures with retry controls", async () => {
+        const error = render.error();
+        assert.match(error, /role="alert"/);
+        assert.match(error, /Could not load PRs/);
+        assert.match(error, /Synthetic failure/);
+        assert.match(error, /type="button"[^]*?>Retry<\/span>/);
+        const failure = render.failure();
+        assert.match(failure, /Things to try/);
+        assert.match(failure, /Synthetic failure/);
+        assert.doesNotMatch(failure, /Open activity log/);
+    });
+    it("announces pending pages", async () => {
+        for (const html of [render.pending(), render.boardPending()]) {
+            assert.match(html, /role="status"/);
+            assert.match(html, /aria-busy="true"/);
+            assert.match(html, /Loading/);
+        }
+    });
+    it("connects registration labels to their controls", async () => {
+        const registration = render.registration();
+        assert.doesNotMatch(registration, /<form/);
+        for (const label of [
+            "Application \\(client\\) ID",
+            "Directory \\(tenant\\) ID",
+        ]) {
+            const id = new RegExp(
+                `<label[^>]*for="([^"]+)"[^>]*>${label}`,
+            ).exec(registration)?.[1];
+            assert.ok(id);
+            assert.ok(registration.includes(`id="${id}"`));
+        }
+    });
+    it("disables pending notice actions", async () => {
+        assert.match(render.noticePending(), /data-loading="true"/);
+        assert.match(render.noticePending(), /disabled/);
+    });
+    it("allows completed toasts to be dismissed", async () => {
+        for (const kind of ["success", "error"] as const) {
+            const toast = render.toast(kind);
+            assert.match(toast, /Synthetic toast/);
+            assert.match(toast, /<button\b[^>]*aria-label="Dismiss"/);
+        }
+        assert.doesNotMatch(render.toast("progress"), /<button\b/);
+    });
+    it("keeps the notification indicator outside the bell button", async () => {
+        const bell = render.notificationBell();
+        const bellButton = bell.match(
+            /<button\b[^>]*aria-label="Notifications"[^]*?<\/button>/,
+        )?.[0];
+        assert.ok(bellButton);
+        assert.match(bellButton, /aria-expanded="false"/);
+        assert.match(bell, /mantine-Indicator-indicator/);
+        assert.doesNotMatch(bellButton, /mantine-Indicator-indicator/);
+    });
+    it("disables refresh and registration actions during polling", async () => {
+        for (const html of [
+            render.refreshPolling(),
+            render.registration(true),
+        ]) {
+            const button = html.match(/<button\b[^>]*>[^]*?<\/button>/)?.[0];
+            assert.ok(button);
+            assert.match(button, /\bdisabled(?:=|\s|>)/);
+            assert.doesNotMatch(button, /data-loading/);
+        }
+    });
+    it("shows poll warnings for signed-in and signed-out states", async () => {
+        for (const authOk of [true, false]) {
+            const warning = render.pollWarning(authOk);
+            assert.match(warning, /role="alert"/);
+            assert.match(warning, /Nothing to review right now/);
+            assert.match(
+                warning,
+                authOk
+                    ? /Last poll failed: Synthetic poll failure/
+                    : /az login/,
+            );
+        }
+    });
+    it("labels the sign-in method control", async () => {
+        assert.match(render.signInMethod(), /aria-label="Sign-in method"/);
+    });
+    it("provides accessible tabular alternatives for every chart", async () => {
+        const alternatives = render.chartAlternatives();
+        for (const html of Object.values(alternatives)) {
+            assert.match(html, /role="group"[^>]*aria-label="[^"]+"/);
+            tableRows(html);
+        }
+        for (const chart of ["donut", "bars", "authors"]) {
+            assert.deepEqual(tableRows(alternatives[chart]), [
+                ["Synthetic category", "3"],
+                ["Zero category", "0"],
+            ]);
+        }
+        const groupedAuthors = render.groupedAuthors();
+        assert.ok(
+            groupedAuthors.includes(
+                'aria-label="Review reach: 20 PRs across 13 displayed author groups."',
+            ),
+            "The treemap must count displayed author groups, not individual authors",
         );
-    }
-    assert.match(render.signInMethod(), /aria-label="Sign-in method"/);
-    const alternatives = render.chartAlternatives();
-    const tableRows = (html: string) => {
-        const table = html.match(/<table\b[^]*?<\/table>/)?.[0];
-        assert.ok(table, "Each chart has a data table");
-        assert.match(table, /mantine-VisuallyHidden-root/);
-        assert.match(table, /<caption>[^<]+<\/caption>/);
-        assert.match(table, /<th\b[^>]*scope="col"/);
-        return [...table.matchAll(/<tr\b[^>]*>([^]*?)<\/tr>/g)]
-            .filter((match) => match[1].includes("<td"))
-            .map((match) =>
-                [...match[1].matchAll(/<td\b[^>]*>([^]*?)<\/td>/g)].map(
-                    (cell) => cell[1],
+        const authorGroups = tableRows(groupedAuthors);
+        assert.equal(authorGroups.length, 13);
+        assert.deepEqual(authorGroups.at(-1), ["Other", "8"]);
+        assert.match(
+            groupedAuthors,
+            /<th\b[^>]*scope="col">Author group<\/th>/,
+        );
+        assert.match(alternatives.donut, /3 comments/);
+        assert.deepEqual(tableRows(alternatives.votes), [
+            ["FTE", "3", "2", "1", "0"],
+        ]);
+        assert.deepEqual(tableRows(alternatives.load), [
+            ["2026-03-16", "4", "2", "5", "Synthetic leave"],
+        ]);
+        assert.match(alternatives.load, /Peak daily load/);
+        const latencyRows = tableRows(alternatives.latency);
+        assert.equal(latencyRows.length, 2);
+        assert.ok(latencyRows[0].includes("No verdict"));
+        assert.ok(latencyRows[1].includes("future"));
+        assert.ok(latencyRows[1].includes("0"));
+        const coverageRows = tableRows(alternatives.coverage);
+        assert.equal(coverageRows.length, 2);
+        assert.ok(coverageRows.every((row) => row.includes("Synthetic team")));
+        assert.ok(coverageRows[0].includes("Covered by me"));
+        assert.ok(coverageRows[1].includes("Still needs"));
+        assert.equal(tableRows(alternatives.rhythm).length, 3);
+        assert.match(alternatives.rhythm, /Synthetic team/);
+        const calendarRows = tableRows(alternatives.calendar);
+        assert.ok(
+            calendarRows.some(
+                (row) =>
+                    row[0] === "2026-03-16" && row[1] === "1" && row[2] === "1",
+            ),
+        );
+        assert.ok(
+            calendarRows.some(
+                (row) =>
+                    row[0] === "2026-03-17" && row[1] === "0" && row[2] === "0",
+            ),
+        );
+        assert.ok(
+            calendarRows.every((row) => {
+                const day = new Date(row[0] + "T12:00:00").getDay();
+                return (
+                    row[0] >= "2026-01-01" &&
+                    row[0] <= "2026-03-17" &&
+                    day > 0 &&
+                    day < 6
+                );
+            }),
+        );
+    });
+    it("describes empty chart states", async () => {
+        for (const [name, html] of Object.entries(
+            render.chartAlternatives(true),
+        )) {
+            const rows = tableRows(html);
+            if (name === "calendar") {
+                assert.ok(
+                    rows.every((row) => row[1] === "0" && row[2] === "0"),
+                );
+            } else {
+                assert.match(html, /No data/);
+            }
+        }
+    });
+    it("wraps long chart legend labels", async () => {
+        const legend = render.longChartLegend();
+        assert.match(
+            legend,
+            /Preview team with a deliberately long display name/,
+        );
+        assert.match(legend, /max-width:100%/);
+        assert.match(legend, /white-space:normal/);
+        assert.match(legend, /overflow-wrap:anywhere/);
+    });
+    it("fits treemap labels to the available space", async () => {
+        const largeTile = render.treemapTile(500, 60);
+        assert.match(largeTile.markup, /<text\b/);
+        assert.ok(largeTile.markup.includes(largeTile.authorNames[0]));
+        const narrowTile = render.treemapTile(120, 60);
+        assert.match(narrowTile.markup, />Preview[^<]*…<\/text>/);
+        assert.ok(!narrowTile.markup.includes(narrowTile.authorNames[0]));
+        assert.deepEqual(narrowTile.authorNames, largeTile.authorNames);
+        for (const [width, height] of [
+            [24, 60],
+            [500, 18],
+        ]) {
+            const smallTile = render.treemapTile(width, height);
+            assert.match(smallTile.markup, /<rect\b/);
+            assert.doesNotMatch(smallTile.markup, /<text\b/);
+            assert.deepEqual(smallTile.authorNames, largeTile.authorNames);
+        }
+    });
+    it("preserves vote counts and formats their labels", async () => {
+        const votes = render.voteSamples();
+        assert.deepEqual(
+            votes.points.map((point) => point.label),
+            ["FTE (1)", "Vendor (7)", "Automated (1)"],
+        );
+        for (const [index, point] of votes.points.entries()) {
+            const { label: sourceLabel, ...sourceCounts } = votes.source[index];
+            const { label, ...counts } = point;
+            assert.deepEqual(counts, sourceCounts);
+            assert.ok(label.startsWith(sourceLabel));
+            assert.ok(!sourceLabel.includes("("));
+        }
+        assert.deepEqual(votes.formattedCounts, ["1 PR", "3 PRs"]);
+    });
+    it("formats donut totals and units", async () => {
+        const donut = render.donutSamples();
+        assert.deepEqual(donut.segments, [
+            { name: "Preview.One", value: 3 },
+            { name: "Preview.Three", value: 1 },
+        ]);
+        assert.equal(donut.total, 4);
+        assert.deepEqual(donut.values, ["1 PR", "3 PRs"]);
+        assert.deepEqual(render.donutSamples("comment").values, [
+            "1 comment",
+            "3 comments",
+        ]);
+    });
+    it("preserves coverage cells, labels, and full tooltips", async () => {
+        const coverage = render.coverageSamples();
+        assert.deepEqual(
+            coverage.map((row) => row.key),
+            ["team-a", "team-b", "Individual"],
+        );
+        assert.deepEqual(
+            coverage.map((row) => row.cells.length),
+            [102, 1, 1],
+        );
+        for (const row of coverage) {
+            assert.ok(row.capacity >= row.cells.length);
+            assert.equal(row.total, row.capacity);
+            assert.ok(row.cells.every((cell) => cell.value === 1));
+        }
+        assert.match(
+            coverage[0].heading,
+            /Preview team with a very long display name/,
+        );
+        assert.match(coverage[2].heading, /Individual/);
+        assert.doesNotMatch(coverage[2].heading, /Not the Individual label/);
+        for (const [index, status] of [
+            [0, "Covered by me"],
+            [100, "By teammate"],
+            [101, "Still needs"],
+        ] as const) {
+            assert.ok(
+                coverage[0].tooltips[index].includes(
+                    `Preview.Coverage #${index + 1}: Synthetic PR ${index + 1}`,
                 ),
             );
-    };
-    for (const html of Object.values(alternatives)) {
-        assert.match(html, /role="group"[^>]*aria-label="[^"]+"/);
-        tableRows(html);
-    }
-    for (const chart of ["donut", "bars", "authors"]) {
-        assert.deepEqual(tableRows(alternatives[chart]), [
-            ["Synthetic category", "3"],
-            ["Zero category", "0"],
-        ]);
-    }
-    const groupedAuthors = render.groupedAuthors();
-    assert.ok(
-        groupedAuthors.includes(
-            'aria-label="Review reach: 20 PRs across 13 displayed author groups."',
-        ),
-        "The treemap must count displayed author groups, not individual authors",
-    );
-    const authorGroups = tableRows(groupedAuthors);
-    assert.equal(authorGroups.length, 13);
-    assert.deepEqual(authorGroups.at(-1), ["Other", "8"]);
-    assert.match(groupedAuthors, /<th\b[^>]*scope="col">Author group<\/th>/);
-    assert.match(alternatives.donut, /3 comments/);
-    assert.deepEqual(tableRows(alternatives.votes), [
-        ["FTE", "3", "2", "1", "0"],
-    ]);
-    assert.deepEqual(tableRows(alternatives.load), [
-        ["2026-03-16", "4", "2", "5", "Synthetic leave"],
-    ]);
-    assert.match(alternatives.load, /Peak daily load/);
-    const latencyRows = tableRows(alternatives.latency);
-    assert.equal(latencyRows.length, 2);
-    assert.ok(latencyRows[0].includes("No verdict"));
-    assert.ok(latencyRows[1].includes("future"));
-    assert.ok(latencyRows[1].includes("0"));
-    const coverageRows = tableRows(alternatives.coverage);
-    assert.equal(coverageRows.length, 2);
-    assert.ok(coverageRows.every((row) => row.includes("Synthetic team")));
-    assert.ok(coverageRows[0].includes("Covered by me"));
-    assert.ok(coverageRows[1].includes("Still needs"));
-    assert.equal(tableRows(alternatives.rhythm).length, 3);
-    assert.match(alternatives.rhythm, /Synthetic team/);
-    const calendarRows = tableRows(alternatives.calendar);
-    assert.ok(
-        calendarRows.some(
-            (row) =>
-                row[0] === "2026-03-16" && row[1] === "1" && row[2] === "1",
-        ),
-    );
-    assert.ok(
-        calendarRows.some(
-            (row) =>
-                row[0] === "2026-03-17" && row[1] === "0" && row[2] === "0",
-        ),
-    );
-    assert.ok(
-        calendarRows.every((row) => {
-            const day = new Date(row[0] + "T12:00:00").getDay();
-            return (
-                row[0] >= "2026-01-01" &&
-                row[0] <= "2026-03-17" &&
-                day > 0 &&
-                day < 6
-            );
-        }),
-    );
-    for (const [name, html] of Object.entries(render.chartAlternatives(true))) {
-        const rows = tableRows(html);
-        if (name === "calendar") {
-            assert.ok(rows.every((row) => row[1] === "0" && row[2] === "0"));
-        } else {
-            assert.match(html, /No data/);
+            assert.ok(coverage[0].tooltips[index].includes(status));
         }
-    }
-    const legend = render.longChartLegend();
-    assert.match(legend, /Preview team with a deliberately long display name/);
-    assert.match(legend, /max-width:100%/);
-    assert.match(legend, /white-space:normal/);
-    assert.match(legend, /overflow-wrap:anywhere/);
-    const largeTile = render.treemapTile(500, 60);
-    assert.match(largeTile.markup, /<text\b/);
-    assert.ok(largeTile.markup.includes(largeTile.authorNames[0]));
-    const narrowTile = render.treemapTile(120, 60);
-    assert.match(narrowTile.markup, />Preview[^<]*…<\/text>/);
-    assert.ok(!narrowTile.markup.includes(narrowTile.authorNames[0]));
-    assert.deepEqual(narrowTile.authorNames, largeTile.authorNames);
-    for (const [width, height] of [
-        [24, 60],
-        [500, 18],
-    ]) {
-        const smallTile = render.treemapTile(width, height);
-        assert.match(smallTile.markup, /<rect\b/);
-        assert.doesNotMatch(smallTile.markup, /<text\b/);
-        assert.deepEqual(smallTile.authorNames, largeTile.authorNames);
-    }
-    const votes = render.voteSamples();
-    assert.deepEqual(
-        votes.points.map((point) => point.label),
-        ["FTE (1)", "Vendor (7)", "Automated (1)"],
-    );
-    for (const [index, point] of votes.points.entries()) {
-        const { label: sourceLabel, ...sourceCounts } = votes.source[index];
-        const { label, ...counts } = point;
-        assert.deepEqual(counts, sourceCounts);
-        assert.ok(label.startsWith(sourceLabel));
-        assert.ok(!sourceLabel.includes("("));
-    }
-    assert.deepEqual(votes.formattedCounts, ["1 PR", "3 PRs"]);
-    const donut = render.donutSamples();
-    assert.deepEqual(donut.segments, [
-        { name: "Preview.One", value: 3 },
-        { name: "Preview.Three", value: 1 },
-    ]);
-    assert.equal(donut.total, 4);
-    assert.deepEqual(donut.values, ["1 PR", "3 PRs"]);
-    assert.deepEqual(render.donutSamples("comment").values, [
-        "1 comment",
-        "3 comments",
-    ]);
-    const coverage = render.coverageSamples();
-    assert.deepEqual(
-        coverage.map((row) => row.key),
-        ["team-a", "team-b", "Individual"],
-    );
-    assert.deepEqual(
-        coverage.map((row) => row.cells.length),
-        [102, 1, 1],
-    );
-    for (const row of coverage) {
-        assert.ok(row.capacity >= row.cells.length);
-        assert.equal(row.total, row.capacity);
-        assert.ok(row.cells.every((cell) => cell.value === 1));
-    }
-    assert.match(
-        coverage[0].heading,
-        /Preview team with a very long display name/,
-    );
-    assert.match(coverage[2].heading, /Individual/);
-    assert.doesNotMatch(coverage[2].heading, /Not the Individual label/);
-    for (const [index, status] of [
-        [0, "Covered by me"],
-        [100, "By teammate"],
-        [101, "Still needs"],
-    ] as const) {
-        assert.ok(
-            coverage[0].tooltips[index].includes(
-                `Preview.Coverage #${index + 1}: Synthetic PR ${index + 1}`,
-            ),
-        );
-        assert.ok(coverage[0].tooltips[index].includes(status));
-    }
-    assert.equal(coverage[0].cells[101].name, coverage[1].cells[0].name);
-    const longTooltip = coverage[0].tooltips[50];
-    assert.ok(longTooltip.includes("LongTitleToken".repeat(12)));
-    assert.ok(longTooltip.includes("final title text"));
-    assert.match(longTooltip, /white-space:normal/);
-    const rhythm = render.rhythmSamples();
-    assert.equal(tableRows(rhythm.markup).length, rhythm.points.length);
-    assert.deepEqual(rhythm.stats, ["16", "14", "1.1"]);
-    assert.equal(rhythm.points.length, 14);
-    assert.equal(new Set(rhythm.points.map((point) => point.pointId)).size, 14);
-    assert.equal(new Set(rhythm.points.map((point) => point.day)).size, 10);
-    assert.equal(
-        rhythm.points.filter((point) => point.day === 0 && point.min === 571)
-            .length,
-        2,
-    );
-    assert.deepEqual(rhythm.names.sort(), ["Individual", "Preview team"]);
-    assert.deepEqual(rhythm.domain, [480, 1080]);
-    for (const number of [3, 4]) {
-        assert.ok(
-            rhythm.labels.some((label) =>
-                label.includes("Synthetic review " + number),
-            ),
-        );
-    }
-    const calendar = render.calendarSamples();
-    assert.deepEqual(calendar.data, {
-        "2026-01-01": 1,
-        "2026-03-16": 2,
-        "2026-03-17": 1,
+        assert.equal(coverage[0].cells[101].name, coverage[1].cells[0].name);
+        const longTooltip = coverage[0].tooltips[50];
+        assert.ok(longTooltip.includes("LongTitleToken".repeat(12)));
+        assert.ok(longTooltip.includes("final title text"));
+        assert.match(longTooltip, /white-space:normal/);
     });
-    assert.deepEqual(calendar.starts, [
-        "2026-01-01",
-        "2025-10-01",
-        "2025-04-01",
-    ]);
-    assert.equal(calendar.end, "2026-03-17");
-    assert.match(calendar.tooltip, /2 reviews across 2 repos/);
-    assert.match(calendar.empty, /0 reviews across 0 repos/);
-    assert.equal(calendar.weekendHidden, "hidden");
-    assert.equal(calendar.weekdayLabel, calendar.tooltip);
-    const latency = render.latencySamples();
-    assert.equal(latency.points.length, 4);
-    assert.equal(new Set(latency.points.map((point) => point.pointId)).size, 4);
-    assert.ok(
-        latency.points.every((point) =>
-            Object.values(point).every(Number.isFinite),
-        ),
-    );
-    assert.deepEqual(
-        latency.points.map((point) => point.hours),
-        [2, 2, 2, 9],
-    );
-    for (const [index, repo] of ["One", "Two", "Three", "Four"].entries()) {
+    it("preserves review rhythm points and summary counts", async () => {
+        const rhythm = render.rhythmSamples();
+        assert.equal(tableRows(rhythm.markup).length, rhythm.points.length);
+        assert.deepEqual(rhythm.stats, ["16", "14", "1.1"]);
+        assert.equal(rhythm.points.length, 14);
+        assert.equal(
+            new Set(rhythm.points.map((point) => point.pointId)).size,
+            14,
+        );
+        assert.equal(new Set(rhythm.points.map((point) => point.day)).size, 10);
+        assert.equal(
+            rhythm.points.filter(
+                (point) => point.day === 0 && point.min === 571,
+            ).length,
+            2,
+        );
+        assert.deepEqual(rhythm.names.sort(), ["Individual", "Preview team"]);
+        assert.deepEqual(rhythm.domain, [480, 1080]);
+        for (const number of [3, 4]) {
+            assert.ok(
+                rhythm.labels.some((label) =>
+                    label.includes("Synthetic review " + number),
+                ),
+            );
+        }
+    });
+    it("uses local calendar dates and hides weekend cells", async () => {
+        const calendar = render.calendarSamples();
+        assert.deepEqual(calendar.data, {
+            "2026-01-01": 1,
+            "2026-03-16": 2,
+            "2026-03-17": 1,
+        });
+        assert.deepEqual(calendar.starts, [
+            "2026-01-01",
+            "2025-10-01",
+            "2025-04-01",
+        ]);
+        assert.equal(calendar.end, "2026-03-17");
+        assert.match(calendar.tooltip, /2 reviews across 2 repos/);
+        assert.match(calendar.empty, /0 reviews across 0 repos/);
+        assert.equal(calendar.weekendHidden, "hidden");
+        assert.equal(calendar.weekdayLabel, calendar.tooltip);
+    });
+    it("keeps overlapping latency samples distinct and finite", async () => {
+        const latency = render.latencySamples();
+        assert.equal(latency.points.length, 4);
+        assert.equal(
+            new Set(latency.points.map((point) => point.pointId)).size,
+            4,
+        );
         assert.ok(
-            latency.labels.some((label) =>
-                label?.includes(`Preview.${repo} #${index + 1}`),
+            latency.points.every((point) =>
+                Object.values(point).every(Number.isFinite),
             ),
         );
-    }
-} finally {
-    rmSync(outDir, { recursive: true, force: true });
-}
+        assert.deepEqual(
+            latency.points.map((point) => point.hours),
+            [2, 2, 2, 9],
+        );
+        for (const [index, repo] of ["One", "Two", "Three", "Four"].entries()) {
+            assert.ok(
+                latency.labels.some((label) =>
+                    label?.includes(`Preview.${repo} #${index + 1}`),
+                ),
+            );
+        }
+    });
+});

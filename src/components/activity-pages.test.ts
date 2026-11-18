@@ -1,12 +1,12 @@
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
-import path from "node:path";
-import { pathToFileURL } from "node:url";
-import { build } from "esbuild";
+import { buildTestModule } from "../../scripts/test-bundle.ts";
+import { describe, it } from "vitest";
 
-const result = await build({
-    stdin: {
-        contents: `
+describe("src/components/activity-pages", () => {
+    it("renders activity pages and their empty states", async () => {
+        const result = await buildTestModule("activity", {
+            stdin: {
+                contents: `
             import { createElement as h } from "react";
             import { renderToStaticMarkup } from "react-dom/server";
             import { MantineProvider } from "@mantine/core";
@@ -64,52 +64,46 @@ const result = await build({
                         h(RouterContextProvider, { router }, child))));
             }
         `,
-        resolveDir: process.cwd(),
-        loader: "js",
-    },
-    bundle: true,
-    write: false,
-    format: "esm",
-    platform: "node",
-    packages: "external",
-    jsx: "automatic",
+                resolveDir: process.cwd(),
+                loader: "js",
+            },
+            bundle: true,
+            format: "esm",
+            platform: "node",
+            packages: "external",
+            jsx: "automatic",
+        });
+
+        const { render } = result as {
+            render: (
+                page: "list" | "detail",
+                state?:
+                    "data" | "pending" | "error" | "cached-error" | "missing",
+            ) => string;
+        };
+        for (const page of ["list", "detail"] as const) {
+            const pending = render(page, "pending");
+            assert.match(pending, /role="status"/);
+            assert.match(pending, /Loading/);
+            assert.doesNotMatch(pending, /No runs yet|Run not found/);
+            const error = render(page, "error");
+            assert.match(error, /role="alert"/);
+            assert.match(error, /Synthetic activity load failure/);
+            assert.doesNotMatch(error, /No runs yet|Run not found/);
+            const cached = render(page, "cached-error");
+            assert.match(cached, /Synthetic activity load failure/);
+            assert.match(cached, /Run #42/);
+        }
+        const list = render("list");
+        assert.match(list, /Failed/);
+        assert.match(list, /0 added/);
+        const detail = render("detail");
+        assert.match(detail, /Failed/);
+        assert.match(detail, /Preview enrichment warning/);
+        assert.match(detail, /Preview\.Enrichment/);
+        assert.match(detail, /Preview archived change/);
+        assert.match(detail, /not recorded/i);
+        assert.match(detail, /aria-label="Search trace"/);
+        assert.match(render("detail", "missing"), /Run not found/);
+    });
 });
-const cacheDir = path.join("node_modules", ".cache");
-mkdirSync(cacheDir, { recursive: true });
-const outDir = mkdtempSync(path.join(cacheDir, "argus-activity-test-"));
-try {
-    const outFile = path.join(outDir, "activity.mjs");
-    writeFileSync(outFile, result.outputFiles[0].text);
-    const { render } = (await import(pathToFileURL(outFile).href)) as {
-        render: (
-            page: "list" | "detail",
-            state?: "data" | "pending" | "error" | "cached-error" | "missing",
-        ) => string;
-    };
-    for (const page of ["list", "detail"] as const) {
-        const pending = render(page, "pending");
-        assert.match(pending, /role="status"/);
-        assert.match(pending, /Loading/);
-        assert.doesNotMatch(pending, /No runs yet|Run not found/);
-        const error = render(page, "error");
-        assert.match(error, /role="alert"/);
-        assert.match(error, /Synthetic activity load failure/);
-        assert.doesNotMatch(error, /No runs yet|Run not found/);
-        const cached = render(page, "cached-error");
-        assert.match(cached, /Synthetic activity load failure/);
-        assert.match(cached, /Run #42/);
-    }
-    const list = render("list");
-    assert.match(list, /Failed/);
-    assert.match(list, /0 added/);
-    const detail = render("detail");
-    assert.match(detail, /Failed/);
-    assert.match(detail, /Preview enrichment warning/);
-    assert.match(detail, /Preview\.Enrichment/);
-    assert.match(detail, /Preview archived change/);
-    assert.match(detail, /not recorded/i);
-    assert.match(detail, /aria-label="Search trace"/);
-    assert.match(render("detail", "missing"), /Run not found/);
-} finally {
-    rmSync(outDir, { recursive: true, force: true });
-}
