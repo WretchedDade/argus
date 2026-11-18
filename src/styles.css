@@ -15,7 +15,6 @@
 
 :root {
     --argus-tag-text: var(--mantine-color-gray-7);
-    --card-bg: var(--color-canvas);
     --page-base: color-mix(in srgb, var(--color-canvas) 94%, #000);
 }
 

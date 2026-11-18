@@ -108,10 +108,7 @@ function SetupForm({ cfg }: { cfg: ArgusConfig }) {
 
     return (
         <div className="app-bg text-fg flex min-h-screen items-center justify-center p-6">
-            <div
-                className="border-line w-full max-w-lg rounded-2xl border p-6 shadow-lg"
-                style={{ background: "var(--card-bg)" }}
-            >
+            <div className="border-line bg-canvas w-full max-w-lg rounded-2xl border p-6 shadow-lg">
                 <div className="mb-1 flex items-center gap-2.5">
                     <span className="app-header flex h-11 w-11 shrink-0 items-center justify-center rounded-xl">
                         <BrandMark size={26} />
