@@ -130,16 +130,7 @@ try {
             state: "pending" | "error" | "cached-error" | "missing",
         ) => string;
         renderVotes: (votes: Pr["otherVotes"]) => string;
-        render: (
-            pr: Pick<
-                Pr,
-                | "canonical"
-                | "lane"
-                | "reviewSessionId"
-                | "snoozeMode"
-                | "snoozedUntil"
-            >,
-        ) => string;
+        render: (pr: Pr) => string;
     };
     const pr: Pr = {
         canonical: "https://example.test/pr/1",
@@ -676,56 +667,84 @@ try {
             );
     }
     for (const lane of ["quick", "review"] as const) {
-        for (const reviewSessionId of [null, "existing-session"]) {
-            const html = render({
-                canonical: "https://example.test/pr/1",
+        for (const [reviewedSha, lastCommitSha, label] of [
+            ["old-head", "new-head", "Review updates"],
+            ["same-head", "same-head", "Re-review"],
+            [null, "new-head", "Re-review"],
+            ["old-head", null, "Re-review"],
+            [null, null, "Re-review"],
+        ] as const) {
+            const linkedPr = {
+                ...pr,
                 lane,
-                reviewSessionId,
-                snoozeMode: null,
-                snoozedUntil: null,
-            });
-            assert.match(html, /Review for me/);
-            assert.match(html, /Review with me/);
-            assert.match(html, /Delegate/);
-            assert.ok(
-                html.indexOf("Review for me") < html.indexOf("Review with me"),
-            );
-            const reviewButtons = [...html.matchAll(/<button[^]*?<\/button>/g)]
-                .map(([button]) => button)
-                .filter((button) =>
-                    /Review for me|Review with me|Delegate/.test(button),
+                reviewSessionId: "existing-session",
+                reviewedSha,
+                lastCommitSha,
+            };
+            for (const renderLinked of [render, renderCard, renderDetailCard]) {
+                const html = renderLinked(linkedPr);
+                const buttons = [...html.matchAll(/<button[^]*?<\/button>/g)]
+                    .map(([button]) => button)
+                    .filter((button) =>
+                        /Review updates|Re-review/.test(button),
+                    );
+                assert.equal(buttons.length, 1);
+                assert.ok(buttons[0].includes(label));
+                assert.match(buttons[0], /data-variant="filled"/);
+                assert.match(buttons[0], /type="button"/);
+                assert.match(html, /existing review session/);
+                assert.match(
+                    html,
+                    lane === "quick" ? /Review for me/ : /Review with me/,
                 );
-            assert.equal(reviewButtons.length, 3);
-            for (const button of reviewButtons) {
-                assert.match(button, /type="button"/);
-                assert.match(button, /mantine-Button-root/);
-                const descriptionId = /aria-describedby="([^"]+)"/.exec(
-                    button,
-                )?.[1];
-                assert.ok(descriptionId);
-                assert.ok(html.includes(`id="${descriptionId}"`));
+                assert.doesNotMatch(
+                    html,
+                    />\s*(?:Review for me|Review with me|Delegate)\s*</,
+                );
             }
-            assert.match(
-                html,
-                /Copilot reviews first\. You add findings and approve comments and the vote\./,
-            );
-            assert.match(
-                html,
-                /You lead step by step\. Copilot fills the gaps\./,
-            );
-            assert.match(
-                html,
-                /Copilot can approve without asking, but only with zero findings\./,
-            );
-            assert.match(reviewButtons[0], /data-variant="filled"/);
-            assert.match(reviewButtons[1], /data-variant="default"/);
-            assert.match(reviewButtons[2], /data-variant="default"/);
-            assert.doesNotMatch(
-                html,
-                /Move to|Full review|Quick|Re-review|Start automatic review/,
-            );
-            assert.doesNotMatch(html, /About review modes|role="dialog"/);
         }
+        const html = render({
+            ...pr,
+            lane,
+        });
+        assert.match(html, /Review for me/);
+        assert.match(html, /Review with me/);
+        assert.match(html, /Delegate/);
+        assert.ok(
+            html.indexOf("Review for me") < html.indexOf("Review with me"),
+        );
+        const reviewButtons = [...html.matchAll(/<button[^]*?<\/button>/g)]
+            .map(([button]) => button)
+            .filter((button) =>
+                /Review for me|Review with me|Delegate/.test(button),
+            );
+        assert.equal(reviewButtons.length, 3);
+        for (const button of reviewButtons) {
+            assert.match(button, /type="button"/);
+            assert.match(button, /mantine-Button-root/);
+            const descriptionId = /aria-describedby="([^"]+)"/.exec(
+                button,
+            )?.[1];
+            assert.ok(descriptionId);
+            assert.ok(html.includes(`id="${descriptionId}"`));
+        }
+        assert.match(
+            html,
+            /Copilot reviews first\. You add findings and approve comments and the vote\./,
+        );
+        assert.match(html, /You lead step by step\. Copilot fills the gaps\./);
+        assert.match(
+            html,
+            /Copilot can approve without asking, but only with zero findings\./,
+        );
+        assert.match(reviewButtons[0], /data-variant="filled"/);
+        assert.match(reviewButtons[1], /data-variant="default"/);
+        assert.match(reviewButtons[2], /data-variant="default"/);
+        assert.doesNotMatch(
+            html,
+            /Move to|Full review|Quick|Re-review|Start automatic review/,
+        );
+        assert.doesNotMatch(html, /About review modes|role="dialog"/);
     }
 } finally {
     rmSync(outDir, { recursive: true, force: true });

@@ -370,6 +370,11 @@ function PrQuickActions({
 export function ActionBar({ pr }: { pr: Pr }) {
     const qc = useQueryClient();
     const scope = usePending();
+    const reviewMode = pr.lane === "quick" ? "for-me" : "with-me";
+    const hasUpdates =
+        !!pr.reviewedSha &&
+        !!pr.lastCommitSha &&
+        pr.reviewedSha !== pr.lastCommitSha;
     const reviewReq = useMutation({
         mutationFn: (mode: ReviewActionMode) => api.review(pr.canonical, mode),
         onSuccess: (_data, mode) => {
@@ -396,72 +401,99 @@ export function ActionBar({ pr }: { pr: Pr }) {
 
     return (
         <Group gap="xs">
-            <Tip
-                label="Copilot reviews first. You add findings and approve comments and the vote."
-                wide
-            >
-                <Button
-                    size="xs"
-                    className="shrink-0"
-                    variant="filled"
-                    type="button"
-                    disabled={reviewReq.isPending}
-                    loading={
-                        reviewReq.isPending && reviewReq.variables === "for-me"
-                    }
-                    onClick={(e) => {
-                        swallow(e);
-                        reviewReq.mutate("for-me");
-                    }}
+            {pr.reviewSessionId ? (
+                <Tip
+                    label={`Run ${reviewMode === "for-me" ? "Review for me" : "Review with me"} again in the existing review session.`}
+                    wide
                 >
-                    Review for me
-                </Button>
-            </Tip>
+                    <Button
+                        size="xs"
+                        className="shrink-0"
+                        variant="filled"
+                        leftSection={<RotateCcw size={12} />}
+                        type="button"
+                        disabled={reviewReq.isPending}
+                        loading={reviewReq.isPending}
+                        onClick={(e) => {
+                            swallow(e);
+                            reviewReq.mutate(reviewMode);
+                        }}
+                    >
+                        {hasUpdates ? "Review updates" : "Re-review"}
+                    </Button>
+                </Tip>
+            ) : (
+                <>
+                    <Tip
+                        label="Copilot reviews first. You add findings and approve comments and the vote."
+                        wide
+                    >
+                        <Button
+                            size="xs"
+                            className="shrink-0"
+                            variant="filled"
+                            type="button"
+                            disabled={reviewReq.isPending}
+                            loading={
+                                reviewReq.isPending &&
+                                reviewReq.variables === "for-me"
+                            }
+                            onClick={(e) => {
+                                swallow(e);
+                                reviewReq.mutate("for-me");
+                            }}
+                        >
+                            Review for me
+                        </Button>
+                    </Tip>
 
-            <Tip
-                label="You lead step by step. Copilot fills the gaps. You approve comments and the vote."
-                wide
-            >
-                <Button
-                    size="xs"
-                    className="shrink-0"
-                    variant="default"
-                    type="button"
-                    disabled={reviewReq.isPending}
-                    loading={
-                        reviewReq.isPending && reviewReq.variables === "with-me"
-                    }
-                    onClick={(e) => {
-                        swallow(e);
-                        reviewReq.mutate("with-me");
-                    }}
-                >
-                    Review with me
-                </Button>
-            </Tip>
-            <Tip
-                label="Copilot can approve without asking, but only with zero findings. It posts no comments."
-                wide
-            >
-                <Button
-                    size="xs"
-                    className="shrink-0"
-                    variant="default"
-                    leftSection={<Bot size={12} />}
-                    type="button"
-                    disabled={reviewReq.isPending}
-                    loading={
-                        reviewReq.isPending &&
-                        reviewReq.variables === "delegate"
-                    }
-                    onClick={(e) => {
-                        swallow(e);
-                        reviewReq.mutate("delegate");
-                    }}
-                >
-                    Delegate
-                </Button>
-            </Tip>
+                    <Tip
+                        label="You lead step by step. Copilot fills the gaps. You approve comments and the vote."
+                        wide
+                    >
+                        <Button
+                            size="xs"
+                            className="shrink-0"
+                            variant="default"
+                            type="button"
+                            disabled={reviewReq.isPending}
+                            loading={
+                                reviewReq.isPending &&
+                                reviewReq.variables === "with-me"
+                            }
+                            onClick={(e) => {
+                                swallow(e);
+                                reviewReq.mutate("with-me");
+                            }}
+                        >
+                            Review with me
+                        </Button>
+                    </Tip>
+                    <Tip
+                        label="Copilot can approve without asking, but only with zero findings. It posts no comments."
+                        wide
+                    >
+                        <Button
+                            size="xs"
+                            className="shrink-0"
+                            variant="default"
+                            leftSection={<Bot size={12} />}
+                            type="button"
+                            disabled={reviewReq.isPending}
+                            loading={
+                                reviewReq.isPending &&
+                                reviewReq.variables === "delegate"
+                            }
+                            onClick={(e) => {
+                                swallow(e);
+                                reviewReq.mutate("delegate");
+                            }}
+                        >
+                            Delegate
+                        </Button>
+                    </Tip>
+                </>
+            )}
 
             <ActionIcon.Group ml="auto" aria-label="PR actions">
                 <SnoozeMenu pr={pr} />
