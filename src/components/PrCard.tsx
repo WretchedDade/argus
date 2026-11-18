@@ -701,7 +701,7 @@ function CompactPrCard({ pr, labels, onRestore }: PrCardProps) {
             aria-description={`${pr.isDraft ? "Draft. " : ""}Review status: ${meta.label}`}
             withBorder
             padding="xs"
-            bg={`color-mix(in srgb, var(${anchor}) 14%, var(--page-base))`}
+            bg={`color-mix(in srgb, var(${anchor}) 14%, light-dark(var(--page-base), var(--mantine-color-dark-9)))`}
             style={{
                 borderColor: `color-mix(in srgb, var(${anchor}) 30%, var(--mantine-color-default-border))`,
             }}

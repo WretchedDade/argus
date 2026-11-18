@@ -138,6 +138,8 @@ Background changes within dark mode also update the palette. Without an opaque
 host background, it uses the system preference. The fallback dark palette uses
 `#0d1117` as its page background. Explicit mode choices override detection.
 The selected accent remains independent.
+Text shades meet 4.5:1 contrast on neutral surfaces. Raised surfaces limit their
+brightness, and dark compact-card tints use the deepest neutral shade.
 The saved `forceRadarAnimation` choice overrides reduced motion for the radar
 sweep only. Existing appearance settings default to no override.
 
