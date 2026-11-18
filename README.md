@@ -308,7 +308,10 @@ does not increase the count.
 - **Review modes** — choose a mode when you start a review. **Review for me** is
   the primary action: Copilot reviews, then you add your findings. **Review with
   me** lets you lead, turn by turn. **Delegate** lets Copilot approve only when
-  it finds no issues. All three are available on every PR. The queue puts PRs
+  it finds no issues. For a PR with a linked review session, **Review updates**
+  replaces these choices when the head changed since the last recorded review.
+  Otherwise, the action is **Re-review**. Both reuse the linked session and the
+  last interactive mode (Review with me if none is saved). The queue puts PRs
   that need you first, then sorts by recent activity.
 - **History** — the stored `quick` and `review` keys now mean Review for me and
   Review with me. Starting either mode saves that choice for history and charts.
