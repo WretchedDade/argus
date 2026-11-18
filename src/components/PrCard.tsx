@@ -37,7 +37,13 @@ import {
 } from "lucide-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, prDetailQuery, type Pr, type ReviewActionMode } from "../lib/api";
-import { resolveTeamLabel, shortAge, timeAgo, timeUntil } from "../lib/format";
+import {
+    resolveTeamLabel,
+    shortAge,
+    timeAgo,
+    timeUntil,
+    voteLabel,
+} from "../lib/format";
 import { teamAnchor } from "../lib/teamColor";
 import { isSnoozed, REVIEW_STATE_META } from "../lib/triage";
 import { pushToast } from "../lib/toast";
@@ -510,17 +516,11 @@ export function ActionBar({ pr }: { pr: Pr }) {
     );
 }
 
-const VOTE_META: Record<number, { label: string; color: string }> = {
-    10: { label: "Approved", color: "green" },
-    5: {
-        label: "Approved with suggestions",
-        color: "green",
-    },
-    [-5]: {
-        label: "Waiting for author",
-        color: "yellow",
-    },
-    [-10]: { label: "Rejected", color: "red" },
+const VOTE_COLORS: Record<number, string> = {
+    10: "green",
+    5: "green",
+    [-5]: "yellow",
+    [-10]: "red",
 };
 const VOTE_ORDER = [-10, -5, 5, 10];
 
@@ -545,13 +545,12 @@ export function VoteAvatars({
             }}
         >
             {reviewers.map(({ vote, name }, index) => {
-                const m = VOTE_META[vote];
-                const label = `${name || "Unknown reviewer"}: ${m.label}`;
+                const label = `${name || "Unknown reviewer"}: ${voteLabel(vote)}`;
                 return (
                     <Tip key={`${vote}:${name}:${index}`} label={label} wide>
                         <Avatar
                             name={name || undefined}
-                            color={m.color}
+                            color={VOTE_COLORS[vote]}
                             size={28}
                             variant="filled"
                             role="img"
@@ -789,7 +788,9 @@ export function AuthoredPrCard({
 }: Pick<PrCardProps, "pr" | "labels">) {
     const titleId = useId();
     const meta = pr.authorMeta;
-    const hasVotes = pr.otherVotes.some(({ vote }) => Boolean(VOTE_META[vote]));
+    const hasVotes = pr.otherVotes.some(({ vote }) =>
+        Boolean(VOTE_COLORS[vote]),
+    );
     const createdAt = pr.prCreatedAt ?? pr.updatedAt;
     return (
         <Card

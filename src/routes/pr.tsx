@@ -16,7 +16,7 @@ import {
     LoadErrorPage,
     PendingPage,
 } from "../components/ErrorBanner";
-import { timeAgo } from "../lib/format";
+import { timeAgo, voteLabel } from "../lib/format";
 import { claimPrRefresh, releasePrRefresh } from "../lib/query-defaults";
 import { REVIEW_STATE_META } from "../lib/triage";
 
@@ -31,14 +31,6 @@ export const Route = createFileRoute("/pr")({
             : null,
     component: PrDetailPage,
 });
-
-function voteLabel(v: number): string {
-    if (v >= 10) return "approved";
-    if (v >= 5) return "approved with suggestions";
-    if (v <= -10) return "rejected";
-    if (v <= -5) return "waiting on author";
-    return "vote reset";
-}
 
 function eventLabel(e: PrEvent): string {
     const p = e.payload ?? {};
@@ -57,7 +49,7 @@ function eventLabel(e: PrEvent): string {
             return "Delegate found issues; no vote cast";
         case "vote_changed": {
             const who = p.name ? String(p.name) : "A reviewer";
-            return `${who} ${voteLabel(Number(p.vote ?? 0))}`;
+            return `${who} ${voteLabel(Number(p.vote ?? 0)).toLowerCase()}`;
         }
         case "review_state": {
             const to = p.to

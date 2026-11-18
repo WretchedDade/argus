@@ -29,8 +29,6 @@ export const ArgusConfigSchema = z.object({
     me: z.string().nullable(),
     // How Argus authenticates to Azure DevOps.
     adoAuth: z.enum(["az", "broker"]),
-    // Optional custom avatar image for your own PRs (else initials).
-    avatarUrl: z.string(),
     orgUrl: z.string(),
     orgSlug: z.string(),
     project: z.string(),

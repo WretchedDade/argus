@@ -1,13 +1,11 @@
 import { ScatterChart as MantineScatterChart } from "@mantine/charts";
 import { SimpleGrid, Stack, Text } from "@mantine/core";
 import { shortRepo } from "../../lib/format";
+import { countReviewSittings } from "../../lib/review-rhythm";
 import { PIE_COLORS } from "./colors";
 import { localDayKey } from "./dates";
 import type { RhythmItem } from "./types";
 
-const SITTING_GAP_MIN = 45;
-
-// reviews within this gap count as one "sitting"
 function RhythmStat({ value, label }: { value: string; label: string }) {
     return (
         <Stack gap={4}>
@@ -52,15 +50,11 @@ export function ReviewRhythm({
     const dayStats = [...byDay.values()]
         .map((evs) => {
             const sorted = evs.slice().sort((a, b) => a.min - b.min);
-            let sittings = sorted.length ? 1 : 0;
-            for (let i = 1; i < sorted.length; i++)
-                if (sorted[i].min - sorted[i - 1].min > SITTING_GAP_MIN)
-                    sittings++;
             return {
                 dayMs: sorted[0].dayMs,
                 evs: sorted,
                 repos: new Set(sorted.map((e) => e.repo)).size,
-                sittings,
+                sittings: countReviewSittings(sorted.map((event) => event.min)),
             };
         })
         .sort((a, b) => b.dayMs - a.dayMs);

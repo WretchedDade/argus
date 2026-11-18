@@ -222,7 +222,7 @@ Use JSON field names, not environment variable names:
 | ------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------- |
 | `orgUrl`, `orgSlug`, `project` | Strings identifying the Azure DevOps organization and project                                                                          |
 | `me`                           | Identity string, or `null` to detect the identity from `az`                                                                            |
-| `avatarUrl`, `reviewSkillName` | Strings for the custom avatar URL and review skill name                                                                                |
+| `reviewSkillName`              | String for the review skill name                                                                                                       |
 | `reviewModels`                 | Object with `quick`, `full`, and `automatic` keys; each has string fields `model` and `reasoningEffort`. Empty strings use the default |
 | `teamPatterns`                 | Array of reviewer-group glob strings                                                                                                   |
 | `teamLabels`                   | Object mapping reviewer-group names to short label strings                                                                             |

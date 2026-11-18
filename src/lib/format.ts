@@ -61,6 +61,14 @@ export function shortRepo(name: string): string {
     return name;
 }
 
+export function voteLabel(vote: number): string {
+    if (vote >= 10) return "Approved";
+    if (vote >= 5) return "Approved with suggestions";
+    if (vote <= -10) return "Rejected";
+    if (vote <= -5) return "Waiting on author";
+    return "Vote reset";
+}
+
 // Author-type classifier — kept in lockstep with the server AUTOMATED_RE so the
 // windowed client donuts agree with the server's snapshot classification.
 export type AuthorType = "FTE" | "Vendor" | "Automated";
