@@ -197,6 +197,7 @@ async function runReconcile(
         changedFiles: 0,
     };
     currentRunId = runId;
+    lastError = null;
     const note = (level: string, msg: string, data?: Record<string, unknown>) =>
         ctx.store.recordActivity(level, msg, data, runId);
     try {
@@ -447,7 +448,6 @@ async function runReconcile(
         note("info", `queue now ${tracked} tracked`);
         lastSummary = { mine: mine.length, tracked, ...applied, closed };
         lastRunAt = new Date().toISOString();
-        lastError = null;
         ctx.store.finishPollRun(runId, { ok: true, ...lastSummary });
         note("info", "reconcile done", { ...lastSummary });
         ctx.store.pruneLogs(cfg.retentionDays);
