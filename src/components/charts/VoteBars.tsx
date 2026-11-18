@@ -1,5 +1,6 @@
 import { BarChart as MantineBarChart } from "@mantine/charts";
 import { VERDICT_BARS } from "./colors";
+import { AccessibleChart } from "../AccessibleChart";
 
 export function VoteBars({
     data,
@@ -16,7 +17,7 @@ export function VoteBars({
         ...row,
         label: `${row.label} (${row.approved + row.suggestions + row.waiting + row.rejected})`,
     }));
-    return (
+    const chart = (
         <MantineBarChart
             h={Math.max(180, data.length * 52 + 80)}
             data={chartData}
@@ -41,5 +42,20 @@ export function VoteBars({
             legendProps={{ verticalAlign: "bottom" }}
             valueFormatter={(value) => `${value} PR${value === 1 ? "" : "s"}`}
         />
+    );
+    return (
+        <AccessibleChart
+            summary={`Review verdicts by author type: ${chartData.reduce((sum, row) => sum + row.approved + row.suggestions + row.waiting + row.rejected, 0)} PRs across ${data.length} author types.`}
+            columns={["Author type", ...VERDICT_BARS.map(([, label]) => label)]}
+            rows={data.map((row) => [
+                row.label,
+                row.approved,
+                row.suggestions,
+                row.waiting,
+                row.rejected,
+            ])}
+        >
+            {chart}
+        </AccessibleChart>
     );
 }

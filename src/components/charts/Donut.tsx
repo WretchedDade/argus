@@ -1,6 +1,7 @@
 import { DonutChart } from "@mantine/charts";
 import { ColorSwatch, Group, Stack, Text } from "@mantine/core";
 import { PIE_COLORS } from "./colors";
+import { AccessibleChart } from "../AccessibleChart";
 
 export function Donut({
     data,
@@ -14,14 +15,15 @@ export function Donut({
         value: item.count,
         color: PIE_COLORS[index % PIE_COLORS.length],
     }));
-    return (
+    const total = data.reduce((sum, item) => sum + item.count, 0);
+    const chart = (
         <Group gap="lg" justify="center">
             <DonutChart
                 data={segments.filter((segment) => segment.value > 0)}
                 size={136}
                 thickness={28}
                 paddingAngle={2}
-                chartLabel={data.reduce((sum, item) => sum + item.count, 0)}
+                chartLabel={total}
                 tooltipDataSource="segment"
                 valueFormatter={(count) =>
                     `${count} ${unit}${count === 1 ? "" : "s"}`
@@ -64,5 +66,14 @@ export function Donut({
                 ))}
             </Stack>
         </Group>
+    );
+    return (
+        <AccessibleChart
+            summary={`${unit === "comment" ? "Comment" : "PR"} distribution: ${total} ${unit}${total === 1 ? "" : "s"} across ${data.length} categories.`}
+            columns={["Category", unit === "comment" ? "Comments" : "PRs"]}
+            rows={data.map((item) => [item.label, item.count])}
+        >
+            {chart}
+        </AccessibleChart>
     );
 }

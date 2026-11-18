@@ -1,6 +1,7 @@
 import { Treemap } from "@mantine/charts";
 import { getContrastColor, useMantineTheme } from "@mantine/core";
 import { PIE_COLORS } from "./colors";
+import { AccessibleChart } from "../AccessibleChart";
 
 function AuthorTreemapTile({
     x = 0,
@@ -62,7 +63,7 @@ export function AuthorTreemap({
 }: {
     authors: { label: string; count: number }[];
 }) {
-    return (
+    const chart = (
         <Treemap
             height={260}
             data={authors.map((author, index) => ({
@@ -74,5 +75,14 @@ export function AuthorTreemap({
             treemapProps={{ content: <AuthorTreemapTile /> }}
             valueFormatter={(count) => `${count} PR${count === 1 ? "" : "s"}`}
         />
+    );
+    return (
+        <AccessibleChart
+            summary={`Review reach: ${authors.reduce((sum, author) => sum + author.count, 0)} PRs across ${authors.length} displayed author groups.`}
+            columns={["Author group", "PRs"]}
+            rows={authors.map((author) => [author.label, author.count])}
+        >
+            {chart}
+        </AccessibleChart>
     );
 }
