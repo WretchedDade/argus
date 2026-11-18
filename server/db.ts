@@ -49,7 +49,6 @@ export {
 } from "./store/prs.ts";
 
 const HOUR_MS = 3_600_000;
-const WEEK_MS = 604_800_000;
 
 // Median of an unsorted numeric list (null when empty).
 function median(xs: number[]): number | null {
@@ -66,13 +65,12 @@ function percentile(xs: number[], p: number): number | null {
     return s[Math.min(s.length - 1, Math.floor((p / 100) * s.length))];
 }
 
-// ISO date (YYYY-MM-DD) of the Monday starting the week that contains `ms`.
+// Local date (YYYY-MM-DD) of the Monday starting the week that contains `ms`.
 function weekKey(ms: number): string {
     const d = new Date(ms);
-    const day = (d.getUTCDay() + 6) % 7; // Monday = 0
-    d.setUTCDate(d.getUTCDate() - day);
-    d.setUTCHours(0, 0, 0, 0);
-    return d.toISOString().slice(0, 10);
+    const day = (d.getDay() + 6) % 7; // Monday = 0
+    d.setDate(d.getDate() - day);
+    return localDayKey(d.getTime());
 }
 
 function localDayKey(ms: number): string {
@@ -80,13 +78,21 @@ function localDayKey(ms: number): string {
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 
+function localDayStart(ms: number, offset = 0): number {
+    const d = new Date(ms);
+    return new Date(
+        d.getFullYear(),
+        d.getMonth(),
+        d.getDate() + offset,
+    ).getTime();
+}
+
 // The last `n` week-start keys, oldest first, ending with the current week.
 function recentWeeks(n: number): string[] {
-    const start = weekKey(Date.now());
-    const startMs = Date.parse(start);
+    const start = new Date(`${weekKey(Date.now())}T00:00:00`);
     const out: string[] = [];
     for (let i = n - 1; i >= 0; i--)
-        out.push(new Date(startMs - i * WEEK_MS).toISOString().slice(0, 10));
+        out.push(localDayKey(localDayStart(start.getTime(), -i * 7)));
     return out;
 }
 
@@ -419,7 +425,7 @@ export class ArgusStore {
         const staleMs = recencyDays * 86_400_000;
         const [y, m, d] = dayKey.split("-").map(Number);
         const dayStart = new Date(y, m - 1, d).getTime();
-        const dayEnd = dayStart + 86_400_000;
+        const dayEnd = localDayStart(dayStart, 1);
 
         const rollToBusinessDay = (ms: number): number => {
             const dt = new Date(ms);
@@ -440,13 +446,6 @@ export class ArgusStore {
             "waiting",
             "rejected",
         ]);
-        const dayAfter = (ms: number): number => {
-            const dt = new Date(ms);
-            dt.setHours(0, 0, 0, 0);
-            dt.setDate(dt.getDate() + 1);
-            return dt.getTime();
-        };
-
         const closedTs = new Map<string, number>();
         for (const r of this.#prep(
             "SELECT canonical, MIN(ts) AS ts FROM pr_events WHERE type = 'closed' GROUP BY canonical",
@@ -502,10 +501,11 @@ export class ArgusStore {
             if (p.reviewState === "covered") ends.push(Date.parse(p.updatedAt));
             else if (p.reviewState && VERDICT.has(p.reviewState))
                 ends.push(
-                    dayAfter(
+                    localDayStart(
                         p.reviewedAt
                             ? Date.parse(p.reviewedAt)
                             : Date.parse(p.updatedAt),
+                        1,
                     ),
                 );
             ends.push(Date.parse(p.updatedAt) + staleMs);
@@ -1339,14 +1339,6 @@ export class ArgusStore {
             "waiting",
             "rejected",
         ]);
-        // Midnight starting the day AFTER `ms` (local) — a verdicted PR counts through
-        // the day you acted, then leaves your plate the next day.
-        const dayAfter = (ms: number): number => {
-            const d = new Date(ms);
-            d.setHours(0, 0, 0, 0);
-            d.setDate(d.getDate() + 1);
-            return d.getTime();
-        };
         for (const p of prs) {
             if (p.role === "author" || p.dismissed || p.outOfScope || p.isDraft)
                 continue;
@@ -1363,10 +1355,11 @@ export class ArgusStore {
             // author's court. Verdict day = when you recorded it, else when it settled.
             else if (p.reviewState && VERDICT_STATES.has(p.reviewState)) {
                 ends.push(
-                    dayAfter(
+                    localDayStart(
                         p.reviewedAt
                             ? Date.parse(p.reviewedAt)
                             : Date.parse(p.updatedAt),
+                        1,
                     ),
                 );
             }
@@ -1376,21 +1369,20 @@ export class ArgusStore {
             const end = ends.length ? Math.min(...ends) : nowMs;
             if (end > start) intervals.push({ start, end });
         }
-        const DAY_MS = 86_400_000;
         const WINDOW_DAYS = 84; // 12 weeks, enough to derive both series
-        const todayStart = new Date();
-        todayStart.setHours(0, 0, 0, 0);
-        const firstDayStart = todayStart.getTime() - (WINDOW_DAYS - 1) * DAY_MS;
         const dayBuckets = Array.from({ length: WINDOW_DAYS }, (_, i) => {
-            const dayStart = firstDayStart + i * DAY_MS;
-            const dayEnd = dayStart + DAY_MS;
+            const dayStart = localDayStart(nowMs, i - WINDOW_DAYS + 1);
+            const dayEnd = localDayStart(dayStart, 1);
             let level = 0;
             for (const iv of intervals)
                 if (iv.start < dayEnd && iv.end > dayStart) level++;
             return { dayStart, level, inflow: 0, throughput: 0 };
         });
+        const dayIndices = new Map(
+            dayBuckets.map((day, i) => [localDayKey(day.dayStart), i]),
+        );
         const dayIndex = (ms: number): number =>
-            Math.floor((ms - firstDayStart) / DAY_MS);
+            dayIndices.get(localDayKey(ms)) ?? -1;
         // Raw inflow per day (used by the weekly view, which sums whole weeks — a
         // Friday-evening PR belongs to its own week there, so it must NOT roll).
         for (const ms of inflowMs) {
@@ -1421,7 +1413,7 @@ export class ArgusStore {
                 return wd !== 0 && wd !== 6; // drop Sunday / Saturday
             })
             .map((d) => ({
-                key: new Date(d.dayStart).toISOString().slice(0, 10),
+                key: localDayKey(d.dayStart),
                 inflow: rolledInflow[dayIndex(d.dayStart)],
                 throughput: d.throughput,
                 backlog: d.level,
@@ -1479,7 +1471,7 @@ export class ArgusStore {
             ? Math.max(1, sortedLevels[Math.floor(sortedLevels.length * 0.75)])
             : 1;
         const balanceSeries = balanceDays.map((d) => ({
-            key: new Date(d.dayStart).toISOString().slice(0, 10),
+            key: localDayKey(d.dayStart),
             inflow: d.inflow,
             throughput: d.throughput,
             level: d.level,
@@ -1538,9 +1530,7 @@ export class ArgusStore {
                     count: peakDay.level,
                     at:
                         peakDay.level > 0
-                            ? new Date(peakDay.dayStart)
-                                  .toISOString()
-                                  .slice(0, 10)
+                            ? localDayKey(peakDay.dayStart)
                             : null,
                 },
             },
