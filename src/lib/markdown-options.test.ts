@@ -1,14 +1,12 @@
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
-import { pathToFileURL } from "node:url";
-import { build } from "esbuild";
+import { buildTestModule } from "../../scripts/test-bundle.ts";
 import { safeUrlTransform } from "./markdown-options.ts";
 import { describe, it } from "vitest";
 
 describe("src/lib/markdown-options", () => {
     it("renders markdown while rejecting unsafe link schemes", async () => {
-        // Node cannot import .tsx, so bundle the real component. Packages stay external.
-        const result = await build({
+        // Bundle render fixtures with source maps for coverage.
+        const result = await buildTestModule("markdown-preview", {
             stdin: {
                 contents: `
             import { createElement } from "react";
@@ -28,23 +26,17 @@ describe("src/lib/markdown-options", () => {
                 loader: "js",
             },
             bundle: true,
-            write: false,
             format: "esm",
             platform: "node",
             packages: "external",
             jsx: "automatic",
         });
-        // Stay inside the repo so package imports resolve. Each run gets its own directory.
-        const cacheDir = "node_modules/.cache";
         type Render = (text: string) => string;
-        mkdirSync(cacheDir, { recursive: true });
-        const outDir = mkdtempSync(`${cacheDir}/argus-markdown-test-`);
-        const outFile = `${outDir}/markdown-preview.mjs`;
-        writeFileSync(outFile, result.outputFiles[0].text);
-        const { renderFull, renderClamped } = (await import(
-            pathToFileURL(outFile).href
-        )) as { renderFull: Render; renderClamped: Render };
-        rmSync(outDir, { recursive: true, force: true });
+
+        const { renderFull, renderClamped } = result as {
+            renderFull: Render;
+            renderClamped: Render;
+        };
 
         // The clamped preview uses useLayoutEffect, which warns during server rendering.
         const quiet = (render: (text: string) => string) => (text: string) => {

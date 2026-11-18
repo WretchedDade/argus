@@ -1,11 +1,8 @@
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
-import path from "node:path";
-import { pathToFileURL } from "node:url";
-import { build } from "esbuild";
+import { buildTestModule } from "../../scripts/test-bundle.ts";
 import type { Pr } from "../lib/api.ts";
 import { REVIEW_STATE_META } from "../lib/triage.ts";
-import { describe, it, beforeAll, afterAll } from "vitest";
+import { describe, it, beforeAll } from "vitest";
 
 describe("src/components/review-actions", () => {
     type Render = {
@@ -33,7 +30,7 @@ describe("src/components/review-actions", () => {
     let renderDetailPage: Render["renderDetailPage"];
     let renderQueue: Render["renderQueue"];
     let renderVotes: Render["renderVotes"];
-    let outDir: string | undefined;
+
     const pr: Pr = {
         canonical: "https://example.test/pr/1",
         org: "org",
@@ -84,7 +81,7 @@ describe("src/components/review-actions", () => {
         otherVotes: [{ name: "Synthetic reviewer", vote: -5 }],
     };
     beforeAll(async () => {
-        const result = await build({
+        const result = await buildTestModule("review-actions", {
             stdin: {
                 contents: `
             import { createElement } from "react";
@@ -171,17 +168,12 @@ describe("src/components/review-actions", () => {
                 loader: "js",
             },
             bundle: true,
-            write: false,
             format: "esm",
             platform: "node",
             packages: "external",
             jsx: "automatic",
         });
-        const cacheDir = path.join("node_modules", ".cache");
-        mkdirSync(cacheDir, { recursive: true });
-        outDir = mkdtempSync(path.join(cacheDir, "argus-review-actions-test-"));
-        const outFile = path.join(outDir, "review-actions.mjs");
-        writeFileSync(outFile, result.outputFiles[0].text);
+
         ({
             render,
             renderAuthoredCard,
@@ -190,11 +182,9 @@ describe("src/components/review-actions", () => {
             renderDetailPage,
             renderQueue,
             renderVotes,
-        } = (await import(pathToFileURL(outFile).href)) as Render);
+        } = result as Render);
     }, 30_000);
-    afterAll(() => {
-        if (outDir) rmSync(outDir, { recursive: true, force: true });
-    });
+
     it("shows pending detail without a missing-PR message", async () => {
         const pendingDetail = renderDetailPage(pr, "pending");
         assert.match(pendingDetail, /role="status"/);

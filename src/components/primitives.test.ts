@@ -1,9 +1,6 @@
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
-import path from "node:path";
-import { pathToFileURL } from "node:url";
-import { build } from "esbuild";
-import { describe, it, beforeAll, afterAll } from "vitest";
+import { buildTestModule } from "../../scripts/test-bundle.ts";
+import { describe, it, beforeAll } from "vitest";
 
 describe("src/components/primitives", () => {
     type Render = Record<
@@ -83,7 +80,7 @@ describe("src/components/primitives", () => {
         };
     };
     let render: Render;
-    let outDir: string | undefined;
+
     const tableRows = (html: string) => {
         const table = html.match(/<table\b[^]*?<\/table>/)?.[0];
         assert.ok(table, "Each chart has a data table");
@@ -99,7 +96,7 @@ describe("src/components/primitives", () => {
             );
     };
     beforeAll(async () => {
-        const result = await build({
+        const result = await buildTestModule("primitives", {
             stdin: {
                 contents: `
             import { cloneElement, createElement as h } from "react";
@@ -371,22 +368,15 @@ describe("src/components/primitives", () => {
                 loader: "js",
             },
             bundle: true,
-            write: false,
             format: "esm",
             platform: "node",
             packages: "external",
             jsx: "automatic",
         });
-        const cacheDir = path.join("node_modules", ".cache");
-        mkdirSync(cacheDir, { recursive: true });
-        outDir = mkdtempSync(path.join(cacheDir, "argus-primitives-test-"));
-        const outFile = path.join(outDir, "primitives.mjs");
-        writeFileSync(outFile, result.outputFiles[0].text);
-        render = (await import(pathToFileURL(outFile).href)) as Render;
+
+        render = result as Render;
     }, 30_000);
-    afterAll(() => {
-        if (outDir) rmSync(outDir, { recursive: true, force: true });
-    });
+
     it("renders load failures with retry controls", async () => {
         const error = render.error();
         assert.match(error, /role="alert"/);

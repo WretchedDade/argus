@@ -1,13 +1,10 @@
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
-import path from "node:path";
-import { pathToFileURL } from "node:url";
-import { build } from "esbuild";
+import { buildTestModule } from "../../scripts/test-bundle.ts";
 import { describe, it } from "vitest";
 
 describe("src/components/settings", () => {
     it("renders settings controls and validation feedback", async () => {
-        const result = await build({
+        const result = await buildTestModule("settings", {
             stdin: {
                 contents: `
             import { createElement as h } from "react";
@@ -71,72 +68,63 @@ describe("src/components/settings", () => {
                 },
             ],
             bundle: true,
-            write: false,
             format: "esm",
             platform: "node",
             packages: "external",
             jsx: "automatic",
         });
-        const cacheDir = path.join("node_modules", ".cache");
-        mkdirSync(cacheDir, { recursive: true });
-        const outDir = mkdtempSync(path.join(cacheDir, "argus-settings-test-"));
-        try {
-            const outFile = path.join(outDir, "settings.mjs");
-            writeFileSync(outFile, result.outputFiles[0].text);
-            const { render } = (await import(pathToFileURL(outFile).href)) as {
-                render: () => string;
-            };
-            const html = render();
-            assert.doesNotMatch(html, /name="avatarUrl"|Avatar image/);
-            assert.equal(
-                html.match(/<form\b/g)?.length,
-                1,
-                "Setup must not nest a form.",
+
+        const { render } = result as {
+            render: () => string;
+        };
+        const html = render();
+        assert.doesNotMatch(html, /name="avatarUrl"|Avatar image/);
+        assert.equal(
+            html.match(/<form\b/g)?.length,
+            1,
+            "Setup must not nest a form.",
+        );
+        assert.equal(html.match(/role="tab"/g)?.length, 6);
+        assert.equal(html.match(/role="tabpanel"/g)?.length, 6);
+        for (const name of [
+            "workStartHour",
+            "workEndHour",
+            "recencyDays",
+            "retentionDays",
+            "project",
+            "orgUrl",
+            "reviewModels.quick.model",
+            "reviewModels.full.model",
+            "reviewModels.automatic.model",
+            "periods[0].start",
+            "periods[0].end",
+        ])
+            assert.ok(
+                html.includes(`name="${name}"`),
+                `Fields stay mounted and named across tabs: ${name}.`,
             );
-            assert.equal(html.match(/role="tab"/g)?.length, 6);
-            assert.equal(html.match(/role="tabpanel"/g)?.length, 6);
-            for (const name of [
-                "workStartHour",
-                "workEndHour",
-                "recencyDays",
-                "retentionDays",
-                "project",
-                "orgUrl",
-                "reviewModels.quick.model",
-                "reviewModels.full.model",
-                "reviewModels.automatic.model",
-                "periods[0].start",
-                "periods[0].end",
-            ])
-                assert.ok(
-                    html.includes(`name="${name}"`),
-                    `Fields stay mounted and named across tabs: ${name}.`,
-                );
-            for (const label of [
-                "Work start \\(hour\\)",
-                "Organization URL",
-                "Account email override",
-                "Start",
-                "End",
-            ]) {
-                const id = new RegExp(
-                    `<label[^>]*for="([^"]+)"[^>]*>${label}`,
-                ).exec(html)?.[1];
-                assert.ok(id, `${label} has a native connected label.`);
-                assert.ok(html.includes(`id="${id}"`));
-            }
-            assert.match(html, /Changes apply immediately/);
-            assert.match(html, /Preview\.Repository/);
-            assert.match(html, /Scope for Preview\.Repository/);
-            assert.match(html, /type="button"[^]*?>Save setup<\/span>/);
-            let labelDepth = 0;
-            for (const tag of html.matchAll(/<\/?label\b[^>]*>/g)) {
-                labelDepth += tag[0].startsWith("</") ? -1 : 1;
-                assert.ok(labelDepth <= 1, "Input labels must not nest.");
-            }
-            assert.equal(labelDepth, 0);
-        } finally {
-            rmSync(outDir, { recursive: true, force: true });
+        for (const label of [
+            "Work start \\(hour\\)",
+            "Organization URL",
+            "Account email override",
+            "Start",
+            "End",
+        ]) {
+            const id = new RegExp(
+                `<label[^>]*for="([^"]+)"[^>]*>${label}`,
+            ).exec(html)?.[1];
+            assert.ok(id, `${label} has a native connected label.`);
+            assert.ok(html.includes(`id="${id}"`));
         }
+        assert.match(html, /Changes apply immediately/);
+        assert.match(html, /Preview\.Repository/);
+        assert.match(html, /Scope for Preview\.Repository/);
+        assert.match(html, /type="button"[^]*?>Save setup<\/span>/);
+        let labelDepth = 0;
+        for (const tag of html.matchAll(/<\/?label\b[^>]*>/g)) {
+            labelDepth += tag[0].startsWith("</") ? -1 : 1;
+            assert.ok(labelDepth <= 1, "Input labels must not nest.");
+        }
+        assert.equal(labelDepth, 0);
     });
 });
