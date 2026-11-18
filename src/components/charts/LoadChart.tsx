@@ -3,7 +3,7 @@ import { CompositeChart } from "@mantine/charts";
 import type { InsightsLoadBucket, Period } from "../../lib/api";
 import { localDate } from "./dates";
 
-export const LOAD_COLORS = {
+const LOAD_COLORS = {
     inflow: "var(--mantine-primary-color-filled)",
     reviewed: "var(--mantine-color-gray-6)",
     backlog: "var(--argus-load-backlog)",

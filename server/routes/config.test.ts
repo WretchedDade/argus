@@ -18,6 +18,10 @@ import { logger } from "../log.ts";
 assert.equal(defaultConfig().vendorPattern, "\\(.+\\)");
 assert.equal(parseConfigOverrides({ vendorPattern: "" }).vendorPattern, "");
 assert.throws(() => parseConfigOverrides({ vendorPattern: "(" }));
+assert.deepEqual(
+    parseConfigOverrides({ reviewSkillName: "pr-review", avatarUrl: "unused" }),
+    { reviewSkillName: "pr-review" },
+);
 
 const dir = mkdtempSync(path.join(tmpdir(), "argus-config-test-"));
 const file = path.join(dir, "config.json");

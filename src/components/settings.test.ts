@@ -16,7 +16,7 @@ const result = await build({
             import { argusTheme } from "./src/theme.ts";
             export function render() {
                 const config = {
-                    me: null, adoAuth: "az", avatarUrl: "",
+                    me: null, adoAuth: "az",
                     orgUrl: "https://example.test", orgSlug: "preview", project: "Preview",
                     teamPatterns: [], teamLabels: { "Preview reviewers": "Reviewers" },
                     periods: [{ label: "Preview period", start: "2026-01-01", end: "2026-01-02" }],
@@ -84,6 +84,7 @@ try {
         render: () => string;
     };
     const html = render();
+    assert.doesNotMatch(html, /name="avatarUrl"|Avatar image/);
     assert.equal(
         html.match(/<form\b/g)?.length,
         1,

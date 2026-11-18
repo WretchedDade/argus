@@ -1,4 +1,5 @@
 import type { ActivityEntry, PollRun, RunEvent } from "./api.ts";
+import { voteLabel } from "./format.ts";
 
 export type TraceLevel = "all" | "issues" | "errors";
 
@@ -64,11 +65,7 @@ export function runChangeLabel(change: RunEvent): string {
         case "vote_changed": {
             const vote = Number(change.payload?.vote);
             if (!Number.isFinite(vote)) return "Vote changed";
-            if (vote >= 10) return "Approved";
-            if (vote >= 5) return "Approved with suggestions";
-            if (vote <= -10) return "Rejected";
-            if (vote <= -5) return "Waiting on author";
-            return "Vote reset";
+            return voteLabel(vote);
         }
         case "draft_changed":
             return change.payload?.is_draft ? "Marked draft" : "Marked ready";
