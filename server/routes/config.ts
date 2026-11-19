@@ -11,6 +11,7 @@ import {
 import { authStatus, setAuthProvider, useBroker } from "../ado/client.ts";
 import { resetIdentity } from "../ado/poller.ts";
 import { jsonBody } from "../validation.ts";
+import { logger } from "../log.ts";
 
 const setupSchema = ConfigOverridesSchema.extend({
     installPrReviewSkill: z.boolean().optional(),
@@ -92,6 +93,14 @@ export function configRoutes(ctx: ApiContext) {
                     installPrReviewSkill === true
                         ? ctx.installBaselineSkill()
                         : { installed: false, reason: "skipped" };
+                void ctx
+                    .reconcile()
+                    .catch((err: unknown) =>
+                        logger.error(
+                            { component: "setup", err },
+                            "Initial poll failed",
+                        ),
+                    );
                 return c.json({ config, setup_complete: true, skill, storage });
             },
         )

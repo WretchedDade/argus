@@ -53,6 +53,11 @@ flowchart LR
 
 `standalone.ts` does the same, but it starts the poller at startup. It runs without the Copilot app. Features that need a Copilot session (Review, re-review, archive) fail with a clear message.
 
+After first-run setup saves the configuration, `/api/setup` starts one poll
+without waiting for it to finish. This poll does not wait for work hours or the
+next scheduled run. An empty board shows loading feedback while the poll runs.
+When health reports a completed poll, the board fetches the latest stored PRs.
+
 ## Poller
 
 `server/ado/poller.ts` runs on a clock-aligned schedule during work hours (`scheduleNext`). Each run:
@@ -182,7 +187,7 @@ There is no dev server. `npm run dev` runs a watch build, and you reload the can
 | Saved settings      | The `settings` table in the database. They override `argus.config.json`.                                                 |
 | Standalone database | `data/standalone.db` (ignored by Git)                                                                                    |
 
-The logic is in `server/storage.ts` and `server/config.ts`. See the README section "Where the database lives" for the user view.
+The logic is in `server/storage.ts` and `server/config.ts`. See [Where the database lives](USER-GUIDE.md#where-the-database-lives) for the user view.
 
 ## More guides
 
