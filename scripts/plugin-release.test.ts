@@ -5,6 +5,7 @@ import {
     mkdtempSync,
     readFileSync,
     rmSync,
+    statSync,
     writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -17,7 +18,7 @@ import {
     publishPlugin,
 } from "./plugin-release.ts";
 
-function releaseFixture(root: string, version: string) {
+function releaseFixture(root: string, version: string, dependencyCount = 0) {
     const source = path.join(root, `source-${version}`);
     const release = path.join(root, "releases", `argus-${version}`);
     mkdirSync(source, { recursive: true });
@@ -64,7 +65,22 @@ function releaseFixture(root: string, version: string) {
     >;
     writeFileSync(
         file,
-        JSON.stringify({ ...manifest, platform: "win32", architecture: "x64" }),
+        JSON.stringify({
+            ...manifest,
+            platform: "win32",
+            architecture: "x64",
+            dependencies: Array.from(
+                { length: dependencyCount },
+                (_, index) => ({
+                    path: `node_modules/fixture-runtime-${index}`,
+                    name: `fixture-runtime-${index}`,
+                    version: "1.0.0",
+                    license: "MIT",
+                    resolved: `https://registry.example.test/fixture-runtime-${index}/-/fixture-runtime-${index}-1.0.0.tgz`,
+                    integrity: null,
+                }),
+            ),
+        }),
     );
     return release;
 }
@@ -132,7 +148,7 @@ describe("scripts/plugin-release", () => {
         }
     });
 
-    it("publishes append-only commits, preserves source HEAD, and rejects downgrades", () => {
+    it("publishes manifests over 1 MiB append-only and preserves version guards", () => {
         const dir = mkdtempSync(path.join(tmpdir(), "argus-plugin-publish-"));
         const git = (cwd: string, ...args: string[]) =>
             execFileSync("git", args, {
@@ -157,8 +173,12 @@ describe("scripts/plugin-release", () => {
             git(source, "remote", "add", "origin", remote);
             const sourceHead = git(source, "rev-parse", "HEAD");
             const first = stagePlugin(
-                releaseFixture(dir, "1.0.0"),
+                releaseFixture(dir, "1.0.0", 6000),
                 path.join(dir, "plugins"),
+            );
+            assert.ok(
+                statSync(path.join(first, "release-manifest.json")).size >
+                    1024 * 1024,
             );
             assert.equal(publishPlugin(source, first), true);
             const firstHead = git(
@@ -169,7 +189,7 @@ describe("scripts/plugin-release", () => {
             ).split(/\s/)[0];
             assert.equal(publishPlugin(source, first), false);
             const second = stagePlugin(
-                releaseFixture(dir, "1.1.0"),
+                releaseFixture(dir, "1.1.0", 6000),
                 path.join(dir, "plugins"),
             );
             assert.equal(publishPlugin(source, second), true);
@@ -180,6 +200,14 @@ describe("scripts/plugin-release", () => {
             assert.throws(
                 () => publishPlugin(source, first),
                 /newer|different/,
+            );
+            const changed = stagePlugin(
+                releaseFixture(dir, "1.1.0", 6001),
+                path.join(dir, "changed"),
+            );
+            assert.throws(
+                () => publishPlugin(source, changed),
+                /already has a different payload/,
             );
             const acquired = path.join(dir, "acquired");
             git(

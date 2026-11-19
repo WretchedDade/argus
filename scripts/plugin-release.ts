@@ -1,8 +1,10 @@
 import { execFileSync, spawnSync } from "node:child_process";
 import {
+    closeSync,
     cpSync,
     mkdirSync,
     mkdtempSync,
+    openSync,
     readFileSync,
     rmSync,
     writeFileSync,
@@ -177,17 +179,33 @@ export function publishPlugin(sourceRepo: string, stage: string): boolean {
     if (remote.status === 0) {
         git("fetch", "--no-tags", "origin", "refs/heads/plugin");
         parent = git("rev-parse", "FETCH_HEAD");
-        const previous = releaseManifestSchema.parse(
-            JSON.parse(git("show", `${parent}:release-manifest.json`)),
-        );
-        if (
-            previous.packageVersion !== manifest.packageVersion &&
-            !isNewerVersion(manifest.packageVersion, previous.packageVersion)
-        )
-            throw new Error("A newer plugin version is already published.");
     }
     const work = mkdtempSync(path.join(tmpdir(), "argus-plugin-index-"));
     try {
+        let previousVersion: string | undefined;
+        if (parent) {
+            const previousFile = path.join(work, "release-manifest.json");
+            const descriptor = openSync(previousFile, "w");
+            try {
+                // Dependency inventories can exceed the subprocess stdout buffer.
+                execFileSync(
+                    "git",
+                    ["show", `${parent}:release-manifest.json`],
+                    {
+                        cwd: sourceRepo,
+                        stdio: ["ignore", descriptor, "pipe"],
+                    },
+                );
+            } finally {
+                closeSync(descriptor);
+            }
+            previousVersion = manifestAt(work).packageVersion;
+            if (
+                previousVersion !== manifest.packageVersion &&
+                !isNewerVersion(manifest.packageVersion, previousVersion)
+            )
+                throw new Error("A newer plugin version is already published.");
+        }
         const gitDir = git("rev-parse", "--absolute-git-dir");
         const run = (...args: string[]) =>
             execFileSync(
@@ -222,10 +240,7 @@ export function publishPlugin(sourceRepo: string, stage: string): boolean {
         const tree = run("write-tree");
         if (parent) {
             if (tree === git("rev-parse", `${parent}^{tree}`)) return false;
-            const previous = releaseManifestSchema.parse(
-                JSON.parse(git("show", `${parent}:release-manifest.json`)),
-            );
-            if (previous.packageVersion === manifest.packageVersion)
+            if (previousVersion === manifest.packageVersion)
                 throw new Error(
                     "This plugin version already has a different payload. Publish a new version.",
                 );
