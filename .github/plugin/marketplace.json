@@ -1,0 +1,14 @@
+{
+    "name": "argus",
+    "owner": {
+        "name": "WretchedDade"
+    },
+    "plugins": [
+        {
+            "name": "argus",
+            "description": "Argus: Azure DevOps PR triage and review canvas.",
+            "source": ".",
+            "strict": true
+        }
+    ]
+}
