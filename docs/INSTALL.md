@@ -157,8 +157,9 @@ copilot plugin update argus@argus
 ```
 
 Then reload extensions or restart the session. Plugin installs do not use the ZIP
-updater or personal-skill sync. The **Check for new versions** setting and bell
-update actions apply to ZIP installs only. The plugin manager updates the bundled
+updater or personal-skill sync. The update-check button and **Check for new versions**
+setting are hidden for plugin installs. Bell update actions apply to ZIP installs
+only. The plugin manager updates the bundled
 skill; it does not change a personal or project skill that takes precedence.
 
 ### ZIP upgrades

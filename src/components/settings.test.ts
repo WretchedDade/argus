@@ -39,7 +39,7 @@ describe("src/components/settings", () => {
                 return renderToStaticMarkup(h(MantineProvider, { theme: argusTheme },
                     h(QueryClientProvider, { client }, h(SetupGate, { pluginInstalled }))));
             }
-            export function render() {
+            export function render(pluginInstalled = false) {
                 const client = new QueryClient();
                 client.setQueryData(["teams"], ["Preview reviewers"]);
                 client.setQueryData(["version"], "0.0.0");
@@ -47,7 +47,7 @@ describe("src/components/settings", () => {
                     repo: "Preview.Repository", scope: null, open: 2, hidden: 1,
                 }]);
                 client.setQueryData(["auth-registration"], { clientId: "", tenantId: "" });
-                client.setQueryData(["health"], { poller: { running: false } });
+                client.setQueryData(["health"], { pluginInstalled, poller: { running: false } });
                 const router = createRouter({
                     routeTree: createRootRoute(),
                     history: createMemoryHistory(),
@@ -85,7 +85,7 @@ describe("src/components/settings", () => {
         });
 
         const { render, renderSetup } = result as {
-            render: () => string;
+            render: (pluginInstalled?: boolean) => string;
             renderSetup: (pluginInstalled: boolean) => string;
         };
         assert.match(renderSetup(false), /PR review skill/);
@@ -94,6 +94,14 @@ describe("src/components/settings", () => {
             /PR review skill|Install the baseline skill|I'll use my own/,
         );
         const html = render();
+        assert.match(html, /Check for updates/);
+        assert.match(html, /Check for new versions/);
+        const pluginHtml = render(true);
+        assert.match(pluginHtml, /Argus v0\.0\.0/);
+        assert.doesNotMatch(
+            pluginHtml,
+            /Check for updates|Check for new versions|Check GitHub once a day/,
+        );
         assert.doesNotMatch(html, /name="avatarUrl"|Avatar image/);
         assert.equal(
             html.match(/<form\b/g)?.length,
