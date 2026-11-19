@@ -33,6 +33,7 @@ import {
     api,
     configApi,
     configQuery,
+    healthQuery,
     repoScopesQuery,
     teamsQuery,
     versionQuery,
@@ -232,6 +233,8 @@ export function SettingsForm({ config: cfg }: { config: ArgusConfig }) {
     const router = useRouter();
     const teams = useQuery(teamsQuery);
     const version = useQuery(versionQuery);
+    const zipUpdatesAvailable =
+        useQuery(healthQuery).data?.pluginInstalled === false;
     const formId = useId();
     const formElement = useRef<HTMLFormElement>(null);
     const [tab, setTab] = useState<GroupId>("general");
@@ -1111,58 +1114,66 @@ export function SettingsForm({ config: cfg }: { config: ArgusConfig }) {
                                                         ? `Argus v${version.data}`
                                                         : "Argus"}
                                                 </Text>
-                                                <Button
-                                                    type="button"
-                                                    variant="default"
-                                                    loading={check.isPending}
-                                                    disabled={
-                                                        !cfg.checkForUpdates
-                                                    }
-                                                    title={
-                                                        cfg.checkForUpdates
-                                                            ? undefined
-                                                            : "Save settings with update checks enabled to use this"
-                                                    }
-                                                    onClick={() =>
-                                                        check.mutate()
-                                                    }
-                                                >
-                                                    Check for updates
-                                                </Button>
+                                                {zipUpdatesAvailable && (
+                                                    <Button
+                                                        type="button"
+                                                        variant="default"
+                                                        loading={
+                                                            check.isPending
+                                                        }
+                                                        disabled={
+                                                            !cfg.checkForUpdates
+                                                        }
+                                                        title={
+                                                            cfg.checkForUpdates
+                                                                ? undefined
+                                                                : "Save settings with update checks enabled to use this"
+                                                        }
+                                                        onClick={() =>
+                                                            check.mutate()
+                                                        }
+                                                    >
+                                                        Check for updates
+                                                    </Button>
+                                                )}
                                             </Group>
-                                            {check.isError && (
-                                                <ErrorBanner
-                                                    title="Couldn't check for updates"
-                                                    error={
-                                                        errorMessage(
-                                                            check.error,
-                                                        ) === "off"
-                                                            ? "Update checks are turned off."
-                                                            : check.error
-                                                    }
-                                                />
-                                            )}
-                                            <form.Field name="checkForUpdates">
-                                                {(field) => (
-                                                    <Switch
-                                                        label="Check for new versions"
-                                                        description="Check GitHub once a day and show new releases in the bell. No data about you is sent. Save settings applies this change."
-                                                        checked={
-                                                            field.state.value
-                                                        }
-                                                        onBlur={
-                                                            field.handleBlur
-                                                        }
-                                                        onChange={(event) =>
-                                                            field.handleChange(
-                                                                event
-                                                                    .currentTarget
-                                                                    .checked,
-                                                            )
+                                            {zipUpdatesAvailable &&
+                                                check.isError && (
+                                                    <ErrorBanner
+                                                        title="Couldn't check for updates"
+                                                        error={
+                                                            errorMessage(
+                                                                check.error,
+                                                            ) === "off"
+                                                                ? "Update checks are turned off."
+                                                                : check.error
                                                         }
                                                     />
                                                 )}
-                                            </form.Field>
+                                            {zipUpdatesAvailable && (
+                                                <form.Field name="checkForUpdates">
+                                                    {(field) => (
+                                                        <Switch
+                                                            label="Check for new versions"
+                                                            description="Check GitHub once a day and show new releases in the bell. No data about you is sent. Save settings applies this change."
+                                                            checked={
+                                                                field.state
+                                                                    .value
+                                                            }
+                                                            onBlur={
+                                                                field.handleBlur
+                                                            }
+                                                            onChange={(event) =>
+                                                                field.handleChange(
+                                                                    event
+                                                                        .currentTarget
+                                                                        .checked,
+                                                                )
+                                                            }
+                                                        />
+                                                    )}
+                                                </form.Field>
+                                            )}
                                         </Stack>
                                     </Fieldset>
                                     <Fieldset legend="Discovery and logs">

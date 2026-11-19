@@ -1,6 +1,6 @@
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync } from "node:fs";
 import { homedir } from "node:os";
 import {
     acknowledgeSkill,
@@ -30,7 +30,6 @@ import {
 } from "./server.ts";
 import {
     defaultConfig,
-    loadLocalConfig,
     hasRequiredSetup,
     mergeConfig,
     type ArgusConfig,
@@ -58,8 +57,10 @@ import {
     type DbLocation,
 } from "./storage.ts";
 import type { StorageInfo } from "./api.ts";
+import { readInstallation } from "./installation.ts";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const installation = readInstallation(__dirname);
 const DIST_DIR = path.join(__dirname, "dist");
 const BOOT_AT = new Date().toISOString();
 const log = logger.child({ component: "extension" });
@@ -82,13 +83,8 @@ const store = new ArgusStore(DB_FILE);
 
 // Effective config = env defaults + saved overrides, read fresh on every call so
 // any store write (Settings save, or the poller backfilling `me`) is reflected.
-const LOCAL_CONFIG_FILE =
-    process.env.ARGUS_CONFIG_FILE || path.join(__dirname, "argus.config.json");
 const getConfig = (): ArgusConfig =>
-    mergeConfig(
-        mergeConfig(defaultConfig(), loadLocalConfig(LOCAL_CONFIG_FILE)),
-        store.getConfigOverrides(),
-    );
+    mergeConfig(defaultConfig(), store.getConfigOverrides());
 const saveConfig = (overrides: ConfigOverrides): ArgusConfig => {
     store.saveConfigOverrides(overrides);
     return getConfig();
@@ -162,6 +158,8 @@ const INSTALLED_SKILL = path.join(
 // Replace the installed skill with the bundled one. The backup goes outside the
 // skills folder, so Copilot does not load it as a second pr-review skill.
 function useBundledSkill(): { backupPath: string } {
+    if (installation.plugin)
+        throw new Error("The plugin manager owns the bundled review skill.");
     const backupPath = path.join(
         path.dirname(path.dirname(INSTALLED_SKILL)),
         "skill-backups",
@@ -176,6 +174,7 @@ function installBaselineSkill(): { installed: boolean; reason?: string } {
     const src = BUNDLED_SKILL;
     if (!existsSync(src))
         return { installed: false, reason: "bundled skill not found" };
+    if (installation.plugin) return { installed: true };
     const dest = INSTALLED_SKILL;
     if (existsSync(dest))
         return {
@@ -191,29 +190,16 @@ function installBaselineSkill(): { installed: boolean; reason?: string } {
     }
 }
 
-// The release ZIP has package.json beside extension.mjs; a repo checkout has it one level up.
-function readAppVersion(): string {
-    for (const dir of [__dirname, path.join(__dirname, "..")]) {
-        try {
-            const pkg = JSON.parse(
-                readFileSync(path.join(dir, "package.json"), "utf-8"),
-            ) as { version?: string };
-            if (pkg.version) return pkg.version;
-        } catch {
-            /* try the next location */
-        }
-    }
-    return "0.0.0";
-}
-
-const APP_VERSION = readAppVersion();
+const APP_VERSION = installation.version;
 const UPDATE_CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000;
 
 let latestRelease: ReleaseInfo | null = null;
 let pendingSkillHash: string | null = null;
 
 try {
-    const sync = syncSkill(BUNDLED_SKILL, INSTALLED_SKILL);
+    const sync = installation.plugin
+        ? { state: "none" as const }
+        : syncSkill(BUNDLED_SKILL, INSTALLED_SKILL);
     if (sync.state === "pending") pendingSkillHash = sync.bundledHash;
     if (sync.state === "updated") log.info("Baseline review skill updated");
 } catch (err) {
@@ -261,6 +247,7 @@ let updateTimer: NodeJS.Timeout | null = null;
 // Runs only while this host has a canvas open, like the poller. The shared
 // last-check time still limits GitHub calls if two hosts have a canvas open.
 function startUpdateChecks(): void {
+    if (installation.plugin) return;
     void checkForUpdate();
     updateTimer = setInterval(
         () => void checkForUpdate(),
@@ -364,16 +351,19 @@ const serverCtx = (): ServerContext => ({
     saveConfig,
     markSetupComplete: () => store.markSetupComplete(),
     installBaselineSkill,
-    useBundledSkill,
+    useBundledSkill: installation.plugin ? undefined : useBundledSkill,
     storage: getStorage,
     setDbLocation,
     getNotices,
     appVersion: APP_VERSION,
-    checkForUpdatesNow,
-    applyUpdate: async (setPhase) => {
-        if (!latestRelease) throw new Error("No release is known yet.");
-        await applyUpdate(latestRelease, __dirname, {}, setPhase);
-    },
+    pluginInstalled: installation.plugin,
+    checkForUpdatesNow: installation.plugin ? undefined : checkForUpdatesNow,
+    applyUpdate: installation.plugin
+        ? undefined
+        : async (setPhase) => {
+              if (!latestRelease) throw new Error("No release is known yet.");
+              await applyUpdate(latestRelease, __dirname, {}, setPhase);
+          },
 });
 
 const session = await joinSession({
@@ -399,6 +389,10 @@ const session = await joinSession({
                         additionalProperties: false,
                     },
                     handler: async () => {
+                        if (installation.plugin)
+                            throw new Error(
+                                "The plugin manager owns the bundled review skill.",
+                            );
                         acknowledgeSkill(BUNDLED_SKILL, INSTALLED_SKILL);
                         pendingSkillHash = null;
                         return { ok: true };

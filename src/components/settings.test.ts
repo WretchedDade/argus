@@ -3,7 +3,7 @@ import { buildTestModule } from "../../scripts/test-bundle.ts";
 import { describe, it } from "vitest";
 
 describe("src/components/settings", () => {
-    it("renders settings controls and validation feedback", async () => {
+    it("renders settings and installation-aware setup controls", async () => {
         const result = await buildTestModule("settings", {
             stdin: {
                 contents: `
@@ -13,8 +13,8 @@ describe("src/components/settings", () => {
             import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
             import { createRootRoute, createRouter, createMemoryHistory, RouterContextProvider } from "@tanstack/react-router";
             import { SettingsForm } from "./src/routes/settings.tsx";
+            import { SetupGate } from "./src/components/SetupGate.tsx";
             import { argusTheme } from "./src/theme.ts";
-            export function render() {
                 const config = {
                     me: null, adoAuth: "az",
                     orgUrl: "https://example.test", orgSlug: "preview", project: "Preview",
@@ -30,6 +30,16 @@ describe("src/components/settings", () => {
                     workStartHour: 9, workEndHour: 17, workDays: [1, 2, 3, 4, 5],
                     checkForUpdates: true, vendorPattern: "",
                 };
+            export function renderSetup(pluginInstalled) {
+                const client = new QueryClient();
+                client.setQueryData(["config"], config);
+                client.setQueryData(["health"], {
+                    pluginInstalled, poller: { me: null }, storage: null,
+                });
+                return renderToStaticMarkup(h(MantineProvider, { theme: argusTheme },
+                    h(QueryClientProvider, { client }, h(SetupGate, { pluginInstalled }))));
+            }
+            export function render(pluginInstalled = false) {
                 const client = new QueryClient();
                 client.setQueryData(["teams"], ["Preview reviewers"]);
                 client.setQueryData(["version"], "0.0.0");
@@ -37,7 +47,7 @@ describe("src/components/settings", () => {
                     repo: "Preview.Repository", scope: null, open: 2, hidden: 1,
                 }]);
                 client.setQueryData(["auth-registration"], { clientId: "", tenantId: "" });
-                client.setQueryData(["health"], { poller: { running: false } });
+                client.setQueryData(["health"], { pluginInstalled, poller: { running: false } });
                 const router = createRouter({
                     routeTree: createRootRoute(),
                     history: createMemoryHistory(),
@@ -74,10 +84,24 @@ describe("src/components/settings", () => {
             jsx: "automatic",
         });
 
-        const { render } = result as {
-            render: () => string;
+        const { render, renderSetup } = result as {
+            render: (pluginInstalled?: boolean) => string;
+            renderSetup: (pluginInstalled: boolean) => string;
         };
+        assert.match(renderSetup(false), /PR review skill/);
+        assert.doesNotMatch(
+            renderSetup(true),
+            /PR review skill|Install the baseline skill|I'll use my own/,
+        );
         const html = render();
+        assert.match(html, /Check for updates/);
+        assert.match(html, /Check for new versions/);
+        const pluginHtml = render(true);
+        assert.match(pluginHtml, /Argus v0\.0\.0/);
+        assert.doesNotMatch(
+            pluginHtml,
+            /Check for updates|Check for new versions|Check GitHub once a day/,
+        );
         assert.doesNotMatch(html, /name="avatarUrl"|Avatar image/);
         assert.equal(
             html.match(/<form\b/g)?.length,

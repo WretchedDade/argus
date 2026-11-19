@@ -1,0 +1,70 @@
+name: Publish plugin
+
+on:
+    workflow_run:
+        workflows: [Release]
+        types: [completed]
+        branches: [main]
+    workflow_dispatch:
+
+permissions:
+    contents: write
+
+concurrency:
+    group: publish-plugin
+    cancel-in-progress: false
+
+jobs:
+    publish:
+        if: github.ref == 'refs/heads/main' && (github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success')
+        runs-on: windows-latest
+        timeout-minutes: 20
+        env:
+            HUSKY: "0"
+            GH_TOKEN: ${{ github.token }}
+        steps:
+            - name: Check out publication tools
+              uses: actions/checkout@v4
+              with:
+                  ref: main
+                  fetch-depth: 0
+            - name: Set up Node.js
+              uses: actions/setup-node@v4
+              with:
+                  node-version: "22"
+                  cache: npm
+            - name: Install verification dependencies
+              run: npm ci
+            - name: Acquire, verify, and publish the latest released payload
+              shell: pwsh
+              run: |
+                  $ErrorActionPreference = "Stop"
+                  $tag = gh release view --repo "$env:GITHUB_REPOSITORY" --json tagName --jq .tagName
+                  if ($LASTEXITCODE -ne 0 -or $tag -notmatch '^v\d+\.\d+\.\d+$') {
+                      throw "A stable Argus release is required."
+                  }
+                  $version = $tag.TrimStart('v')
+                  $download = Join-Path $env:RUNNER_TEMP "argus-plugin-acquisition"
+                  New-Item -ItemType Directory -Force $download | Out-Null
+                  $zipName = "argus-$tag-windows.zip"
+                  gh release download $tag --repo "$env:GITHUB_REPOSITORY" --pattern $zipName --pattern "$zipName.sha256" --dir $download
+                  if ($LASTEXITCODE -ne 0) { throw "Release download failed." }
+                  $expected = ((Get-Content (Join-Path $download "$zipName.sha256") -Raw).Trim() -split '\s+')[0]
+                  $actual = (Get-FileHash (Join-Path $download $zipName) -Algorithm SHA256).Hash
+                  if ($expected -notmatch '^[0-9a-fA-F]{64}$' -or $actual -ne $expected) {
+                      throw "Release ZIP checksum mismatch."
+                  }
+                  $env:GITHUB_SHA = git rev-list -n 1 $tag
+                  if ($LASTEXITCODE -ne 0) { throw "Release source tag could not be resolved." }
+                  Expand-Archive (Join-Path $download $zipName) (Join-Path $download "extracted")
+                  $release = Join-Path $download "extracted\argus-$tag"
+                  node scripts/verify-release.ts $release
+                  if ($LASTEXITCODE -ne 0) { throw "Released runtime verification failed." }
+                  $output = Join-Path $env:RUNNER_TEMP "argus-plugin-payload"
+                  node scripts/plugin-release.ts stage $release $output
+                  if ($LASTEXITCODE -ne 0) { throw "Plugin staging failed." }
+                  $plugin = Join-Path $output "argus-$version"
+                  node scripts/verify-release.ts --plugin $plugin
+                  if ($LASTEXITCODE -ne 0) { throw "Plugin runtime verification failed." }
+                  node scripts/plugin-release.ts publish $plugin
+                  if ($LASTEXITCODE -ne 0) { throw "Plugin publication failed. Rerun this workflow after resolving the error." }

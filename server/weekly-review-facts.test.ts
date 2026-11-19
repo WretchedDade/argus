@@ -201,7 +201,7 @@ describe("server/weekly-review-facts", () => {
                                 {
                                     commentType: "text",
                                     author: {
-                                        uniqueName: "dade@microsoft.com",
+                                        uniqueName: "reviewer@example.test",
                                     },
                                 },
                                 {
@@ -220,13 +220,13 @@ describe("server/weekly-review-facts", () => {
                                 {
                                     commentType: "text",
                                     author: {
-                                        uniqueName: "someone@microsoft.com",
+                                        uniqueName: "someone@example.test",
                                     },
                                 },
                             ],
                         },
                     ],
-                    "dade@microsoft.com",
+                    "reviewer@example.test",
                 ),
                 { mine: 1, others: 1 },
             );

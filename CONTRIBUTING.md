@@ -92,14 +92,12 @@ install the baseline review skill or count your comments after a recorded review
 
 ### Multiple previews
 
-Each checkout has its own default database and `argus.config.json`. Settings saved
-in the preview database override that config file. Environment variables can
-override the paths and ports:
+Each checkout has its own default database. Save preview settings through the
+setup and Settings screens. Environment variables can override the paths and ports:
 
 | Variable              | Purpose                                     | Standalone default                    |
 | --------------------- | ------------------------------------------- | ------------------------------------- |
 | `ARGUS_DB_FILE`       | Preview database path                       | `data\standalone.db` in this checkout |
-| `ARGUS_CONFIG_FILE`   | Local config file path                      | `argus.config.json` in this checkout  |
 | `ARGUS_STANDALONE_ID` | Instance ID used to derive the browser port | `argus-standalone`                    |
 | `ARGUS_INGEST_PORT`   | Local API port for verdict recording        | `48199`                               |
 
@@ -137,9 +135,8 @@ If present, also delete `data\standalone.db-wal`, `data\standalone.db-shm`, and
 path and its matching sidecar files instead. Do not delete the whole `data`
 directory.
 
-A reset deletes the preview's PR history and database settings. It does not
-delete `argus.config.json`, so values from that file still apply on the next run.
-No cleanup script is needed for normal use.
+A reset deletes the preview's PR history and database settings. Environment
+defaults still apply on the next run. No cleanup script is needed for normal use.
 
 ## Test
 
@@ -238,6 +235,39 @@ delete the GitHub Release and the tag (`git push origin :refs/tags/vX.Y.Z`),
 then re-run the workflow.
 
 If you change the archive layout, the install destinations, or the upgrade behavior, update [docs/INSTALL.md](docs/INSTALL.md).
+
+## Plugin publication
+
+The **Publish plugin** workflow runs after a successful Release workflow, or
+manually on `main`. It downloads the latest stable release ZIP and checksum,
+verifies its source commit and native runtime, and generates the plugin from
+that acquired payload. Releases from before plugin support are rejected.
+
+The workflow appends a generated commit to `plugin`. That branch contains only
+the installable payload and its marketplace catalog. Do not edit it by hand.
+`main` and the `vX.Y.Z` tags still identify source code. Publication never
+force-pushes, downgrades a version, or replaces an existing version with different
+files. An identical rerun changes nothing.
+
+The checked-in files under `plugin/` define the plugin and marketplace manifests.
+Staging copies the catalog unchanged and stamps the plugin manifest with the
+release version. The script does not maintain a second copy of this metadata.
+
+If publication fails, the ZIP release stays available. Fix the cause and rerun
+**Publish plugin**. No new release tag is needed for an interrupted publication.
+A changed payload needs a new package version and ZIP release.
+
+To stage and verify a local plugin without publishing or installing it:
+
+```powershell
+node scripts/package-release.ts --output-root <release-output>
+node scripts/plugin-release.ts stage <release-directory> <plugin-output>
+node scripts/verify-release.ts --plugin <plugin-directory>
+```
+
+Use output directories outside the source checkout. The generated payload records
+the original ZIP's source/build identity and new file hashes. Local dirty builds
+can be staged, but publication requires clean release evidence.
 
 ## Report a security problem
 

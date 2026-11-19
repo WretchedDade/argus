@@ -46,7 +46,7 @@ flowchart LR
 
 1. Resolve the database file (`server/storage.ts`) and copy the old file if the user changed the location.
 2. Open `ArgusStore`. The constructor runs the pending migrations.
-3. Build `getConfig()`. It merges the defaults, `argus.config.json`, and the overrides saved in the store.
+3. Build `getConfig()`. It merges environment defaults and the overrides saved in the store.
 4. Build a `PollerContext` (`{ store, getConfig }`). The poller does not start yet.
 5. Register the canvas. Each open canvas instance starts its own HTTP server on a stable loopback port. All instances share the one store and poller. The **first canvas to open** starts the poller. When the **last canvas closes**, the poller stops. A host with no open canvas does not poll ADO.
 6. Start the **ingest server** on a fixed port. Exactly one host owns it (the first to bind). It lets a review session record a verdict with plain HTTP.
@@ -183,11 +183,22 @@ There is no dev server. `npm run dev` runs a watch build, and you reload the can
 | ------------------- | ------------------------------------------------------------------------------------------------------------------------ |
 | Database            | Chosen in this order: `ARGUS_DB_FILE`, the saved choice, an older existing file, then `%LOCALAPPDATA%\argus\argus.db`    |
 | Storage choice      | `%LOCALAPPDATA%\argus\storage.json` (beside the local database, because Argus must read it before it opens the database) |
-| Local config        | `argus.config.json` in the extension folder, or the file in `ARGUS_CONFIG_FILE`                                          |
-| Saved settings      | The `settings` table in the database. They override `argus.config.json`.                                                 |
+| Saved settings      | The `settings` table in the database. They override environment defaults.                                                |
 | Standalone database | `data/standalone.db` (ignored by Git)                                                                                    |
 
 The logic is in `server/storage.ts` and `server/config.ts`. See [Where the database lives](USER-GUIDE.md#where-the-database-lives) for the user view.
+
+## Plugin delivery
+
+The generated `plugin` branch contains a legacy plugin manifest, a marketplace
+catalog, and the verified release runtime under `extensions/argus/`. The manifest
+also exposes `extensions/argus/skills` as plugin skills. A runtime package marker
+selects plugin-managed updates and skills. Plugin installs do not run the ZIP
+updater or copy/sync skills into the user's personal directory. Existing personal
+or project skills keep precedence.
+
+The process and polling lifecycle is unchanged. There is no shared daemon.
+Database choices, settings, and sign-in files stay outside the replaceable payload.
 
 ## More guides
 

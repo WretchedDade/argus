@@ -1,9 +1,0 @@
-{
-    "orgUrl": "https://dev.azure.com/your-org",
-    "orgSlug": "your-org",
-    "project": "YourProject",
-    "teamPatterns": ["*Your Team Name*"],
-    "teamLabels": {
-        "[TEAM FOUNDATION]\\Your Team Name": "my team"
-    }
-}

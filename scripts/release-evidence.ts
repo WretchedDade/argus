@@ -16,7 +16,6 @@ export const RELEASE_FILES: Readonly<Record<string, string | null>> = {
     "extension/extension.mjs": "extension.mjs",
     "extension/dist/index.html": "dist/index.html",
     "extension/skills/pr-review/SKILL.md": "skills/pr-review/SKILL.md",
-    "extension/argus.config.example.json": "argus.config.example.json",
     "extension/package.json": null,
     "extension/ado-auth-config.example.json": null,
     "INSTALL.md": "docs/INSTALL.md",
@@ -82,12 +81,16 @@ export function resetReleaseStage(outputRoot: string, version: string): string {
 const sha256 = (data: Buffer) =>
     createHash("sha256").update(data).digest("hex");
 
-export function payloadChecksums(root: string): Record<string, string> {
+export function payloadChecksums(
+    root: string,
+    ignoreGitMetadata = false,
+): Record<string, string> {
     const files: Record<string, string> = {};
     function visit(dir: string) {
         for (const name of readdirSync(dir).sort()) {
             const file = path.join(dir, name);
             if (file === path.join(root, "release-manifest.json")) continue;
+            if (ignoreGitMetadata && file === path.join(root, ".git")) continue;
             const stat = lstatSync(file);
             if (stat.isSymbolicLink())
                 throw new Error("Release payload must not contain links");

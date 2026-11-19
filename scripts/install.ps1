@@ -14,7 +14,7 @@ foreach ($required in "extension.mjs", "package.json", "dist", "node_modules") {
     }
 }
 
-# Copy over the install and do not delete it first. This keeps argus.config.json.
+# Copy over the install without deleting user files from earlier versions.
 # Move the old node_modules aside so packages that the release dropped do not remain.
 # The move fails before any change when the running extension locks a file in it.
 $modules = Join-Path $Destination "node_modules"
