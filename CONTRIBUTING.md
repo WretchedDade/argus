@@ -1,13 +1,8 @@
 # Contributing to Argus
 
-Argus is maintained by a small team. Unsolicited pull requests are not accepted.
-Only maintainers and contributors explicitly invited by a maintainer may submit
-a pull request. Public issues track maintainer work; they are not invitations
-to contribute.
+Argus is maintained by a small team. Unsolicited pull requests are not accepted. Only maintainers and contributors explicitly invited by a maintainer may submit a pull request. Public issues track maintainer work; they are not invitations to contribute.
 
-This guide is for maintainers and invited contributors. It shows how to set up,
-run, test, and submit a change. For how the code fits together, read
-[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) first.
+This guide is for maintainers and invited contributors. It shows how to set up, run, test, and submit a change. For how the code fits together, read [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) first.
 
 ## Set up
 
@@ -46,7 +41,7 @@ Run `npm run build:client` before the first standalone start. This also generate
 
 The [Standalone browser preview](#standalone-browser-preview) section lists the environment variables for more than one preview at the same time.
 
-To test inside the Copilot app, run `npm run build`, then copy the build output to the extension folder (see [docs/INSTALL.md](docs/INSTALL.md) for the layout), and reload extensions in the Copilot app (or restart it). Reloading only the canvas does not load a new server bundle.
+To test inside the Copilot app, use the source extension setup below. Disable the installed plugin before loading a source extension so only one copy runs. Reloading only the canvas does not load a new server bundle.
 
 ### Build the extension from source
 
@@ -55,15 +50,11 @@ To test inside the Copilot app, run `npm run build`, then copy the build output 
 3. Link or place the checkout at `~/.copilot/extensions/argus`.
 4. Reload extensions in the Copilot app, then open the Argus canvas.
 
-Build before creating a symlink. Vite cannot resolve `index.html` when the
-project root is a symlink. Build output is not committed. Run the build again
-after source changes.
+Build before creating a symlink. Vite cannot resolve `index.html` when the project root is a symlink. Build output is not committed. Run the build again after source changes. Remove the source extension from the discovery folder before enabling the installed plugin again.
 
 ## Standalone browser preview
 
-Run a branch in your browser without changing the installed Copilot extension.
-Use a [sign-in method](docs/USER-GUIDE.md#sign-in-method) from the user guide.
-Run these commands from the branch checkout or worktree:
+Run a branch in your browser without changing the installed Copilot extension. Use a [sign-in method](docs/USER-GUIDE.md#sign-in-method) from the user guide. Run these commands from the branch checkout or worktree:
 
 ```powershell
 npm ci
@@ -72,28 +63,15 @@ $env:ARGUS_DB_FILE = Join-Path $PWD "data\standalone.db"
 npm run standalone
 ```
 
-Open the URL printed as `Argus standalone`. The default instance prefers
-`http://127.0.0.1:48530/`. If that port is in use, the server selects another port
-and prints its URL. After client changes, run `npm run build:client` in another
-terminal, then refresh the browser. After server changes, stop and restart the
-runner.
+Open the URL printed as `Argus standalone`. The default instance prefers `http://127.0.0.1:48530/`. If that port is in use, the server selects another port and prints its URL. After client changes, run `npm run build:client` in another terminal, then refresh the browser. After server changes, stop and restart the runner.
 
-This is not a mock or a read-only preview. It polls live Azure DevOps and saves
-PR data, settings, and local actions in the preview database. The default database
-is `data\standalone.db` in this checkout, not the installed extension's store.
-Do not point `ARGUS_DB_FILE` at your normal Argus database for branch testing.
-The `data` directory and SQLite database files are gitignored, but they contain
-private PR data. Do not share them.
+This is not a mock or a read-only preview. It polls live Azure DevOps and saves PR data, settings, and local actions in the preview database. The default database is `data\standalone.db` in this checkout, not the installed extension's store. Do not point `ARGUS_DB_FILE` at your normal Argus database for branch testing. The `data` directory and SQLite database files are gitignored, but they contain private PR data. Do not share them.
 
-The board, filters, settings, Insights, and Recap work without the Copilot app.
-Review, re-review, and review-session archive actions do not work because they
-dispatch messages to a Copilot session. The standalone runner also does not
-install the baseline review skill or count your comments after a recorded review.
+The board, filters, settings, Insights, and Recap work without the Copilot app. Review, re-review, and review-session archive actions do not work because they dispatch messages to a Copilot session. The standalone runner also does not install the baseline review skill or count your comments after a recorded review.
 
 ### Multiple previews
 
-Each checkout has its own default database. Save preview settings through the
-setup and Settings screens. Environment variables can override the paths and ports:
+Each checkout has its own default database. Save preview settings through the setup and Settings screens. Environment variables can override the paths and ports:
 
 | Variable              | Purpose                                     | Standalone default                    |
 | --------------------- | ------------------------------------------- | ------------------------------------- |
@@ -101,8 +79,7 @@ setup and Settings screens. Environment variables can override the paths and por
 | `ARGUS_STANDALONE_ID` | Instance ID used to derive the browser port | `argus-standalone`                    |
 | `ARGUS_INGEST_PORT`   | Local API port for verdict recording        | `48199`                               |
 
-Use a different instance ID and ingest port for each concurrent preview. Use a
-separate database for each preview, even if they run from the same checkout:
+Use a different instance ID and ingest port for each concurrent preview. Use a separate database for each preview, even if they run from the same checkout:
 
 ```powershell
 $env:ARGUS_STANDALONE_ID = "argus-feature-a"
@@ -111,32 +88,21 @@ $env:ARGUS_DB_FILE = Join-Path $PWD "data\feature-a.db"
 npm run standalone
 ```
 
-Changing the instance ID does not change the database path or ingest port. Keep
-the ingest port different from the installed extension's `48100`. Two previews
-must not share an ingest port: only one can receive requests on it. Use the
-preview's ingest port for manual verdict recording, not `48100`.
+Changing the instance ID does not change the database path or ingest port. Keep the ingest port different from the installed extension's `48100`. Two previews must not share an ingest port: only one can receive requests on it. Use the preview's ingest port for manual verdict recording, not `48100`.
 
 ### Stop or reset a preview
 
-Press Ctrl+C in the terminal that runs `npm run standalone`. Closing the browser
-tab does not stop the runner or its poller. Shutdown stops the poller and waits
-up to one second for active browser requests before closing the database and
-exiting. It keeps the database for the next run.
+Press Ctrl+C in the terminal that runs `npm run standalone`. Closing the browser tab does not stop the runner or its poller. Shutdown stops the poller and waits up to one second for active browser requests before closing the database and exiting. It keeps the database for the next run.
 
-To reset the default preview, first stop every runner that uses its database.
-Then run this command from the checkout:
+To reset the default preview, first stop every runner that uses its database. Then run this command from the checkout:
 
 ```powershell
 Remove-Item -LiteralPath .\data\standalone.db
 ```
 
-If present, also delete `data\standalone.db-wal`, `data\standalone.db-shm`, and
-`data\standalone.db-journal`. If you set `ARGUS_DB_FILE`, use that exact database
-path and its matching sidecar files instead. Do not delete the whole `data`
-directory.
+If present, also delete `data\standalone.db-wal`, `data\standalone.db-shm`, and `data\standalone.db-journal`. If you set `ARGUS_DB_FILE`, use that exact database path and its matching sidecar files instead. Do not delete the whole `data` directory.
 
-A reset deletes the preview's PR history and database settings. Environment
-defaults still apply on the next run. No cleanup script is needed for normal use.
+A reset deletes the preview's PR history and database settings. Environment defaults still apply on the next run. No cleanup script is needed for normal use.
 
 ## Test
 
@@ -229,33 +195,36 @@ To bump the version, change `version` in `package.json`, then run `npm install -
 
 A release publishes when a change to `package.json` reaches `main` with a minor or major version (patch `0`) that has no tag. A patch version does not release on push: a daily scheduled run releases it if it has no tag yet, or a maintainer runs the Release workflow manually. The Release workflow runs the checks, creates the tag, and attaches the ZIP to a GitHub Release. Do not create or push a tag yourself.
 
-If the workflow fails, no tag exists. Fix the problem and re-run the workflow
-from the Actions tab (it also has a manual trigger). To undo a bad release,
-delete the GitHub Release and the tag (`git push origin :refs/tags/vX.Y.Z`),
-then re-run the workflow.
+If the workflow fails, no tag exists. Fix the problem and re-run the workflow from the Actions tab (it also has a manual trigger). To undo a bad release, delete the GitHub Release and the tag (`git push origin :refs/tags/vX.Y.Z`), then re-run the workflow.
 
 If you change the archive layout, the install destinations, or the upgrade behavior, update [docs/INSTALL.md](docs/INSTALL.md).
 
 ## Plugin publication
 
-The **Publish plugin** workflow runs after a successful Release workflow, or
-manually on `main`. It downloads the latest stable release ZIP and checksum,
-verifies its source commit and native runtime, and generates the plugin from
-that acquired payload. Releases from before plugin support are rejected.
+The **Publish plugin** workflow runs after a successful Release workflow, or manually on `main`. It downloads the latest stable release ZIP and checksum, verifies its source commit and native runtime, and generates the plugin from that acquired payload. Releases from before plugin support are rejected.
 
-The workflow appends a generated commit to `plugin`. That branch contains only
-the installable payload and its marketplace catalog. Do not edit it by hand.
-`main` and the `vX.Y.Z` tags still identify source code. Publication never
-force-pushes, downgrades a version, or replaces an existing version with different
-files. An identical rerun changes nothing.
+The workflow appends a generated commit to `plugin`. That branch contains only the installable payload and its marketplace catalog. Do not edit it by hand. `main` and the `vX.Y.Z` tags still identify source code. Publication never force-pushes, downgrades a version, or replaces an existing version with different files. An identical rerun changes nothing.
 
-The checked-in files under `plugin/` define the plugin and marketplace manifests.
-Staging copies the catalog unchanged and stamps the plugin manifest with the
-release version. The script does not maintain a second copy of this metadata.
+The checked-in files under `plugin/` define the plugin and marketplace manifests. Staging copies the catalog unchanged and stamps the plugin manifest with the release version. The script does not maintain a second copy of this metadata.
 
-If publication fails, the ZIP release stays available. Fix the cause and rerun
-**Publish plugin**. No new release tag is needed for an interrupted publication.
-A changed payload needs a new package version and ZIP release.
+If publication fails, the ZIP release stays available. Fix the cause and rerun **Publish plugin**. No new release tag is needed for an interrupted publication. A changed payload needs a new package version and ZIP release.
+
+### Release runtime verification
+
+The ZIP is the verified runtime input for plugin publication. It is also available as an installation fallback. Its layout is in [ZIP layout](docs/INSTALL.md#zip-layout).
+
+To stage and verify the runtime without installing it:
+
+```powershell
+node scripts/package-release.ts --output-root <release-output>
+node scripts/verify-release.ts <release-directory>
+```
+
+Use output directories outside the source checkout. Staging replaces only `argus-X.Y.Z` under the output root, not other versions or archives. `release-manifest.json` records source/build identity, lockfile and payload hashes, and dependency versions, registry integrities, and licenses. Dependency license files remain in `node_modules`.
+
+Verification checks the file inventory, entry-point syntax, runtime imports, and Windows x64 native MSAL loading without starting Argus or signing in. With `GITHUB_SHA`, it also requires clean source evidence with a matching commit. Local verification can accept dirty builds and records that flag. These checks detect accidental changes, not signatures or reproducible-build attestations. They do not prove interactive WAM login, canvas discovery, window association, or host-injected SDK availability. Never include a real registration file in a payload. Configure IDs through the canvas.
+
+### Local plugin verification
 
 To stage and verify a local plugin without publishing or installing it:
 
@@ -265,9 +234,7 @@ node scripts/plugin-release.ts stage <release-directory> <plugin-output>
 node scripts/verify-release.ts --plugin <plugin-directory>
 ```
 
-Use output directories outside the source checkout. The generated payload records
-the original ZIP's source/build identity and new file hashes. Local dirty builds
-can be staged, but publication requires clean release evidence.
+Use output directories outside the source checkout. The generated payload records the original ZIP's source/build identity and new file hashes. Local dirty builds can be staged, but publication requires clean release evidence.
 
 ## Report a security problem
 
