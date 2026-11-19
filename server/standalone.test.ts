@@ -31,7 +31,6 @@ describe("server/standalone", () => {
                 env: {
                     ...process.env,
                     ARGUS_DB_FILE: path.join(dir, "standalone.db"),
-                    ARGUS_CONFIG_FILE: path.join(dir, "config.json"),
                     ARGUS_INGEST_PORT: "0",
                     ARGUS_STANDALONE_ID: path.basename(dir),
                     ARGUS_ME: "reviewer@example.test",

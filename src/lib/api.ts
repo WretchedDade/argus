@@ -117,6 +117,7 @@ export interface Health {
         oneDriveAvailable: boolean;
     } | null;
     setup_complete: boolean;
+    pluginInstalled: boolean;
     auth: AuthStatus | null;
 }
 

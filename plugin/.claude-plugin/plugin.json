@@ -1,0 +1,8 @@
+{
+    "name": "argus",
+    "description": "Argus: Azure DevOps PR triage and review canvas.",
+    "repository": "https://github.com/WretchedDade/argus",
+    "license": "MIT",
+    "extensions": "extensions",
+    "skills": "extensions/argus/skills"
+}

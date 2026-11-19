@@ -104,7 +104,7 @@ function RootLayout() {
     if (health && !health.setup_complete) {
         return (
             <>
-                <SetupGate />
+                <SetupGate pluginInstalled={health.pluginInstalled} />
                 <Toaster />
             </>
         );

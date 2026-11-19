@@ -18,9 +18,12 @@ import { LoadErrorPage, PendingPage } from "./ErrorBanner";
 // reviewer groups. This screen collects the minimum needed, then flips
 // setup_complete so the board takes over. Reachable again only by clearing the
 // store; everything here is also editable later under Settings.
-export function SetupGate() {
+export function SetupGate({ pluginInstalled }: { pluginInstalled: boolean }) {
     const config = useQuery(configQuery);
-    if (setupFormReady(config)) return <SetupForm cfg={config.data!} />;
+    if (setupFormReady(config))
+        return (
+            <SetupForm cfg={config.data!} pluginInstalled={pluginInstalled} />
+        );
     return (
         <div className="app-bg text-fg flex min-h-screen items-center justify-center p-6">
             {config.isError ? (
@@ -37,7 +40,13 @@ export function SetupGate() {
     );
 }
 
-function SetupForm({ cfg }: { cfg: ArgusConfig }) {
+function SetupForm({
+    cfg,
+    pluginInstalled,
+}: {
+    cfg: ArgusConfig;
+    pluginInstalled: boolean;
+}) {
     const qc = useQueryClient();
     const detected = useQuery(healthQuery).data?.poller.me ?? null;
 
@@ -50,6 +59,7 @@ function SetupForm({ cfg }: { cfg: ArgusConfig }) {
     const [project, setProject] = useState(cfg?.project ?? "");
     const [teams, setTeams] = useState((cfg?.teamPatterns ?? []).join(", "));
     const [installSkill, setInstallSkill] = useState(true);
+    const installPrReviewSkill = !pluginInstalled && installSkill;
     const [skillName, setSkillName] = useState(
         cfg?.reviewSkillName ?? "pr-review",
     );
@@ -76,10 +86,10 @@ function SetupForm({ cfg }: { cfg: ArgusConfig }) {
                 orgSlug: orgSlug.trim(),
                 project: project.trim(),
                 teamPatterns: patterns,
-                reviewSkillName: installSkill
+                reviewSkillName: installPrReviewSkill
                     ? "pr-review"
                     : skillName.trim() || "pr-review",
-                installPrReviewSkill: installSkill,
+                installPrReviewSkill,
                 ...(showStorage ? { dbLocation } : {}),
             });
             await Promise.all([
@@ -90,7 +100,7 @@ function SetupForm({ cfg }: { cfg: ArgusConfig }) {
             if (moved?.restartRequired) {
                 pushToast("Reload extensions to use the new storage location");
             }
-            if (installSkill) {
+            if (installPrReviewSkill) {
                 pushToast(
                     skill.installed
                         ? "Setup complete — pr-review skill installed"
@@ -244,50 +254,54 @@ function SetupForm({ cfg }: { cfg: ArgusConfig }) {
                         }
                     />
 
-                    <Fieldset legend="PR review skill" p="sm">
-                        <div className="text-muted text-xs">
-                            The board's Review buttons spawn a session that runs
-                            a <code>pr-review</code> skill. Install the bundled
-                            baseline, or bring your own.
-                        </div>
-                        <Radio.Group
-                            name="review-skill"
-                            aria-label="PR review skill"
-                            value={installSkill ? "baseline" : "custom"}
-                            onChange={(value) =>
-                                setInstallSkill(value === "baseline")
-                            }
-                        >
-                            <Stack gap="sm" mt="sm">
-                                <Radio
-                                    value="baseline"
-                                    label="Install the baseline skill"
-                                    description="Copies a neutral pr-review skill into your skills directory. Skipped if you already have one."
+                    {!pluginInstalled && (
+                        <Fieldset legend="PR review skill" p="sm">
+                            <div className="text-muted text-xs">
+                                The board's Review buttons spawn a session that
+                                runs a <code>pr-review</code> skill. Use the
+                                bundled baseline, or bring your own.
+                            </div>
+                            <Radio.Group
+                                name="review-skill"
+                                aria-label="PR review skill"
+                                value={installSkill ? "baseline" : "custom"}
+                                onChange={(value) =>
+                                    setInstallSkill(value === "baseline")
+                                }
+                            >
+                                <Stack gap="sm" mt="sm">
+                                    <Radio
+                                        value="baseline"
+                                        label="Install the baseline skill"
+                                        description="Copies a neutral pr-review skill into your skills directory. Skipped if you already have one."
+                                    />
+                                    <Radio
+                                        value="custom"
+                                        label="I'll use my own"
+                                        description="Leaves your skills directory untouched."
+                                    />
+                                </Stack>
+                            </Radio.Group>
+                            {!installSkill && (
+                                <TextInput
+                                    mt="sm"
+                                    label="Skill name"
+                                    description="The name from your skill's frontmatter. The Review buttons tell the agent to run this skill."
+                                    inputWrapperOrder={[
+                                        "label",
+                                        "input",
+                                        "description",
+                                        "error",
+                                    ]}
+                                    placeholder="pr-review"
+                                    value={skillName}
+                                    onChange={(e) =>
+                                        setSkillName(e.target.value)
+                                    }
                                 />
-                                <Radio
-                                    value="custom"
-                                    label="I'll use my own"
-                                    description="Leaves your skills directory untouched."
-                                />
-                            </Stack>
-                        </Radio.Group>
-                        {!installSkill && (
-                            <TextInput
-                                mt="sm"
-                                label="Skill name"
-                                description="The name from your skill's frontmatter. The Review buttons tell the agent to run this skill."
-                                inputWrapperOrder={[
-                                    "label",
-                                    "input",
-                                    "description",
-                                    "error",
-                                ]}
-                                placeholder="pr-review"
-                                value={skillName}
-                                onChange={(e) => setSkillName(e.target.value)}
-                            />
-                        )}
-                    </Fieldset>
+                            )}
+                        </Fieldset>
+                    )}
                 </div>
 
                 <Button

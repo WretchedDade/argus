@@ -78,6 +78,7 @@ const stagedManifest = {
     version: pkg.version,
     private: true,
     type: "module",
+    argusDistribution: "zip",
     dependencies: stagedLock.packages[""].dependencies,
 };
 writeFileSync(

@@ -16,9 +16,9 @@ You need Windows x64, the Copilot app with canvas extensions enabled, Node.js
 
 1. Sign in with the Azure CLI: `az login`. An experimental
    [Windows account sign-in option](docs/USER-GUIDE.md#sign-in-method) is also available.
-2. [Download the latest release ZIP](https://github.com/WretchedDade/argus/releases/latest)
-   and follow the [installation steps](docs/INSTALL.md#install-the-extension).
-   No source build is needed.
+2. [Install the Copilot plugin](docs/INSTALL.md#install-the-plugin).
+   The [release ZIP](https://github.com/WretchedDade/argus/releases/latest)
+   remains available as a fallback. Neither path needs a source build.
 3. Reload extensions in Copilot, then open the **Argus** canvas.
 4. Enter your organization URL, organization slug, and project. Add reviewer
    groups if you want to track team reviews, then select **Start watching**.
@@ -34,8 +34,8 @@ The **extension** provides the board, My PRs, Insights, and review history.
 It works without a review skill.
 
 The optional **`pr-review` skill** tells Copilot how to conduct a review and
-record its verdict in Argus. Setup can install the bundled skill, keep an
-existing one, or use your own. The three review actions need a review skill
+record its verdict in Argus. The plugin includes the skill. ZIP setup can install
+it, keep an existing one, or use your own. The three review actions need a review skill
 and the Copilot app. [Review modes and skill setup](docs/USER-GUIDE.md#review-workflow-optional).
 
 ## Guides

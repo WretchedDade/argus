@@ -3,13 +3,22 @@
 import { execFileSync } from "node:child_process";
 import path from "node:path";
 import { verifyReleaseEvidence } from "./release-evidence.ts";
+import { verifyPluginEvidence } from "./plugin-release.ts";
 
 const args = process.argv.slice(2);
+const plugin = args[0] === "--plugin";
+if (plugin) args.shift();
 if (args.length !== 1)
-    throw new Error("Usage: node scripts/verify-release.ts RELEASE_DIRECTORY");
+    throw new Error(
+        "Usage: node scripts/verify-release.ts [--plugin] RELEASE_DIRECTORY",
+    );
 const stage = path.resolve(args[0]);
-verifyReleaseEvidence(stage, process.env.GITHUB_SHA);
-const ext = path.join(stage, "extension");
+if (plugin) verifyPluginEvidence(stage, process.env.GITHUB_SHA);
+else verifyReleaseEvidence(stage, process.env.GITHUB_SHA);
+const ext = path.join(
+    stage,
+    ...(plugin ? ["extensions", "argus"] : ["extension"]),
+);
 const env = { ...process.env };
 delete env.NODE_PATH;
 execFileSync(process.execPath, ["--check", "extension.mjs"], {

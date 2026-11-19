@@ -68,52 +68,17 @@ does not replace the environment values. Under
 Settings choice overrides it. The broker path first tries your `az` login silently,
 then the Windows account broker.
 
-## Local config
+## Configuration
 
-Org-specific values live in `argus.config.json` in the extension folder. The file
-is gitignored, so it never reaches the repo. Copy the example and edit it:
+Setup and Settings save configuration in the SQLite database. Saved values
+override environment defaults. Standalone previews use their own database.
 
-```powershell
-Copy-Item argus.config.example.json argus.config.json
-```
+`argus.config.json` and `ARGUS_CONFIG_FILE` are no longer read. Before upgrading
+from a version that uses that file, save any file-only values through Settings
+in the old version. Existing database settings do not need migration.
 
-Use JSON field names, not environment variable names:
-
-| JSON fields                    | Value                                                                                                                                  |
-| ------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------- |
-| `orgUrl`, `orgSlug`, `project` | Strings identifying the Azure DevOps organization and project                                                                          |
-| `me`                           | Identity string, or `null` to detect the identity from `az`                                                                            |
-| `reviewSkillName`              | String for the review skill name                                                                                                       |
-| `reviewModels`                 | Object with `quick`, `full`, and `automatic` keys; each has string fields `model` and `reasoningEffort`. Empty strings use the default |
-| `teamPatterns`                 | Array of reviewer-group glob strings                                                                                                   |
-| `teamLabels`                   | Object mapping reviewer-group names to short label strings                                                                             |
-| `periods`                      | Array of objects with string fields `label`, `start`, and `end`; dates use `YYYY-MM-DD`                                                |
-| `recencyDays`, `retentionDays` | Numbers of days                                                                                                                        |
-| `workStartHour`, `workEndHour` | Numeric hours, for example `9` and `17`                                                                                                |
-| `workDays`                     | Array of weekday numbers, Sunday=`0` through Saturday=`6`                                                                              |
-| `checkForUpdates`              | Boolean; `false` stops the daily check for new releases                                                                                |
-| `vendorPattern`                | Regular expression for vendor display names; default `\(.+\)`; empty turns the rule off                                                |
-
-For example, the JSON equivalent of `ARGUS_WORK_HOURS=9-17` and
-`ARGUS_WORK_DAYS=1-5` is:
-
-```json
-{
-    "workStartHour": 9,
-    "workEndHour": 17,
-    "workDays": [1, 2, 3, 4, 5]
-}
-```
-
-`ARGUS_DB_FILE` is environment-only. Neither this file nor Settings can change the
-database path. Set `ARGUS_DB_FILE` before starting the extension.
-
-Set `ARGUS_CONFIG_FILE` to read the file from another path. Values saved in
-Settings override this file, and this file overrides the environment variables.
-
-Unknown fields are ignored. If the file contains invalid JSON or a supported field
-has the wrong type, Argus logs the error and uses no overrides from that file.
-Setup is complete only while the effective org URL, org slug, and project are set.
+The Windows account registration file and `storage.json` are separate and still
+supported. `ARGUS_DB_FILE` still overrides the database path.
 
 ## First run
 
@@ -181,8 +146,8 @@ does not increase the count.
   (or Review with me for a new PR). No database migration is needed.
 - **Snooze** — hide a PR until a time, or until an FTE (a non-vendor teammate)
   approves it. An FTE approval wakes an FTE-snooze automatically. A name is a
-  vendor when it matches the **Vendor name pattern** setting (`vendorPattern`
-  in the config file, `ARGUS_VENDOR_PATTERN` in the environment). The pattern is
+  vendor when it matches the **Vendor name pattern** setting
+  (`ARGUS_VENDOR_PATTERN` sets the environment default). The pattern is
   a regular expression. The default, `\(.+\)`, marks a display name with a
   parenthetical, for example `Jane Doe (Acme)`. Set it to an empty value to
   treat nobody as a vendor.

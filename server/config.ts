@@ -1,4 +1,3 @@
-import { existsSync, readFileSync } from "node:fs";
 import { z } from "zod";
 import { logger } from "./log.ts";
 import type {
@@ -29,22 +28,6 @@ export const EMPTY_REVIEW_MODEL: ReviewModelSetting = {
 export const DEFAULT_VENDOR_PATTERN = "\\(.+\\)";
 
 export type ConfigOverrides = Partial<ArgusConfig>;
-
-// Read the optional local config file (argus.config.json). It is gitignored and
-// holds org-specific values. Invalid files are logged and give no overrides.
-// Precedence: env/defaults < local file < Settings overrides in the store.
-export function loadLocalConfig(file: string): ConfigOverrides {
-    if (!existsSync(file)) return {};
-    try {
-        return parseConfigOverrides(JSON.parse(readFileSync(file, "utf-8")));
-    } catch (err) {
-        logger.warn(
-            { component: "config", err },
-            "Local config could not be read",
-        );
-        return {};
-    }
-}
 
 // Values that reach the Azure CLI or an ADO URL may only use these characters.
 // No shell metacharacters, quotes, or path separators.
@@ -123,7 +106,7 @@ export function configValidationMessage(issues: z.ZodError["issues"]): string {
         .join("; ");
 }
 
-// Validate untrusted config input (file, saved settings, HTTP body). Unknown
+// Validate untrusted config input (saved settings, HTTP body). Unknown
 // keys are dropped. Throws a ConfigError that names every invalid field.
 export function parseConfigOverrides(input: unknown): ConfigOverrides {
     const result = ConfigOverridesSchema.safeParse(input);

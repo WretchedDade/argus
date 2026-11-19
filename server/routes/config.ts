@@ -31,6 +31,7 @@ export function configRoutes(ctx: ApiContext) {
             store: ctx.store.counts(),
             poller: ctx.pollerStatus(),
             storage: ctx.storage?.() ?? null,
+            pluginInstalled: ctx.pluginInstalled ?? false,
             auth: useBroker() ? await authStatus() : null,
             setup_complete:
                 ctx.store.isSetupComplete() &&

@@ -23,7 +23,6 @@ import {
 } from "./server.ts";
 import {
     defaultConfig,
-    loadLocalConfig,
     mergeConfig,
     type ArgusConfig,
     type ConfigOverrides,
@@ -44,17 +43,12 @@ const root = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
 // Scratch DB by default, never the real OneDrive store.
 const DB_FILE =
     process.env.ARGUS_DB_FILE || path.join(root, "data", "standalone.db");
-const CONFIG_FILE =
-    process.env.ARGUS_CONFIG_FILE || path.join(root, "argus.config.json");
 const INGEST_PORT = Number(process.env.ARGUS_INGEST_PORT ?? 48199);
 setIngestPort(INGEST_PORT);
 
 const store = new ArgusStore(DB_FILE);
 const getConfig = (): ArgusConfig =>
-    mergeConfig(
-        mergeConfig(defaultConfig(), loadLocalConfig(CONFIG_FILE)),
-        store.getConfigOverrides(),
-    );
+    mergeConfig(defaultConfig(), store.getConfigOverrides());
 const saveConfig = (overrides: ConfigOverrides): ArgusConfig => {
     store.saveConfigOverrides(overrides);
     return getConfig();
@@ -172,7 +166,6 @@ logger.info(
         component: "standalone",
         url: instance.url,
         dbFile: DB_FILE,
-        configFile: CONFIG_FILE,
     },
     "Argus standalone started",
 );

@@ -1,17 +1,12 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { createServer, request as httpRequest } from "node:http";
 import { hc } from "hono/client";
 import { type ApiContext } from "../api.ts";
 import { createHonoHandler, type AppType } from "../app.ts";
-import {
-    defaultConfig,
-    loadLocalConfig,
-    mergeConfig,
-    parseConfigOverrides,
-} from "../config.ts";
+import { defaultConfig, mergeConfig, parseConfigOverrides } from "../config.ts";
 import { ArgusStore } from "../db.ts";
 import { logger } from "../log.ts";
 import { configRoutes } from "./config.ts";
@@ -123,7 +118,6 @@ describe("server/routes/config", () => {
         );
 
         const dir = mkdtempSync(path.join(tmpdir(), "argus-config-test-"));
-        const file = path.join(dir, "config.json");
         const store = new ArgusStore(path.join(dir, "argus.db"));
         let config = {
             ...defaultConfig(),
@@ -175,10 +169,6 @@ describe("server/routes/config", () => {
         });
 
         try {
-            assert.deepEqual(loadLocalConfig(file), {});
-            writeFileSync(file, JSON.stringify(configured));
-            assert.deepEqual(loadLocalConfig(file), configured);
-
             await new Promise<void>((resolve) =>
                 server.listen(0, "127.0.0.1", resolve),
             );
@@ -190,9 +180,16 @@ describe("server/routes/config", () => {
             }).api;
             const health = async () => {
                 const response = await fetch(`${base}/api/health`);
-                return (await response.json()) as { setup_complete: boolean };
+                return (await response.json()) as {
+                    setup_complete: boolean;
+                    pluginInstalled: boolean;
+                };
             };
             assert.equal((await health()).setup_complete, false);
+            assert.equal((await health()).pluginInstalled, false);
+            context.pluginInstalled = true;
+            assert.equal((await health()).pluginInstalled, true);
+            context.pluginInstalled = false;
 
             config = mergeConfig(config, configured);
             store.markSetupComplete();
@@ -321,43 +318,26 @@ describe("server/routes/config", () => {
                 200,
             );
 
-            const errors: string[] = [];
-            const originalWarn = logger.warn;
-            logger.warn = (...args: unknown[]) => {
-                errors.push(String(args[1]));
-            };
-            try {
-                for (const invalid of [
-                    { workDays: null },
-                    { teamPatterns: null },
-                    { workDays: ["Monday"] },
-                    { teamPatterns: [3] },
-                    { teamLabels: { team: 3 } },
-                    { periods: [null] },
-                    {
-                        periods: [
-                            { label: "Week", start: 3, end: "2026-10-28" },
-                        ],
-                    },
-                    { orgUrl: null },
-                    { workStartHour: "9" },
-                    { me: false },
-                    [],
-                    null,
-                ]) {
-                    writeFileSync(file, JSON.stringify(invalid));
-                    const previousErrors = errors.length;
-                    assert.deepEqual(
-                        loadLocalConfig(file),
-                        {},
-                        JSON.stringify(invalid),
-                    );
-                    assert.equal(errors.length, previousErrors + 1);
-                }
-                writeFileSync(file, "{");
-                assert.deepEqual(loadLocalConfig(file), {});
-            } finally {
-                logger.warn = originalWarn;
+            for (const invalid of [
+                { workDays: null },
+                { teamPatterns: null },
+                { workDays: ["Monday"] },
+                { teamPatterns: [3] },
+                { teamLabels: { team: 3 } },
+                { periods: [null] },
+                {
+                    periods: [{ label: "Week", start: 3, end: "2026-10-28" }],
+                },
+                { orgUrl: null },
+                { workStartHour: "9" },
+                { me: false },
+                [],
+                null,
+            ]) {
+                assert.throws(
+                    () => parseConfigOverrides(invalid),
+                    JSON.stringify(invalid),
+                );
             }
 
             const overrides = {
@@ -370,11 +350,10 @@ describe("server/routes/config", () => {
                     { label: "Week", start: "2026-10-26", end: "2026-10-30" },
                 ],
             };
-            writeFileSync(
-                file,
-                JSON.stringify({ ...overrides, unknownSetting: true }),
+            assert.deepEqual(
+                parseConfigOverrides({ ...overrides, unknownSetting: true }),
+                overrides,
             );
-            assert.deepEqual(loadLocalConfig(file), overrides);
 
             const post = (route: string, body: unknown) =>
                 fetch(`${base}${route}`, {
@@ -532,6 +511,8 @@ describe("server/routes/config", () => {
             assert.equal(installed, true);
 
             // Saved settings that are unsafe are dropped when read back.
+            const errors: string[] = [];
+            const originalWarn = logger.warn;
             const errorsBefore = errors.length;
             logger.warn = (...args: unknown[]) => {
                 errors.push(String(args[1]));

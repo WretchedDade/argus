@@ -92,7 +92,6 @@ describe("scripts/release-evidence", () => {
             for (const file of [
                 "extension/dist/index.html",
                 "extension/skills/pr-review/SKILL.md",
-                "extension/argus.config.example.json",
                 "extension/package.json",
                 "extension/ado-auth-config.example.json",
                 "INSTALL.md",

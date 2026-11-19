@@ -6,11 +6,10 @@ This document lists everything Argus stores. Update it when you add a table, a c
 
 ## Where the data is
 
-| File                | Content                                                                                      |
-| ------------------- | -------------------------------------------------------------------------------------------- |
-| `argus.db`          | All PR data, events, logs, and settings (see below).                                         |
-| `storage.json`      | Next to the local database. Holds only the database location choice (`local` or `onedrive`). |
-| `argus.config.json` | Optional. Org values that you write yourself. It is gitignored.                              |
+| File           | Content                                                                                      |
+| -------------- | -------------------------------------------------------------------------------------------- |
+| `argus.db`     | All PR data, events, logs, and settings (see below).                                         |
+| `storage.json` | Next to the local database. Holds only the database location choice (`local` or `onedrive`). |
 
 Sign-in data is outside the database, in `%LOCALAPPDATA%\devstart\` (or `~\.devstart`):
 

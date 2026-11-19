@@ -40,6 +40,7 @@ export interface ApiContext {
     };
     getNotices?: () => Notice[];
     appVersion?: string;
+    pluginInstalled?: boolean;
     checkForUpdatesNow?: () => Promise<UpdateCheckResult>;
     // Downloads, verifies, and installs the latest release. Absent in standalone mode.
     applyUpdate?: (setPhase: (phase: UpdatePhase) => void) => Promise<void>;

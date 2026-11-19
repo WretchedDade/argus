@@ -1,10 +1,11 @@
 # Install and upgrade Argus
 
-This guide is for the release ZIP. You do not need a source checkout or build tools.
+Install Argus as a Copilot plugin or use the release ZIP fallback. Neither path
+needs a source checkout or build tools. Both use the same verified release runtime.
 
 ## Supported platform
 
-Windows x64 is tested. The ZIP is built on Windows and its `node_modules` include native Windows binaries, which only the Windows account sign-in method loads. The Azure CLI sign-in method uses no native code, so it may work on other platforms, but this is not tested or supported.
+Windows x64 is tested. The payload is built on Windows and its `node_modules` include native Windows binaries, which only the Windows account sign-in method loads. The Azure CLI sign-in method uses no native code, so it may work on other platforms, but this is not tested or supported.
 
 ## Prerequisites
 
@@ -12,6 +13,31 @@ Windows x64 is tested. The ZIP is built on Windows and its `node_modules` includ
 - Node.js 22.13 or later on your PATH. The Copilot app runs `extension.mjs` with it.
 - Azure CLI (`az`) signed in with `az login`, or the [Windows account sign-in setup](https://github.com/WretchedDade/argus/blob/main/docs/USER-GUIDE.md#sign-in-method).
 - Access to the Azure DevOps organization and project you want to track.
+
+## Install the plugin
+
+The generated `plugin` branch hosts the built payload and its marketplace catalog:
+
+```powershell
+copilot plugin marketplace add "WretchedDade/argus#plugin"
+copilot plugin install argus@argus
+```
+
+Reload extensions in the Copilot app, or restart the session, then open Argus.
+If the plugin branch has not been published yet, use the ZIP below.
+Plugin installation does not run npm or build from source.
+
+Do not enable both the ZIP extension and the plugin at the same time. To switch
+from ZIP, first select **This device** or **OneDrive** in Settings and reload
+extensions. Confirm that your history is present. This moves an old
+extension-local database out of the installation folder when needed. Then close
+Argus and move the old `%USERPROFILE%\.copilot\extensions\argus` folder to a
+backup location outside `extensions` before installing the plugin.
+Keep that backup until the plugin shows your history and Settings.
+
+Database settings and Windows sign-in files stay in their existing locations.
+`argus.config.json` and `ARGUS_CONFIG_FILE` are no longer read in either mode.
+Before upgrading an old version, save any file-only values through Settings.
 
 ## ZIP layout
 
@@ -28,7 +54,6 @@ argus-vX.Y.Z/
     node_modules/              runtime packages (Azure sign-in and Pino logging) and their dependencies
     package.json
     package-lock.json          pins the installed versions
-    argus.config.example.json
     ado-auth-config.example.json   empty registration template, not runtime config
     skills/pr-review/         installed by the first-run setup, if you accept
 ```
@@ -74,7 +99,7 @@ No plugin persistent-data migration has been enabled.
 
     The `-ExecutionPolicy Bypass` option applies to this one command only. It lets the script run under the default `Restricted` policy, or when the extracted file has the download mark. It does not change your policy.
 
-    To use a different folder, pass `-Destination <path>`. The script copies over the existing files and does not delete the folder first, so `argus.config.json` stays. It replaces only `node_modules`, so packages that a release drops do not remain.
+    To use a different folder, pass `-Destination <path>`. The script copies over the existing files without deleting user files from older versions. It replaces only `node_modules`, so packages that a release drops do not remain.
 
 3. Reload extensions in the Copilot app, or restart it.
 4. Open the Argus canvas.
@@ -83,9 +108,15 @@ No plugin persistent-data migration has been enabled.
 
 The board, My PRs, Insights, and Recap work without the skill. The **Review** and **Re-review** buttons need a `pr-review` skill.
 
-The first-run setup screen offers to install the skill. Accept the offer to get the review workflow. Argus never overwrites an existing `pr-review` skill, so a customized one stays as it is.
+The plugin contributes the bundled skill directly and skips this choice in setup.
+ZIP setup offers to copy it to your personal skills directory.
+Argus never overwrites an existing
+`pr-review` skill, so a customized one stays as it is. Personal and project skills
+take precedence over the plugin skill. A personal copy from an old ZIP install
+also keeps precedence; back it up outside your skills directories if you want to
+use the plugin-managed baseline instead.
 
-You can also bring your own skill. On the setup screen, choose **I'll use my own** and enter the `name` from your skill's frontmatter. The Review buttons then tell the agent to run that skill. Your skills folder is left untouched. Your skill must record the verdict back to Argus. See [Recording a review verdict](https://github.com/WretchedDade/argus/blob/main/docs/USER-GUIDE.md#recording-a-review-verdict).
+You can also bring your own skill. In Settings, set **Review skill** to the `name` from your skill's frontmatter. ZIP installs also offer **I'll use my own** during setup. The Review buttons then tell the agent to run that skill. Your skills folder is left untouched. Your skill must record the verdict back to Argus. See [Recording a review verdict](https://github.com/WretchedDade/argus/blob/main/docs/USER-GUIDE.md#recording-a-review-verdict).
 
 ## First-run setup
 
@@ -106,10 +137,9 @@ app registration, then select **Save setup**. You can edit them there or under
 sign-in method. See the [sign-in guide](https://github.com/WretchedDade/argus/blob/main/docs/USER-GUIDE.md#sign-in-method)
 for the saved auth-config location and explicit environment overrides.
 
-To prefill organization defaults, copy `argus.config.example.json` to
-`argus.config.json` in the extension folder and edit it. That example does **not**
-prefill the client or tenant ID fields. `ado-auth-config.example.json` contains
-only the empty registration structure; configure actual IDs through the canvas.
+`ado-auth-config.example.json` contains only the empty registration structure.
+Configure actual IDs through the canvas. These sign-in files are separate from
+the removed optional Argus config file.
 
 ## Verify the installation
 
@@ -119,14 +149,34 @@ only the empty registration structure; configure actual IDs through the canvas.
 
 ## Upgrade
 
+For a plugin install, refresh the marketplace catalog and update the plugin:
+
+```powershell
+copilot plugin marketplace update argus
+copilot plugin update argus@argus
+```
+
+Then reload extensions or restart the session. Plugin installs do not use the ZIP
+updater or personal-skill sync. The **Check for new versions** setting and bell
+update actions apply to ZIP installs only. The plugin manager updates the bundled
+skill; it does not change a personal or project skill that takes precedence.
+
+### ZIP upgrades
+
 Once a day, Argus checks GitHub for a new release. When one exists, the bell shows a notice. Select **Update now**. Argus downloads the ZIP, checks it against the SHA-256 file of the release, and runs `install.ps1`. If the checksum does not match, Argus installs nothing and shows an error. Then reload extensions. If you edited your `pr-review` skill, a **Merge with Copilot** notice appears after the reload. To stop the check, clear **Check for new versions** in Settings. Argus sends no data about you.
 
-To upgrade by hand, extract the new ZIP and run `install.ps1` from it with the same command as the install. To check the ZIP first, compare `(Get-FileHash <zip>).Hash` with the hash in the `.sha256` file on the release page. Your `argus.config.json` and database are not in the ZIP, so the copy keeps them. Then reload extensions.
+To upgrade by hand, extract the new ZIP and run `install.ps1` from it with the same command as the install. To check the ZIP first, compare `(Get-FileHash <zip>).Hash` with the hash in the `.sha256` file on the release page. Your database is not in the ZIP. Then reload extensions.
 
 An unedited `pr-review` skill that Argus installed updates by itself. If you edited it, Argus leaves it and shows a notice with **Merge with Copilot** and **Use new version**. **Use new version** replaces your copy with the bundled one and saves your old copy in `~/.copilot/skill-backups/`.
 
 If your database is still on OneDrive from an earlier version, Argus keeps using it and shows a notice with **Choose with Copilot**. Choose to move it to `%LOCALAPPDATA%\argus\argus.db`, or to keep it on OneDrive as a backup. The notice clears after you choose and reload extensions. Argus never moves the file without your approval.
 
 ## Uninstall
+
+For a plugin install, run `copilot plugin uninstall argus@argus`, then reload
+extensions or restart the session. Your external database, database-location
+choice, and Windows sign-in files are not part of the plugin payload and remain.
+
+For a ZIP install:
 
 Delete `%USERPROFILE%\.copilot\extensions\argus`. Your database is not in that folder in a current install, so it stays where it was: `%LOCALAPPDATA%\argus\argus.db`, the OneDrive file, or the path in `ARGUS_DB_FILE`. An install from an earlier version that never used OneDrive can still keep its database in `data\argus.db` in the extension folder. Move it out first if you want to keep your history. Delete the database too if you want to remove your stored history. Delete `%LOCALAPPDATA%\argus\storage.json` as well to forget your location choice.
