@@ -79,6 +79,8 @@ jobs:
         # Windows: the packaged node_modules include native Windows binaries.
         runs-on: windows-latest
         timeout-minutes: 20
+        outputs:
+            published: ${{ steps.publish.outputs.published }}
         env:
             HUSKY: "0"
             TAG: v${{ needs.check.outputs.version }}
@@ -131,6 +133,7 @@ jobs:
                   node scripts/verify-release.ts "$dest/argus-$env:TAG"
                   if ($LASTEXITCODE -ne 0) { throw "Acquired ZIP verification failed" }
             - name: Publish GitHub Release
+              id: publish
               env:
                   GH_TOKEN: ${{ github.token }}
               shell: pwsh
@@ -143,3 +146,10 @@ jobs:
                   if ($LASTEXITCODE -ne 2) { throw "Tag lookup failed with exit code $LASTEXITCODE" }
                   gh release create $env:TAG "release/argus-$env:TAG-windows.zip" "release/argus-$env:TAG-windows.zip.sha256" --title $env:TAG --generate-notes --target $env:GITHUB_SHA
                   if ($LASTEXITCODE -ne 0) { throw "gh release create failed" }
+                  "published=true" >> $env:GITHUB_OUTPUT
+
+    publish-plugin:
+        name: Publish plugin
+        needs: release
+        if: needs.release.outputs.published == 'true'
+        uses: ./.github/workflows/plugin.yml

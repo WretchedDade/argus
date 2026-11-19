@@ -201,7 +201,7 @@ If you change the archive layout, the install destinations, or the upgrade behav
 
 ## Plugin publication
 
-The **Publish plugin** workflow runs after a successful Release workflow, or manually on `main`. It downloads the latest stable release ZIP and checksum, verifies its source commit and native runtime, and generates the plugin from that acquired payload. Releases from before plugin support are rejected.
+The Release workflow calls **Publish plugin** only after it creates a new GitHub Release. A Release run with nothing to publish does not call it. You can also run **Publish plugin** manually on `main` to retry a failed publication. It downloads the latest stable release ZIP and checksum, verifies its source commit and native runtime, and generates the plugin from that acquired payload. Releases from before plugin support are rejected.
 
 The workflow appends a generated commit to `plugin`. That branch contains only the installable payload and its marketplace catalog. Do not edit it by hand. `main` and the `vX.Y.Z` tags still identify source code. Publication never force-pushes, downgrades a version, or replaces an existing version with different files. An identical rerun changes nothing.
 
