@@ -13,7 +13,7 @@ Public issues are not invitations to contribute. See CONTRIBUTING.md. -->
 - [ ] `npm run typecheck`
 - [ ] `npm run lint`
 - [ ] `npm test`
-- [ ] Version: no bump, or bumped in `package.json` (see [Releasing](../README.md#releasing))
+- [ ] Version: no bump, or bumped in `package.json` (see [Release rules](../CONTRIBUTING.md#release-rules))
 - [ ] Title is a user-facing release note, and one category label is set (`enhancement`, `bug`, `documentation`, `maintenance`; add `breaking` or `skip-changelog` if needed)
 
 <!-- For behavior or UI changes, describe the manual checks. Add screenshots when useful. -->

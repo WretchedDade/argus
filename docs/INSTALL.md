@@ -10,7 +10,7 @@ Windows x64 is tested. The ZIP is built on Windows and its `node_modules` includ
 
 - The Copilot app, with canvas extensions enabled.
 - Node.js 22.13 or later on your PATH. The Copilot app runs `extension.mjs` with it.
-- Azure CLI (`az`) signed in with `az login`, or the Windows account sign-in setup described in the README.
+- Azure CLI (`az`) signed in with `az login`, or the [Windows account sign-in setup](https://github.com/WretchedDade/argus/blob/main/docs/USER-GUIDE.md#sign-in-method).
 - Access to the Azure DevOps organization and project you want to track.
 
 ## ZIP layout
@@ -59,7 +59,8 @@ development builds; the manifest still records their dirty-source flag.
 It does **not** prove interactive WAM login, window association, app canvas
 discovery or host-injected SDK availability. Never copy a real registration file
 into an archive. The empty example is informational; the current canvas continues
-to save IDs to the existing shared auth-config location described in the README.
+to save IDs to the existing shared auth-config location described in the
+[user guide](https://github.com/WretchedDade/argus/blob/main/docs/USER-GUIDE.md#sign-in-method).
 No plugin persistent-data migration has been enabled.
 
 ## Install the extension
@@ -84,23 +85,26 @@ The board, My PRs, Insights, and Recap work without the skill. The **Review** an
 
 The first-run setup screen offers to install the skill. Accept the offer to get the review workflow. Argus never overwrites an existing `pr-review` skill, so a customized one stays as it is.
 
-You can also bring your own skill. On the setup screen, choose **I'll use my own** and enter the `name` from your skill's frontmatter. The Review buttons then tell the agent to run that skill. Your skills folder is left untouched. Your skill must record the verdict back to Argus. See the README section "Recording a review verdict".
+You can also bring your own skill. On the setup screen, choose **I'll use my own** and enter the `name` from your skill's frontmatter. The Review buttons then tell the agent to run that skill. Your skills folder is left untouched. Your skill must record the verdict back to Argus. See [Recording a review verdict](https://github.com/WretchedDade/argus/blob/main/docs/USER-GUIDE.md#recording-a-review-verdict).
 
 ## First-run setup
 
 Enter your Azure DevOps org URL, org slug, and project, and choose a sign-in method (Azure CLI, or Windows account on Windows). Then choose where to keep your history, and select **Start watching**.
 
+Setup starts a poll immediately. The empty board shows loading feedback while
+Argus checks Azure DevOps, then displays the results.
+
 - **This device** (default): the database is `%LOCALAPPDATA%\argus\argus.db`. Your PR data stays private. A device reset loses the history.
 - **OneDrive**: the database is `<OneDrive>\Desktop\argus.db`. OneDrive syncs it, so you can restore your history after a device reset. The PR titles, descriptions, and review history sync to your OneDrive. Run Argus on one device at a time.
 
-If you choose OneDrive, reload extensions to start using it. The README section "Where the database lives" has more detail.
+If you choose OneDrive, reload extensions to start using it. See [Where the database lives](https://github.com/WretchedDade/argus/blob/main/docs/USER-GUIDE.md#where-the-database-lives) for more detail.
 
 If you choose Windows account, the sign-in screen provides separate **Application
 (client) ID** and **Directory (tenant) ID** fields. Enter both IDs from your Entra
 app registration, then select **Save setup**. You can edit them there or under
 **Settings > Windows account setup**. Saving setup saves only the IDs, not your
-sign-in method. See the README for the saved auth-config location and explicit
-environment overrides.
+sign-in method. See the [sign-in guide](https://github.com/WretchedDade/argus/blob/main/docs/USER-GUIDE.md#sign-in-method)
+for the saved auth-config location and explicit environment overrides.
 
 To prefill organization defaults, copy `argus.config.example.json` to
 `argus.config.json` in the extension folder and edit it. That example does **not**
@@ -110,7 +114,7 @@ only the empty registration structure; configure actual IDs through the canvas.
 ## Verify the installation
 
 1. The Argus canvas opens and shows the setup screen, or the board if already set up.
-2. After setup, PRs appear on the board within one poll cycle. To load them now, select **Refresh** beside the search box. It runs the same check as the background poll.
+2. After setup, the first poll starts automatically and fills the board. To check again later, select **Refresh** beside the search box. It runs the same check as the background poll.
 3. With the skill installed, select **Review** on a PR. A child review session starts and records a verdict.
 
 ## Upgrade

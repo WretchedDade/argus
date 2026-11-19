@@ -14,9 +14,99 @@ import {
 } from "../config.ts";
 import { ArgusStore } from "../db.ts";
 import { logger } from "../log.ts";
-import { describe, it } from "vitest";
+import { configRoutes } from "./config.ts";
+import { describe, it, vi } from "vitest";
 
 describe("server/routes/config", () => {
+    it("starts the first poll after setup without waiting for it", async () => {
+        const store = new ArgusStore(":memory:");
+        let config = {
+            ...defaultConfig(),
+            orgUrl: "",
+            orgSlug: "",
+            project: "",
+        };
+        let finishPoll!: () => void;
+        let failPoll!: (error: Error) => void;
+        const pending = new Promise<null>((resolve, reject) => {
+            finishPoll = () => resolve(null);
+            failPoll = reject;
+        });
+        const reconcile = vi.fn(() => {
+            assert.equal(store.isSetupComplete(), true);
+            assert.equal(config.project, "ExampleProject");
+            return pending;
+        });
+        const context: ApiContext = {
+            store,
+            bootAt: new Date().toISOString(),
+            reconcile,
+            deleteAllData: async () => {},
+            refreshPr: async () => {},
+            trackPr: async () => ({ ok: false }),
+            recordReview: () => {},
+            dispatch: async () => {},
+            pollerStatus: () => ({
+                me: null,
+                authOk: true,
+                running: false,
+                currentRunId: null,
+                lastRunAt: null,
+                lastSummary: null,
+                lastError: null,
+            }),
+            getConfig: () => config,
+            saveConfig: (overrides) => {
+                config = mergeConfig(config, overrides);
+                return config;
+            },
+            markSetupComplete: () => store.markSetupComplete(),
+            installBaselineSkill: () => ({ installed: false }),
+        };
+        const app = configRoutes(context);
+        const post = async (body: unknown) =>
+            app.request("/setup", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(body),
+            });
+        const errorLog = vi.spyOn(logger, "error").mockImplementation(() => {});
+        try {
+            assert.equal(
+                (await post({ me: "reviewer@example.test" })).status,
+                400,
+            );
+            assert.equal(reconcile.mock.calls.length, 0);
+
+            let response: Response | undefined;
+            const setup = post({
+                orgUrl: "https://dev.azure.com/example-org",
+                orgSlug: "example-org",
+                project: "ExampleProject",
+            }).then((result) => {
+                response = result;
+            });
+            await new Promise<void>((resolve) => setImmediate(resolve));
+            assert.equal(reconcile.mock.calls.length, 1);
+            assert.ok(response, "Setup must return while the poll is pending");
+            assert.equal(response.status, 200);
+            await setup;
+
+            failPoll(new Error("Synthetic initial poll failure"));
+            await new Promise<void>((resolve) => setImmediate(resolve));
+            assert.equal(store.isSetupComplete(), true);
+            assert.ok(
+                errorLog.mock.calls.some((call) =>
+                    call.includes("Initial poll failed"),
+                ),
+            );
+        } finally {
+            finishPoll();
+            errorLog.mockRestore();
+            store.close();
+        }
+    });
+
     it("validates and persists configuration through the API", async () => {
         assert.equal(defaultConfig().vendorPattern, "\\(.+\\)");
         assert.equal(

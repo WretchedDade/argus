@@ -17,6 +17,7 @@ describe("src/components/primitives", () => {
         () => string
     > & {
         toast: (kind: "success" | "error" | "progress") => string;
+        emptyBoard: (polling: boolean, fetching?: boolean) => string;
         pollWarning: (authOk: boolean) => string;
         registration: (polling?: boolean) => string;
         chartAlternatives: (empty?: boolean) => Record<string, string>;
@@ -147,6 +148,16 @@ describe("src/components/primitives", () => {
                 }
             };
             export const boardPending = () => render(h(TriageQueue, { filters: {}, onFiltersChange: () => {} }));
+            export const emptyBoard = (polling, fetching = false) => {
+                const client = new QueryClient();
+                client.setQueryData(["prs"], []);
+                if (fetching)
+                    client.getQueryCache().find({ queryKey: ["prs"] }).setState({ fetchStatus: "fetching" });
+                client.setQueryData(["health"], { poller: {
+                    authOk: true, running: polling, lastError: null,
+                } });
+                return render(h(TriageQueue, { filters: {}, onFiltersChange: () => {} }), client);
+            };
             export const pollWarning = (authOk) => {
                 const client = new QueryClient();
                 client.setQueryData(["prs"], []);
@@ -393,6 +404,19 @@ describe("src/components/primitives", () => {
             assert.match(html, /role="status"/);
             assert.match(html, /aria-busy="true"/);
             assert.match(html, /Loading/);
+        }
+    });
+    it("shows polling feedback instead of a completed empty state", () => {
+        const polling = render.emptyBoard(true);
+        assert.match(polling, /Checking Azure DevOps for pull requests/);
+        assert.match(polling, /aria-busy="true"/);
+        assert.match(polling, /mantine-Skeleton-root/);
+        assert.doesNotMatch(polling, /Nothing to review right now/);
+
+        for (const fetching of [false, true]) {
+            const idle = render.emptyBoard(false, fetching);
+            assert.match(idle, /Nothing to review right now/);
+            assert.doesNotMatch(idle, /mantine-Skeleton-root/);
         }
     });
     it("connects registration labels to their controls", async () => {

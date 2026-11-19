@@ -9,7 +9,7 @@ import {
     UnstyledButton,
     VisuallyHidden,
 } from "@mantine/core";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { ErrorBanner, LoadErrorPage } from "./ErrorBanner";
 import { AlertTriangle, ChevronDown, ChevronRight } from "lucide-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -188,6 +188,10 @@ export function TriageQueue({
     const recencyDays = cfg.data?.recencyDays ?? 7;
     const poller = health.data?.poller;
 
+    useEffect(() => {
+        if (poller?.lastRunAt) void qc.invalidateQueries({ queryKey: ["prs"] });
+    }, [poller?.lastRunAt, qc]);
+
     const restore = async (canonical: string) => {
         try {
             await api.setScope(canonical, false);
@@ -238,6 +242,7 @@ export function TriageQueue({
     );
 
     const allReview = (prs.data ?? []).filter((p: Pr) => p.role !== "author");
+    const checkingEmpty = allReview.length === 0 && !!poller?.running;
     const filterControls = (
         <QueueFilters
             prs={allReview}
@@ -266,6 +271,7 @@ export function TriageQueue({
             <section
                 id="sec-review"
                 aria-labelledby="sec-review-heading"
+                aria-busy={checkingEmpty || undefined}
                 className="flex scroll-mt-20 flex-col gap-3"
             >
                 <Group component="header" justify="space-between" gap="sm">
@@ -286,7 +292,11 @@ export function TriageQueue({
                         >
                             {review.length === 0 ? (
                                 allReview.length === 0 ? (
-                                    "Nothing to review right now."
+                                    checkingEmpty ? (
+                                        "Checking Azure DevOps for pull requests…"
+                                    ) : (
+                                        "Nothing to review right now."
+                                    )
                                 ) : (
                                     "No PRs match these filters. Change or clear the filters to see more PRs."
                                 )
@@ -305,6 +315,7 @@ export function TriageQueue({
                     </Group>
                     {filterControls}
                 </Group>
+                {checkingEmpty && <BoardSkeleton />}
                 {[...active].sort(byQueuePriority).map((pr) => (
                     <PrCard
                         key={pr.canonical}
