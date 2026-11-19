@@ -122,3 +122,11 @@ Merging the bump PR is the release. When a change to `package.json` reaches `mai
 To fix a bad release, delete the GitHub Release and the tag (`git push origin :refs/tags/vX.Y.Z`), fix the problem, and re-run the workflow.
 
 The archive layout and install steps are in `docs/INSTALL.md`. Update that file when the layout, install destinations, or upgrade behavior change.
+
+### Agency marketplace release handoff
+
+- Agency Playground listing updates are manual for now. An Argus release or successful **Publish plugin** run does not update the separate listing.
+- After **Publish plugin** succeeds, update the marketplace stub's `plugin.json` version and `agency.json` `source.sha` together in a separate PR. Read the version from the manifest at that exact generated `plugin` branch commit, not from source `main` or a release tag.
+- Keep `source.ref` as `plugin` and preserve the stable `pluginId`. Do not copy runtime files, edit generated marketplace indexes, or add internal credentials to the public pipeline.
+- Include the pending marketplace PR and post-merge sync in the release handoff. Do not claim that Agency has the new version until both are complete.
+- Follow [Manual Agency marketplace updates](../CONTRIBUTING.md#manual-agency-marketplace-updates). Keep internal review, access details, and internal-only links out of this public repository.
