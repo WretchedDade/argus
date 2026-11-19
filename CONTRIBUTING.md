@@ -207,7 +207,23 @@ The workflow appends a generated commit to `plugin`. That branch contains only t
 
 The checked-in files under `plugin/` define the plugin and marketplace manifests. Staging copies the catalog unchanged and stamps the plugin manifest with the release version. The script does not maintain a second copy of this metadata.
 
+`plugin/agency.json` supplies the stable plugin ID and Copilot/Windows compatibility metadata for Agency consumers. Staging copies it into the published payload. Keep its ID aligned with the separate Agency listing; do not put internal governance or contact details in this public file.
+
 If publication fails, the ZIP release stays available. Fix the cause and rerun **Publish plugin**. No new release tag is needed for an interrupted publication. A changed payload needs a new package version and ZIP release.
+
+### Manual Agency marketplace updates
+
+The Agency Playground listing is maintained separately from this repository. Listing updates are manual for now. Publishing an Argus release does not update that listing, and the public release pipeline does not need internal marketplace credentials.
+
+For the initial listing and each later release:
+
+1. Wait for **Publish plugin** to succeed. A merged version bump or a GitHub Release alone does not prove that the plugin payload is published.
+2. Read the generated `plugin` branch's full commit SHA. Read `.claude-plugin/plugin.json` at that exact commit to get the published version. Do not use the source `main` commit or a source release tag as the payload pin.
+3. In the separate marketplace checkout, update `plugins/argus-pr-review/plugin.json`'s `version` and `plugins/argus-pr-review/agency.json`'s `source.sha` together. Use the published version and generated payload commit from step 2. Keep `source.ref` as `plugin` and preserve the existing `pluginId`.
+4. Open a marketplace PR. Leave the runtime in this repository; do not copy bundles or dependencies, edit generated marketplace indexes, or change trust policy.
+5. Obtain peer approval and pass the required checks. After merge, confirm that marketplace sync succeeds. Agency users receive the newly listed version through their plugin manager's manual or automatic update flow.
+
+The catalog copies its displayed version from the listing's `plugin.json`; it does not read the upstream version. The commit pin keeps that catalog version tied to one published payload. Record a pending marketplace update in the release handoff until the separate listing PR and sync are complete. Keep internal review and access details out of this public repository.
 
 ### Release runtime verification
 
