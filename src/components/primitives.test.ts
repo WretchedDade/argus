@@ -11,6 +11,7 @@ describe("src/components/primitives", () => {
         | "noticePending"
         | "notificationBell"
         | "refreshPolling"
+        | "reducedMotionButton"
         | "signInMethod"
         | "groupedAuthors"
         | "longChartLegend",
@@ -103,7 +104,7 @@ describe("src/components/primitives", () => {
             import { cloneElement, createElement as h } from "react";
             import { vi } from "vitest";
             import { renderToStaticMarkup } from "react-dom/server";
-            import { MantineProvider } from "@mantine/core";
+            import { Button, MantineProvider } from "@mantine/core";
             import { ChartLegend } from "@mantine/charts";
             import { argusTheme } from "./src/theme.ts";
             import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -127,6 +128,9 @@ describe("src/components/primitives", () => {
             import { VoteBars } from "./src/components/charts/VoteBars.tsx";
             const render = (child, client = new QueryClient()) => renderToStaticMarkup(
                 h(MantineProvider, { theme: argusTheme }, h(QueryClientProvider, { client }, child)));
+            export const reducedMotionButton = () => renderToStaticMarkup(
+                h(MantineProvider, { theme: argusTheme, env: "test" },
+                    h(Button, { size: "xs", variant: "default", loading: true }, "Refresh")));
             export const longChartLegend = () => render(h(ChartLegend, {
                 payload: [{ dataKey: "Preview team with a deliberately long display name", color: "blue" }],
                 legendPosition: "bottom", onHighlight: () => {},
@@ -436,6 +440,14 @@ describe("src/components/primitives", () => {
     it("disables pending notice actions", async () => {
         assert.match(render.noticePending(), /data-loading="true"/);
         assert.match(render.noticePending(), /disabled/);
+    });
+    it("centers button loaders when transitions are disabled", () => {
+        const html = render.reducedMotionButton();
+        const loader = html.match(
+            /<span\b[^>]*class="[^"]*\bmantine-Button-loader\b[^"]*"[^>]*>/,
+        )?.[0];
+        assert.ok(loader);
+        assert.match(loader, /transform:translate\(-50%, -50%\)/);
     });
     it("allows completed toasts to be dismissed", async () => {
         for (const kind of ["success", "error"] as const) {

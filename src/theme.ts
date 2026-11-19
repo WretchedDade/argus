@@ -1,5 +1,6 @@
 import {
     Badge,
+    Button,
     TagsInput,
     TextInput,
     createTheme,
@@ -17,6 +18,12 @@ export const argusTheme = createTheme({
         dark: darkPaletteForBackground(13, 17, 23),
     },
     components: {
+        Button: Button.extend({
+            styles: {
+                // Transitions omit the centering transform with reduced motion.
+                loader: { transform: "translate(-50%, -50%)" },
+            },
+        }),
         ChartLegend: ChartLegend.extend({
             styles: {
                 legendItem: { maxWidth: "100%", minWidth: 0 },
