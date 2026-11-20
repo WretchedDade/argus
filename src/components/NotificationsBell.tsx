@@ -101,6 +101,7 @@ export function NotificationsBell() {
                             {notices.map((n) => {
                                 switch (n.kind) {
                                     case "app-update":
+                                    case "plugin-update":
                                         return (
                                             <UpdateNotice
                                                 key={n.id}

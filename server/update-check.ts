@@ -1,12 +1,55 @@
-export interface ReleaseInfo {
+export interface PluginReleaseInfo {
     version: string;
     url: string;
+}
+
+export interface ReleaseInfo extends PluginReleaseInfo {
     zipUrl: string; // download URL of the Windows ZIP, taken from the release assets
     checksumUrl: string; // download URL of the ZIP's SHA-256 file
 }
 
 const LATEST_RELEASE_URL =
     "https://api.github.com/repos/WretchedDade/argus/releases/latest";
+const PUBLISHED_PLUGIN_URL =
+    "https://api.github.com/repos/WretchedDade/argus/contents/.claude-plugin/plugin.json?ref=plugin";
+
+export async function fetchLatestPluginRelease(
+    fetchFn: typeof fetch = fetch,
+): Promise<PluginReleaseInfo | null> {
+    try {
+        const res = await fetchFn(PUBLISHED_PLUGIN_URL, {
+            headers: {
+                Accept: "application/vnd.github.raw+json",
+                "User-Agent": "argus-update-check",
+            },
+            signal: AbortSignal.timeout(5000),
+        });
+        if (!res.ok) {
+            log.debug({ status: res.status }, "Plugin check failed");
+            return null;
+        }
+        const body: unknown = await res.json();
+        if (
+            !body ||
+            typeof body !== "object" ||
+            !("version" in body) ||
+            typeof body.version !== "string" ||
+            !parseVersion(body.version)
+        ) {
+            log.debug("Plugin check returned invalid metadata");
+            return null;
+        }
+        const version = body.version.replace(/^v/, "");
+        log.debug({ version }, "Plugin check completed");
+        return {
+            version,
+            url: `https://github.com/WretchedDade/argus/releases/tag/v${version}`,
+        };
+    } catch (err) {
+        log.debug({ err }, "Plugin check failed");
+        return null;
+    }
+}
 
 function parseVersion(value: string): number[] | null {
     const match = value.trim().match(/^v?(\d+)\.(\d+)\.(\d+)$/);

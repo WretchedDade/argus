@@ -1847,6 +1847,16 @@ export class ArgusStore {
         settings.setUpdateCheck(this.#db, value);
     }
 
+    getPluginUpdateCheck() {
+        return settings.getPluginUpdateCheck(this.#db);
+    }
+
+    setPluginUpdateCheck(
+        value: Parameters<typeof settings.setPluginUpdateCheck>[1],
+    ): void {
+        settings.setPluginUpdateCheck(this.#db, value);
+    }
+
     getSeenTeams(): string[] {
         return settings.getSeenTeams(this.#db);
     }

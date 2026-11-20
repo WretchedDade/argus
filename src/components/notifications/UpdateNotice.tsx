@@ -4,14 +4,13 @@ import type { Notice } from "../../lib/api";
 import { useUpdate } from "../../lib/useUpdate";
 import { NoticeRow, PrimaryButton } from "./NoticeRow";
 
-// A new Argus release. "Update now" starts the install on the server and closes
-// the bell. A toast shows the progress from there.
+// The bell closes after starting an install. Settings stays open.
 export function UpdateNotice({
     notice,
     onDone,
 }: {
     notice: Notice;
-    onDone: () => void;
+    onDone?: () => void;
 }) {
     const update = useUpdate();
 
@@ -21,7 +20,7 @@ export function UpdateNotice({
                 <PrimaryButton
                     onClick={() => {
                         update.start();
-                        onDone();
+                        onDone?.();
                     }}
                     disabled={update.running}
                     loading={update.running}

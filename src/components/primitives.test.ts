@@ -10,6 +10,7 @@ describe("src/components/primitives", () => {
         | "boardPending"
         | "noticePending"
         | "notificationBell"
+        | "pluginUpdate"
         | "refreshPolling"
         | "reducedMotionButton"
         | "signInMethod"
@@ -115,6 +116,8 @@ describe("src/components/primitives", () => {
             import { SegToggle } from "./src/components/SegToggle.tsx";
             import { RefreshButton } from "./src/components/RefreshButton.tsx";
             import { NotificationsBell } from "./src/components/NotificationsBell.tsx";
+            import { UpdateNotice } from "./src/components/notifications/UpdateNotice.tsx";
+            import { buildNotices } from "./server/notices.ts";
             import { Toaster } from "./src/components/Toaster.tsx";
             import { dismissToast, pushToast } from "./src/lib/toast.ts";
             import { AuthorTreemap } from "./src/components/charts/AuthorTreemap.tsx";
@@ -187,6 +190,14 @@ describe("src/components/primitives", () => {
                 client.setQueryData(["archivable"], []);
                 client.setQueryData(["notices"], [{ id: "preview:storage", kind: "storage", title: "Preview", detail: "Synthetic notice" }]);
                 return render(h(NotificationsBell), client);
+            };
+            export const pluginUpdate = () => {
+                const [notice] = buildNotices({
+                    appVersion: "0.2.0", pluginInstalled: true,
+                    pluginRelease: { version: "0.3.0", url: "https://example.test/release" },
+                    release: null, checkForUpdates: true, skill: null,
+                });
+                return render(h(UpdateNotice, { notice, onDone: () => {} }));
             };
             export const signInMethod = () => render(h(SegToggle, {
                 "aria-label": "Sign-in method", value: "az", onChange: () => {},
@@ -440,6 +451,15 @@ describe("src/components/primitives", () => {
     it("disables pending notice actions", async () => {
         assert.match(render.noticePending(), /data-loading="true"/);
         assert.match(render.noticePending(), /disabled/);
+    });
+    it("renders plugin versions and instructions without a ZIP install button", () => {
+        const html = render.pluginUpdate();
+        assert.match(html, /Argus plugin 0\.3\.0 is available/);
+        assert.match(html, /You have 0\.2\.0/);
+        assert.match(html, /plugin manager/);
+        assert.match(html, /View release/);
+        assert.match(html, /Dismiss/);
+        assert.doesNotMatch(html, /Update now|Starting/);
     });
     it("centers button loaders when transitions are disabled", () => {
         const html = render.reducedMotionButton();

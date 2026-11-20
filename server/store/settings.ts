@@ -1,11 +1,11 @@
 import type { DatabaseSync } from "node:sqlite";
 import { salvageConfigOverrides, type ConfigOverrides } from "../config.ts";
-import type { ReleaseInfo } from "../update-check.ts";
+import type { PluginReleaseInfo, ReleaseInfo } from "../update-check.ts";
 import { prep } from "./prep.ts";
 
-export interface UpdateCheck {
+export interface UpdateCheck<T = ReleaseInfo> {
     checkedAt: number;
-    release: ReleaseInfo | null;
+    release: T | null;
 }
 
 export function getSetting(db: DatabaseSync, key: string): string | null {
@@ -95,6 +95,20 @@ export function getUpdateCheck(db: DatabaseSync): UpdateCheck | null {
 
 export function setUpdateCheck(db: DatabaseSync, value: UpdateCheck): void {
     setSetting(db, "update_check", JSON.stringify(value));
+}
+
+export function getPluginUpdateCheck(
+    db: DatabaseSync,
+): UpdateCheck<PluginReleaseInfo> | null {
+    const raw = getSetting(db, "plugin_update_check");
+    return raw ? (JSON.parse(raw) as UpdateCheck<PluginReleaseInfo>) : null;
+}
+
+export function setPluginUpdateCheck(
+    db: DatabaseSync,
+    value: UpdateCheck<PluginReleaseInfo>,
+): void {
+    setSetting(db, "plugin_update_check", JSON.stringify(value));
 }
 
 // Team (container reviewer) names seen during discovery, for the Settings picker.

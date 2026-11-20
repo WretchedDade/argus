@@ -13,6 +13,13 @@ describe("shared/schemas/notice", () => {
 
     it("NoticeSchema accepts a valid Notice", () => {
         assert.deepEqual(NoticeSchema.parse(notice), notice);
+        const plugin = {
+            id: "plugin-update:1.2.3",
+            kind: "plugin-update",
+            title: "Plugin update",
+            detail: "Update through the plugin manager.",
+        };
+        assert.deepEqual(NoticeSchema.parse(plugin), plugin);
     });
 
     it("NoticeSchema rejects a bad kind and a missing field", () => {

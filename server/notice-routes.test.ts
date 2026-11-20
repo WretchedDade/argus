@@ -6,12 +6,68 @@ import path from "node:path";
 import { hc } from "hono/client";
 import type { ApiContext } from "./api.ts";
 import { createHonoHandler, type AppType } from "./app.ts";
+import { noticeRoutes } from "./routes/notices.ts";
 import { defaultConfig } from "./config.ts";
 import { ArgusStore } from "./db.ts";
 import type { Notice } from "./notices.ts";
 import { describe, it } from "vitest";
 
 describe("server/notice-routes", () => {
+    it("restores plugin notices and rejects ZIP installs for plugin hosts", async () => {
+        const store = new ArgusStore(":memory:");
+        const applyUpdate = async () => {
+            assert.fail("Plugin hosts must not run the ZIP updater");
+        };
+        const ctx = {
+            store,
+            pluginInstalled: true,
+            getConfig: defaultConfig,
+            getNotices: () => [],
+            checkForUpdatesNow: async () => ({
+                ok: true,
+                latest: "0.3.0",
+                updateAvailable: true,
+            }),
+            applyUpdate,
+        } as unknown as ApiContext;
+        const app = noticeRoutes(ctx);
+        try {
+            const plugin = {
+                checkedAt: 1,
+                release: { version: "0.3.0", url: "https://x/plugin" },
+            };
+            const zip = {
+                checkedAt: 2,
+                release: {
+                    version: "0.4.0",
+                    url: "https://x/zip",
+                    zipUrl: "https://x/download",
+                    checksumUrl: "https://x/checksum",
+                },
+            };
+            store.setUpdateCheck(zip);
+            store.setPluginUpdateCheck(plugin);
+            assert.deepEqual(store.getUpdateCheck(), zip);
+            assert.deepEqual(store.getPluginUpdateCheck(), plugin);
+            store.dismissNotice("plugin-update:0.3.0");
+            store.dismissNotice("app-update:0.3.0");
+            const checked = await app.request("/notices/check", {
+                method: "POST",
+            });
+            assert.equal(checked.status, 200);
+            assert.deepEqual(store.getDismissedNotices(), ["app-update:0.3.0"]);
+            const install = await app.request("/update/apply", {
+                method: "POST",
+            });
+            assert.equal(install.status, 409);
+            assert.deepEqual(await install.json(), {
+                error: "Update Argus through your plugin manager.",
+            });
+        } finally {
+            store.close();
+        }
+    });
+
     it("dispatches notice actions and preserves dismissal choices", async () => {
         const dir = mkdtempSync(path.join(tmpdir(), "argus-notice-routes-"));
         const store = new ArgusStore(path.join(dir, "argus.db"));

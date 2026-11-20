@@ -11,7 +11,9 @@ import {
 import type { UpdateCheckResult } from "./api.ts";
 import {
     fetchLatestRelease,
+    fetchLatestPluginRelease,
     isNewerVersion,
+    type PluginReleaseInfo,
     type ReleaseInfo,
 } from "./update-check.ts";
 import { buildNotices, type Notice } from "./notices.ts";
@@ -194,6 +196,7 @@ const APP_VERSION = installation.version;
 const UPDATE_CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000;
 
 let latestRelease: ReleaseInfo | null = null;
+let latestPluginRelease: PluginReleaseInfo | null = null;
 let pendingSkillHash: string | null = null;
 
 try {
@@ -208,6 +211,18 @@ try {
 
 async function checkForUpdate(): Promise<void> {
     if (!getConfig().checkForUpdates) return;
+    if (installation.plugin) {
+        const cached = store.getPluginUpdateCheck();
+        latestPluginRelease = cached?.release ?? null;
+        if (Date.now() - (cached?.checkedAt ?? 0) < UPDATE_CHECK_INTERVAL_MS)
+            return;
+        const release = await fetchLatestPluginRelease();
+        if (release) {
+            latestPluginRelease = release;
+            store.setPluginUpdateCheck({ checkedAt: Date.now(), release });
+        }
+        return;
+    }
     // Session hosts share the store, so the last-check time limits GitHub calls to one a day.
     const last = Number(store.getUpdateCheck()?.checkedAt ?? 0);
     const cached = store.getUpdateCheck()?.release ?? null;
@@ -227,6 +242,24 @@ async function checkForUpdate(): Promise<void> {
 
 // Manual check: skips the daily limit and keeps the cached release if GitHub fails.
 async function checkForUpdatesNow(): Promise<UpdateCheckResult> {
+    if (installation.plugin) {
+        const release = await fetchLatestPluginRelease();
+        if (release) {
+            latestPluginRelease = release;
+            store.setPluginUpdateCheck({ checkedAt: Date.now(), release });
+        }
+        const current =
+            release ??
+            latestPluginRelease ??
+            store.getPluginUpdateCheck()?.release;
+        return {
+            ok: release !== null,
+            latest: current?.version ?? null,
+            updateAvailable: current
+                ? isNewerVersion(current.version, APP_VERSION)
+                : false,
+        };
+    }
     const release = await fetchLatestRelease();
     if (release) {
         latestRelease = release;
@@ -247,7 +280,6 @@ let updateTimer: NodeJS.Timeout | null = null;
 // Runs only while this host has a canvas open, like the poller. The shared
 // last-check time still limits GitHub calls if two hosts have a canvas open.
 function startUpdateChecks(): void {
-    if (installation.plugin) return;
     void checkForUpdate();
     updateTimer = setInterval(
         () => void checkForUpdate(),
@@ -321,6 +353,8 @@ function getNotices(): Notice[] {
                 : null,
         appVersion: APP_VERSION,
         release: latestRelease,
+        pluginRelease: latestPluginRelease,
+        pluginInstalled: installation.plugin,
         checkForUpdates: getConfig().checkForUpdates,
         skill: pendingSkillHash
             ? {
@@ -357,7 +391,7 @@ const serverCtx = (): ServerContext => ({
     getNotices,
     appVersion: APP_VERSION,
     pluginInstalled: installation.plugin,
-    checkForUpdatesNow: installation.plugin ? undefined : checkForUpdatesNow,
+    checkForUpdatesNow,
     applyUpdate: installation.plugin
         ? undefined
         : async (setPhase) => {

@@ -22,6 +22,44 @@ import {
 import { describe, it } from "vitest";
 
 describe("server/notices", () => {
+    it("shows plugin-manager instructions without offering a ZIP install", () => {
+        const inputs = {
+            appVersion: "0.2.0",
+            checkForUpdates: true,
+            pluginInstalled: true,
+            pluginRelease: {
+                version: "0.3.0",
+                url: "https://x/plugin-release",
+            },
+            release: {
+                version: "0.4.0",
+                url: "https://x/r",
+                zipUrl: "https://x/zip",
+                checksumUrl: "https://x/checksum",
+            },
+            skill: null,
+        };
+        const notices = buildNotices(inputs);
+        assert.equal(notices.length, 1);
+        assert.equal(notices[0].id, "plugin-update:0.3.0");
+        assert.equal(notices[0].kind, "plugin-update");
+        assert.match(notices[0].detail, /You have 0\.2\.0/);
+        assert.match(notices[0].detail, /plugin manager/);
+        assert.equal(notices[0].actionLabel, undefined);
+        assert.equal(notices[0].prompt, undefined);
+        assert.equal(
+            buildNotices({ ...inputs, checkForUpdates: false }).length,
+            0,
+        );
+        assert.equal(
+            buildNotices({ ...inputs, pluginRelease: null }).length,
+            0,
+        );
+        for (const appVersion of ["0.3.0", "0.4.0"]) {
+            assert.equal(buildNotices({ ...inputs, appVersion }).length, 0);
+        }
+    });
+
     it("compares release versions", async () => {
         assert.equal(isNewerVersion("0.2.0", "0.1.9"), true);
         assert.equal(isNewerVersion("v1.0.0", "0.9.9"), true);

@@ -34,6 +34,7 @@ import {
     configApi,
     configQuery,
     healthQuery,
+    noticesQuery,
     repoScopesQuery,
     teamsQuery,
     versionQuery,
@@ -55,6 +56,7 @@ import { pushToast } from "../lib/toast";
 import { errorMessage } from "../lib/errors";
 import { validateIntegerSetting } from "../lib/settings-form";
 import { AppearanceSettings } from "../components/AppearanceSettings";
+import { UpdateNotice } from "../components/notifications/UpdateNotice";
 
 export const Route = createFileRoute("/settings")({
     loader: ({ context }) =>
@@ -233,8 +235,12 @@ export function SettingsForm({ config: cfg }: { config: ArgusConfig }) {
     const router = useRouter();
     const teams = useQuery(teamsQuery);
     const version = useQuery(versionQuery);
-    const zipUpdatesAvailable =
-        useQuery(healthQuery).data?.pluginInstalled === false;
+    const notices = useQuery(noticesQuery);
+    const updateNotice = notices.data?.find(
+        (notice) =>
+            notice.kind === "app-update" || notice.kind === "plugin-update",
+    );
+    const updatesAvailable = useQuery(healthQuery).isSuccess;
     const formId = useId();
     const formElement = useRef<HTMLFormElement>(null);
     const [tab, setTab] = useState<GroupId>("general");
@@ -257,7 +263,7 @@ export function SettingsForm({ config: cfg }: { config: ArgusConfig }) {
         onSuccess: (result) => {
             pushToast(
                 result.updateAvailable
-                    ? `Version ${result.latest} is available. See the bell.`
+                    ? `Version ${result.latest} is available.`
                     : "You're up to date",
             );
             void qc.invalidateQueries({ queryKey: ["notices"] });
@@ -1114,7 +1120,7 @@ export function SettingsForm({ config: cfg }: { config: ArgusConfig }) {
                                                         ? `Argus v${version.data}`
                                                         : "Argus"}
                                                 </Text>
-                                                {zipUpdatesAvailable && (
+                                                {updatesAvailable && (
                                                     <Button
                                                         type="button"
                                                         variant="default"
@@ -1137,7 +1143,21 @@ export function SettingsForm({ config: cfg }: { config: ArgusConfig }) {
                                                     </Button>
                                                 )}
                                             </Group>
-                                            {zipUpdatesAvailable &&
+                                            {notices.isError && (
+                                                <ErrorBanner
+                                                    title="Couldn't load update details"
+                                                    error={notices.error}
+                                                    onRetry={() =>
+                                                        void notices.refetch()
+                                                    }
+                                                />
+                                            )}
+                                            {updateNotice && (
+                                                <UpdateNotice
+                                                    notice={updateNotice}
+                                                />
+                                            )}
+                                            {updatesAvailable &&
                                                 check.isError && (
                                                     <ErrorBanner
                                                         title="Couldn't check for updates"
@@ -1150,12 +1170,12 @@ export function SettingsForm({ config: cfg }: { config: ArgusConfig }) {
                                                         }
                                                     />
                                                 )}
-                                            {zipUpdatesAvailable && (
+                                            {updatesAvailable && (
                                                 <form.Field name="checkForUpdates">
                                                     {(field) => (
                                                         <Switch
                                                             label="Check for new versions"
-                                                            description="Check GitHub once a day and show new releases in the bell. No data about you is sent. Save settings applies this change."
+                                                            description="Check GitHub once a day and show new versions in the bell. No data about you is sent. Save settings applies this change."
                                                             checked={
                                                                 field.state
                                                                     .value
