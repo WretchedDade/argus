@@ -1568,6 +1568,36 @@ var logger = createLogger();
 
 // server/update-check.ts
 var LATEST_RELEASE_URL = "https://api.github.com/repos/WretchedDade/argus/releases/latest";
+var PUBLISHED_PLUGIN_URL = "https://api.github.com/repos/WretchedDade/argus/contents/.claude-plugin/plugin.json?ref=plugin";
+async function fetchLatestPluginRelease(fetchFn = fetch) {
+  try {
+    const res = await fetchFn(PUBLISHED_PLUGIN_URL, {
+      headers: {
+        Accept: "application/vnd.github.raw+json",
+        "User-Agent": "argus-update-check"
+      },
+      signal: AbortSignal.timeout(5e3)
+    });
+    if (!res.ok) {
+      log.debug({ status: res.status }, "Plugin check failed");
+      return null;
+    }
+    const body = await res.json();
+    if (!body || typeof body !== "object" || !("version" in body) || typeof body.version !== "string" || !parseVersion(body.version)) {
+      log.debug("Plugin check returned invalid metadata");
+      return null;
+    }
+    const version2 = body.version.replace(/^v/, "");
+    log.debug({ version: version2 }, "Plugin check completed");
+    return {
+      version: version2,
+      url: `https://github.com/WretchedDade/argus/releases/tag/v${version2}`
+    };
+  } catch (err) {
+    log.debug({ err }, "Plugin check failed");
+    return null;
+  }
+}
 function parseVersion(value) {
   const match2 = value.trim().match(/^v?(\d+)\.(\d+)\.(\d+)$/);
   return match2 ? [Number(match2[1]), Number(match2[2]), Number(match2[3])] : null;
@@ -1629,7 +1659,19 @@ var skillSteps = (bundled, installed) => `Merge the new bundled pr-review skill 
 function buildNotices(inputs) {
   const notices = [];
   const { release, appVersion } = inputs;
-  if (inputs.checkForUpdates && release?.zipUrl && release.checksumUrl && isNewerVersion(release.version, appVersion)) {
+  if (inputs.pluginInstalled && inputs.checkForUpdates && inputs.pluginRelease && isNewerVersion(inputs.pluginRelease.version, appVersion)) {
+    const { version: version2, url: url2 } = inputs.pluginRelease;
+    notices.push({
+      id: `plugin-update:${version2}`,
+      kind: "plugin-update",
+      title: `Argus plugin ${version2} is available`,
+      detail: `You have ${appVersion}.
+Open your plugin manager, refresh its catalog, and update Argus. Then reload extensions or restart the session.
+Automatic updates depend on your plugin manager settings. If the new version is not listed yet, check again after the marketplace updates.`,
+      href: url2
+    });
+  }
+  if (!inputs.pluginInstalled && inputs.checkForUpdates && release?.zipUrl && release.checksumUrl && isNewerVersion(release.version, appVersion)) {
     notices.push({
       id: `app-update:${release.version}`,
       kind: "app-update",
@@ -22147,6 +22189,13 @@ function getUpdateCheck(db) {
 function setUpdateCheck(db, value) {
   setSetting(db, "update_check", JSON.stringify(value));
 }
+function getPluginUpdateCheck(db) {
+  const raw2 = getSetting(db, "plugin_update_check");
+  return raw2 ? JSON.parse(raw2) : null;
+}
+function setPluginUpdateCheck(db, value) {
+  setSetting(db, "plugin_update_check", JSON.stringify(value));
+}
 function getSeenTeams(db) {
   const v = getSetting(db, "seen_teams");
   return v ? JSON.parse(v) : [];
@@ -24275,6 +24324,12 @@ var ArgusStore = class {
   }
   setUpdateCheck(value) {
     setUpdateCheck(this.#db, value);
+  }
+  getPluginUpdateCheck() {
+    return getPluginUpdateCheck(this.#db);
+  }
+  setPluginUpdateCheck(value) {
+    setPluginUpdateCheck(this.#db, value);
   }
   getSeenTeams() {
     return getSeenTeams(this.#db);
@@ -29587,7 +29642,9 @@ function noticeRoutes(ctx) {
       return c.json({ error: "Update checks are turned off." }, 409);
     const result = await ctx.checkForUpdatesNow();
     if (result.updateAvailable && result.latest)
-      ctx.store.restoreNotice(`app-update:${result.latest}`);
+      ctx.store.restoreNotice(
+        `${ctx.pluginInstalled ? "plugin" : "app"}-update:${result.latest}`
+      );
     return c.json(result);
   }).post(
     "/notices/act",
@@ -29623,6 +29680,11 @@ function noticeRoutes(ctx) {
       return c.json({ error: err.message }, 500);
     }
   }).post("/update/apply", (c) => {
+    if (ctx.pluginInstalled)
+      return c.json(
+        { error: "Update Argus through your plugin manager." },
+        409
+      );
     const notice = (ctx.getNotices?.() ?? []).find(
       (n) => n.kind === "app-update"
     );
@@ -30465,6 +30527,7 @@ function installBaselineSkill() {
 var APP_VERSION = installation.version;
 var UPDATE_CHECK_INTERVAL_MS = 24 * 60 * 60 * 1e3;
 var latestRelease = null;
+var latestPluginRelease = null;
 var pendingSkillHash = null;
 try {
   const sync = installation.plugin ? { state: "none" } : syncSkill(BUNDLED_SKILL, INSTALLED_SKILL);
@@ -30475,6 +30538,18 @@ try {
 }
 async function checkForUpdate() {
   if (!getConfig().checkForUpdates) return;
+  if (installation.plugin) {
+    const cached3 = store.getPluginUpdateCheck();
+    latestPluginRelease = cached3?.release ?? null;
+    if (Date.now() - (cached3?.checkedAt ?? 0) < UPDATE_CHECK_INTERVAL_MS)
+      return;
+    const release2 = await fetchLatestPluginRelease();
+    if (release2) {
+      latestPluginRelease = release2;
+      store.setPluginUpdateCheck({ checkedAt: Date.now(), release: release2 });
+    }
+    return;
+  }
   const last = Number(store.getUpdateCheck()?.checkedAt ?? 0);
   const cached2 = store.getUpdateCheck()?.release ?? null;
   if (Date.now() - last < UPDATE_CHECK_INTERVAL_MS && (!cached2 || cached2.checksumUrl)) {
@@ -30487,6 +30562,19 @@ async function checkForUpdate() {
   store.setUpdateCheck({ checkedAt: Date.now(), release });
 }
 async function checkForUpdatesNow() {
+  if (installation.plugin) {
+    const release2 = await fetchLatestPluginRelease();
+    if (release2) {
+      latestPluginRelease = release2;
+      store.setPluginUpdateCheck({ checkedAt: Date.now(), release: release2 });
+    }
+    const current2 = release2 ?? latestPluginRelease ?? store.getPluginUpdateCheck()?.release;
+    return {
+      ok: release2 !== null,
+      latest: current2?.version ?? null,
+      updateAvailable: current2 ? isNewerVersion(current2.version, APP_VERSION) : false
+    };
+  }
   const release = await fetchLatestRelease();
   if (release) {
     latestRelease = release;
@@ -30501,7 +30589,6 @@ async function checkForUpdatesNow() {
 }
 var updateTimer = null;
 function startUpdateChecks() {
-  if (installation.plugin) return;
   void checkForUpdate();
   updateTimer = setInterval(
     () => void checkForUpdate(),
@@ -30558,6 +30645,8 @@ function getNotices() {
     } : null,
     appVersion: APP_VERSION,
     release: latestRelease,
+    pluginRelease: latestPluginRelease,
+    pluginInstalled: installation.plugin,
     checkForUpdates: getConfig().checkForUpdates,
     skill: pendingSkillHash ? {
       bundledHash: pendingSkillHash,
@@ -30589,7 +30678,7 @@ var serverCtx = () => ({
   getNotices,
   appVersion: APP_VERSION,
   pluginInstalled: installation.plugin,
-  checkForUpdatesNow: installation.plugin ? void 0 : checkForUpdatesNow,
+  checkForUpdatesNow,
   applyUpdate: installation.plugin ? void 0 : async (setPhase) => {
     if (!latestRelease) throw new Error("No release is known yet.");
     await applyUpdate(latestRelease, __dirname, {}, setPhase);
