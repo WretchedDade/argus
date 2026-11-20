@@ -197,6 +197,11 @@ selects plugin-managed updates and skills. Plugin installs do not run the ZIP
 updater or copy/sync skills into the user's personal directory. Existing personal
 or project skills keep precedence.
 
+Plugin update checks read the manifest on the published `plugin` branch, not the
+latest ZIP release. The shared store caches plugin and ZIP checks separately.
+The bell shows newer plugin versions with plugin-manager instructions and no
+install action. The plugin manager still owns all plugin file changes.
+
 The process and polling lifecycle is unchanged. There is no shared daemon.
 Database choices, settings, and sign-in files stay outside the replaceable payload.
 

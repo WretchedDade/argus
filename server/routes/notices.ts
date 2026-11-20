@@ -31,7 +31,9 @@ export function noticeRoutes(ctx: ApiContext) {
                 return c.json({ error: "Update checks are turned off." }, 409);
             const result = await ctx.checkForUpdatesNow();
             if (result.updateAvailable && result.latest)
-                ctx.store.restoreNotice(`app-update:${result.latest}`);
+                ctx.store.restoreNotice(
+                    `${ctx.pluginInstalled ? "plugin" : "app"}-update:${result.latest}`,
+                );
             return c.json(result);
         })
         .post(
@@ -70,6 +72,11 @@ export function noticeRoutes(ctx: ApiContext) {
             }
         })
         .post("/update/apply", (c) => {
+            if (ctx.pluginInstalled)
+                return c.json(
+                    { error: "Update Argus through your plugin manager." },
+                    409,
+                );
             const notice = (ctx.getNotices?.() ?? []).find(
                 (n) => n.kind === "app-update",
             );

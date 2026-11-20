@@ -4,6 +4,7 @@ import { z } from "zod";
 
 export const NoticeKindSchema = z.enum([
     "app-update",
+    "plugin-update",
     "skill-update",
     "storage",
 ]);

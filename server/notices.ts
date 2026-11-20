@@ -1,5 +1,9 @@
 import type { Notice as WireNotice } from "#shared/schemas/notice";
-import { isNewerVersion, type ReleaseInfo } from "./update-check.ts";
+import {
+    isNewerVersion,
+    type PluginReleaseInfo,
+    type ReleaseInfo,
+} from "./update-check.ts";
 
 // One row in the notification bell, besides the review sessions ready to archive.
 export interface Notice extends WireNotice {
@@ -9,6 +13,8 @@ export interface Notice extends WireNotice {
 export interface NoticeInputs {
     appVersion: string;
     release: ReleaseInfo | null;
+    pluginRelease?: PluginReleaseInfo | null;
+    pluginInstalled?: boolean;
     checkForUpdates: boolean;
     skill: {
         bundledHash: string;
@@ -26,6 +32,22 @@ export function buildNotices(inputs: NoticeInputs): Notice[] {
     const notices: Notice[] = [];
     const { release, appVersion } = inputs;
     if (
+        inputs.pluginInstalled &&
+        inputs.checkForUpdates &&
+        inputs.pluginRelease &&
+        isNewerVersion(inputs.pluginRelease.version, appVersion)
+    ) {
+        const { version, url } = inputs.pluginRelease;
+        notices.push({
+            id: `plugin-update:${version}`,
+            kind: "plugin-update",
+            title: `Argus plugin ${version} is available`,
+            detail: `You have ${appVersion}.\nOpen your plugin manager, refresh its catalog, and update Argus. Then reload extensions or restart the session.\nAutomatic updates depend on your plugin manager settings. If the new version is not listed yet, check again after the marketplace updates.`,
+            href: url,
+        });
+    }
+    if (
+        !inputs.pluginInstalled &&
         inputs.checkForUpdates &&
         release?.zipUrl &&
         release.checksumUrl &&

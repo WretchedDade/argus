@@ -15,6 +15,7 @@ describe("src/components/settings", () => {
             import { SettingsForm } from "./src/routes/settings.tsx";
             import { SetupGate } from "./src/components/SetupGate.tsx";
             import { argusTheme } from "./src/theme.ts";
+            import { buildNotices } from "./server/notices.ts";
                 const config = {
                     me: null, adoAuth: "az",
                     orgUrl: "https://example.test", orgSlug: "preview", project: "Preview",
@@ -39,7 +40,7 @@ describe("src/components/settings", () => {
                 return renderToStaticMarkup(h(MantineProvider, { theme: argusTheme },
                     h(QueryClientProvider, { client }, h(SetupGate, { pluginInstalled }))));
             }
-            export function render(pluginInstalled = false) {
+            export function render(pluginInstalled = false, updateAvailable = false) {
                 const client = new QueryClient();
                 client.setQueryData(["teams"], ["Preview reviewers"]);
                 client.setQueryData(["version"], "0.0.0");
@@ -48,6 +49,15 @@ describe("src/components/settings", () => {
                 }]);
                 client.setQueryData(["auth-registration"], { clientId: "", tenantId: "" });
                 client.setQueryData(["health"], { pluginInstalled, poller: { running: false } });
+                client.setQueryData(["notices"], updateAvailable ? buildNotices({
+                    appVersion: "0.0.0", pluginInstalled, checkForUpdates: true, skill: null,
+                    pluginRelease: { version: "0.3.0", url: "https://example.test/plugin" },
+                    release: {
+                        version: "0.4.0", url: "https://example.test/zip",
+                        zipUrl: "https://example.test/download",
+                        checksumUrl: "https://example.test/checksum",
+                    },
+                }) : []);
                 const router = createRouter({
                     routeTree: createRootRoute(),
                     history: createMemoryHistory(),
@@ -85,7 +95,10 @@ describe("src/components/settings", () => {
         });
 
         const { render, renderSetup } = result as {
-            render: (pluginInstalled?: boolean) => string;
+            render: (
+                pluginInstalled?: boolean,
+                updateAvailable?: boolean,
+            ) => string;
             renderSetup: (pluginInstalled: boolean) => string;
         };
         assert.match(renderSetup(false), /PR review skill/);
@@ -98,10 +111,18 @@ describe("src/components/settings", () => {
         assert.match(html, /Check for new versions/);
         const pluginHtml = render(true);
         assert.match(pluginHtml, /Argus v0\.0\.0/);
-        assert.doesNotMatch(
-            pluginHtml,
-            /Check for updates|Check for new versions|Check GitHub once a day/,
-        );
+        assert.match(pluginHtml, /Check for updates/);
+        assert.match(pluginHtml, /Check for new versions/);
+        assert.match(pluginHtml, /Check GitHub once a day/);
+        const pluginUpdate = render(true, true);
+        assert.match(pluginUpdate, /Argus plugin 0\.3\.0 is available/);
+        assert.match(pluginUpdate, /plugin manager/);
+        assert.match(pluginUpdate, /View release/);
+        assert.doesNotMatch(pluginUpdate, /Update now|0\.4\.0/);
+        const zipUpdate = render(false, true);
+        assert.match(zipUpdate, /Argus 0\.4\.0 is available/);
+        assert.match(zipUpdate, /Update now/);
+        assert.doesNotMatch(zipUpdate, /plugin manager|0\.3\.0/);
         assert.doesNotMatch(html, /name="avatarUrl"|Avatar image/);
         assert.equal(
             html.match(/<form\b/g)?.length,

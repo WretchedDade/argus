@@ -64,7 +64,9 @@ copilot plugin update argus@argus
 
 Then reload extensions or restart the session. The plugin manager updates Argus and its bundled skill together. It does not change a personal or project skill that takes precedence.
 
-Argus does not currently show plugin update notices. Check through your plugin manager. Automatic updates depend on the plugin manager and its settings.
+Argus checks the latest successfully published plugin version once a day while a canvas is open. When a newer version is available, the bell and **Settings > System** show your installed version, the available version, and plugin-manager instructions. Select **Check for updates** in Settings to check now. The result and update instructions stay on that page. Turn off **Check for new versions** to stop these checks.
+
+The notice checks the published plugin payload, not the latest ZIP release. A separate marketplace listing can take longer to update. If your plugin manager does not list the new version yet, check again after its catalog updates. Argus does not install plugin updates or replace plugin files. Automatic updates depend on the plugin manager and its settings.
 
 ## Uninstall
 
