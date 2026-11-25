@@ -56,6 +56,24 @@ UPDATE prs SET last_commit_at = NULL WHERE last_commit_at = pr_created_at;
 UPDATE prs SET reviewed_sha_authored_at = NULL WHERE reviewed_sha_authored_at = pr_created_at;`);
         },
     },
+    {
+        // Existing tables can lack columns from the first versioned schema.
+        up(db) {
+            const cols = db.prepare("PRAGMA table_info(prs)").all() as {
+                name: string;
+            }[];
+            for (const [name, type] of [
+                ["other_comments", "INTEGER"],
+                ["source_branch", "TEXT"],
+                ["target_branch", "TEXT"],
+                ["changed_files", "INTEGER"],
+                ["changed_files_sha", "TEXT"],
+            ]) {
+                if (!cols.some((c) => c.name === name))
+                    db.exec(`ALTER TABLE prs ADD COLUMN ${name} ${type}`);
+            }
+        },
+    },
 ];
 
 export function runMigrations(
