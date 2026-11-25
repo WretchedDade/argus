@@ -22,9 +22,9 @@ Read [CONTRIBUTING.md](../CONTRIBUTING.md) for setup, checks, and the PR process
 - Access SQLite only through `ArgusStore` in `server/db.ts`.
 - Treat `pr_events` as the append-only timeline. Derive metrics from it when you can, and do not store a second copy of data.
 - Write user-managed columns on `prs` only through dedicated action methods.
-- Add a column in two places: `SCHEMA` and `#ensureColumn`. Make it nullable or give it a `DEFAULT`.
+- Append a migration for each schema change. Do not edit the first versioned schema or a released migration. Make new columns nullable or give them a `DEFAULT`.
 - Keep every schema change safe for a user who upgrades and keeps their history. There is no down-migration.
-- Test each schema change in `server/db.test.ts` against an old-schema database.
+- Test each schema change in `server/store/migrations.test.ts` or `server/db.test.ts` against an old-schema database.
 
 ## API
 

@@ -69,6 +69,92 @@ describe("server/store/migrations", () => {
         }),
     );
 
+    for (const [oldVersion, missing] of [
+        [
+            4,
+            [
+                "other_comments",
+                "source_branch",
+                "target_branch",
+                "changed_files",
+                "changed_files_sha",
+            ],
+        ],
+        [0, ["other_comments", "target_branch"]],
+    ] as const) {
+        it(
+            `repairs missing PR columns in a version ${oldVersion} database`,
+            withDir((dir) => {
+                const file = path.join(dir, `legacy-${oldVersion}.db`);
+                new ArgusStore(file).close();
+                const old = new DatabaseSync(file);
+                old.exec(`
+                    INSERT INTO prs (
+                        canonical, title, added_at, updated_at, review_session_id,
+                        reviewed_sha, dismissed, dismissed_reason, dismissed_at,
+                        other_comments, source_branch, target_branch, changed_files, changed_files_sha
+                    ) VALUES (
+                        'pr-1', 'Old PR', '2025-01-01', '2025-01-01', 'session-1',
+                        'sha-1', 1, 'manual', '2025-01-02',
+                        3, 'feature', 'main', 7, 'sha-1'
+                    );
+                    INSERT INTO pr_events (canonical, ts, type, payload)
+                    VALUES ('pr-1', '2025-01-02', 'reviewed', '{"verdict":"approved"}');
+                `);
+                for (const name of missing) {
+                    old.exec(`ALTER TABLE prs DROP COLUMN ${name}`);
+                }
+                old.exec(`PRAGMA user_version = ${oldVersion}`);
+                const before = old.prepare("SELECT * FROM prs").get()!;
+                const events = old.prepare("SELECT * FROM pr_events").all();
+                old.close();
+
+                const store = new ArgusStore(file);
+                assert.equal(store.getPr("pr-1")?.reviewSessionId, "session-1");
+                store.upsertPr({
+                    canonical: "pr-2",
+                    org: "o",
+                    project: "p",
+                    repo: "r",
+                    number: 2,
+                    title: "New PR",
+                    description: "",
+                    author: "a",
+                    isVendor: false,
+                    role: "reviewer",
+                    teams: [],
+                    isDraft: false,
+                    lastCommitSha: "sha-2",
+                    lastCommitAt: null,
+                    prCreatedAt: null,
+                    sourceBranch: "feature",
+                    targetBranch: "main",
+                });
+                assert.equal(store.getPr("pr-2")?.title, "New PR");
+                store.close();
+
+                new ArgusStore(file).close();
+                const db = new DatabaseSync(file);
+                assert.equal(version(db), migrations.length);
+                for (const name of missing) {
+                    assert.ok(columns(db, "prs").includes(name));
+                }
+                const after = db
+                    .prepare("SELECT * FROM prs WHERE canonical = 'pr-1'")
+                    .get()!;
+                for (const [name, value] of Object.entries(before)) {
+                    assert.equal(after[name], value, name);
+                }
+                for (const name of missing) assert.equal(after[name], null);
+                assert.deepEqual(
+                    db.prepare("SELECT * FROM pr_events").all(),
+                    events,
+                );
+                db.close();
+            }),
+        );
+    }
+
     it(
         "a version 1 database gains the poll lease table and keeps its rows",
         withDir((dir) => {
